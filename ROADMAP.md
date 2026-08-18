@@ -60,13 +60,13 @@ passes.
   winter never saturates the ThreatNet.
 
 ## Phase 4 — Memory systems & sleep
-- Full episodic encoding (time, location, participants, action, outcome, state, prediction,
+- [x] Full episodic encoding (time, location, participants, action, outcome, state, prediction,
   PE, importance, emotional/social relevance)
-- Learned retrieval weighting; decay/strengthen/rehearsal; archive + pruning
-- Sleep state machine + consolidation pipeline (replay, skill rehearsal, goal processing,
+- [x] Learned retrieval weighting; decay/strengthen/rehearsal; archive + pruning
+- [x] Sleep state machine + consolidation pipeline (replay, skill rehearsal, goal processing,
   summarization, association updates)
-- Dreams v1 (associative recombination, no LLM)
-- Gate: overnight consolidation improves a rehearsed skill; retrieval returns relevant
+- [x] Dreams v1 (associative recombination, no LLM)
+- [x] Gate: overnight consolidation improves a rehearsed skill; retrieval returns relevant
   episodes; memory DB stays bounded over long runs; sleep occurs at sane intervals.
 
 ### Teacher pipeline (Phase 4 branch — started)
