@@ -5,6 +5,27 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 
 ## [Unreleased]
 
+### Deterministic generative systems (DESIGN §22)
+- Feasibility mapping of deterministic, seedable, LLM-free generative techniques into
+  Eidolon: cellular automata (terrain/biome shaping + live plant ecology), L-systems
+  (plant/branch geometry, river/root networks), procedural generation (landmarks,
+  semantically tagged objects for memory ground truth), evolutionary algorithms (offline
+  prior/wildlife/recipe search), grammars (event/goal templates, recipe rules) —
+  DESIGN §22 + ROADMAP Phase 5 branch.
+- First working PoC: `python/teacher/evolve_prior.py` evolves the policy-prior weights
+  directly (5×(27+1) floats) on held-out deterministic seeds. Tournament selection +
+  per-weight crossover + decaying gaussian mutation + elitism; fitness rewards survival
+  and a balanced Forage/Drink/Rest diet, penalizes wasted Wander/Observe and behavioural
+  fixation. Fully seedable (`--seed`); sim-eval per individual; `--progress-port` shows
+  the search in the browser.
+- `python/teacher/eval.py`: `evaluate()` per-policy per-seed rows (used by the EA) +
+  `sim_eval()` aggregate reporting; run dirs are cleaned per evaluation (keeps /tmp
+  tmpfs bounded — see MISTAKES).
+- EA search is deterministic and reproducible; naive tick-maximising fitness converges to
+  a Drink-fixated policy (4/5 seeds survive), so the fitness is deliberately survival- and
+  diet-weighted. Best evolved prior lands in `data/priors/teacher_policy_evolved.eprp`
+  (gitignored artifact).
+
 ### Teacher pipeline: results web UI + data quality & behavioural evaluation
 - Progress UI now also reports **results** after the fit: train/val accuracy, label
   distribution, agreement of the teacher labels with the organism's own actions and with

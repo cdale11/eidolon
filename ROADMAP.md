@@ -97,6 +97,25 @@ passes.
 - Gate: in a seeded scarcity scenario the organism explores and finds food; predator events
   produce measurable threat learning; survival rate improves with experience.
 
+### Phase 5 branch — deterministic generative systems (DESIGN §22)
+Seedable, allocation-light generative content; no LLM, bit-exact replays preserved.
+- [ ] **Cellular automata**: CA-shaped terrain/biomes (thickets, clearings, water networks,
+      cave systems) over the seed noise map; live CA plant-ecology spread rule so vegetation
+      clumps organically and the organism learns to revisit profitable patches.
+- [ ] **L-systems**: procedural plant/bush/branch geometry and river/road/root networks;
+      foraging targets get spatial identity the memory system can reference.
+- [ ] **Procedural generation**: ruins/landmarks, named places, semantically tagged objects
+      (memory ground truth), extending the existing seedable world gen.
+- [ ] **Evolutionary algorithms** (offline tooling): `python/teacher/evolve_prior.py` evolved
+      policy-prior weights directly on held-out seeds (PoC done — seeds the population with
+      the teacher artifacts, tournament + crossover + gaussian mutation, deterministic RNG,
+      beats the Drink-fixated NIM prior); next: wildlife behaviour parameters, recipe tuning.
+- [ ] **Grammars**: structured goal/event templates for episodic-memory compression,
+      recipe-discovery production rules, grounded utterance templates.
+- Gate: every generated object reproduces from its seed (determinism tests); content couples
+  to behaviour (perception/affordances/memory), never cosmetics; generated ecology measurably
+  changes foraging strategy over days.
+
 ## Phase 6 — Skills, tools, crafting, construction
 - Skill models (Beta/Bernoulli competence), procedural store, habit formation
 - Crafting with learned recipes (seeded basics: fire, sharp stone, spear, shelter)

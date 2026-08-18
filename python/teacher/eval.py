@@ -8,6 +8,7 @@ Observe) and survival length without touching the C++ runtime.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import tempfile
 from collections import Counter
@@ -32,6 +33,9 @@ def _run_one(sim_bin: str, seed: int, days: int, prior: str | None,
         exp = load_experiences(dump)
     except Exception:
         exp = []
+    # The dump is only needed for the parsed records above; delete the whole run dir to
+    # keep peak disk/tmpfs usage bounded (EA evaluates hundreds of policies).
+    shutil.rmtree(run_dir, ignore_errors=True)
     if not exp:
         return {"seed": seed, "error": "no ticks (died at birth?)"}
     counts = Counter(e.action for e in exp)
@@ -47,6 +51,31 @@ def _run_one(sim_bin: str, seed: int, days: int, prior: str | None,
     }
 
 
+def evaluate(sim_bin: str, prior: str | None, seeds: list[int], days: int = 1,
+             tmpdir: str | None = None,
+             workers: int | None = None) -> list[dict[str, Any]]:
+    """Per-seed rows for one policy (prior path or None = random init).
+
+    Used directly by the evolutionary search; sim_eval() wraps it for reporting.
+    A unique run dir per call keeps each policy's dumps from clobbering others'.
+    Seeds are evaluated in parallel (each sim is a separate single-threaded process,
+    so threads use the cores; results stay bit-exact because seeds are independent).
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    root = tmpdir or tempfile.mkdtemp(prefix="eidolon_eval_")
+    base = os.path.join(root, next(tempfile._get_candidate_names()))
+    jobs = [(s, os.path.join(base, str(s))) for s in seeds]
+
+    def run(job: tuple[int, str]) -> dict[str, Any]:
+        s, d = job
+        return _run_one(sim_bin, s, days, prior, d)
+
+    with ThreadPoolExecutor(max_workers=workers or os.cpu_count() or 1) as ex:
+        results = list(ex.map(run, jobs))
+    return [r for r in results if "error" not in r]
+
+
 def sim_eval(sim_bin: str, configs: dict[str, str | None], seeds: list[int],
              days: int = 1, tmpdir: str | None = None) -> dict[str, Any]:
     """configs: display name -> prior .eprp path (None = random init).
@@ -57,12 +86,7 @@ def sim_eval(sim_bin: str, configs: dict[str, str | None], seeds: list[int],
     """
     out: dict[str, Any] = {}
     for name, prior in configs.items():
-        rows = []
-        base = os.path.join(tmpdir or tempfile.mkdtemp(prefix="eidolon_eval_"), name)
-        for s in seeds:
-            r = _run_one(sim_bin, s, days, prior, os.path.join(base, str(s)))
-            if "error" not in r:
-                rows.append(r)
+        rows = evaluate(sim_bin, prior, seeds, days=days, tmpdir=tmpdir)
         if not rows:
             out[name] = {"error": "all seeds failed"}
             continue

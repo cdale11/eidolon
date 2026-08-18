@@ -27,3 +27,14 @@ Mistake risk: Official ROCm wheels lack gfx1103 rocBLAS Tensile / MIOpen kernels
 APU. Installing ROCm PyTorch would burn time and risk system instability.
 Fix / rule: Default to CPU PyTorch for all offline tooling. Treat iGPU ROCm as experimental
 only (TheRock/nightly builds). Revisit when official wheels ship gfx1103 kernels.
+
+### 2026-08-19 — Evaluation loops filled /tmp (tmpfs) with per-run dumps
+Context: Behavioural eval + EA over policies run `eidolon-sim --dump-experiences` hundreds
+of times; each 1-day run writes a ~5 MB dump. `tempfile.mkdtemp()` lands in /tmp, which on
+this box is tmpfs (RAM-backed). 14-pop × 8-gen × 5-seed EA saturated the 3.5 GB tmpfs with
+`ENOSPC`.
+Mistake: No cleanup between runs; each evaluated policy left its dump (and later its run dir)
+behind.
+Fix / rule: `eval._run_one` parses the dump then `shutil.rmtree`s the run dir; `evolve_prior`
+deletes each individual's temp `.eprp` after evaluation. Peak usage is now ~1 run dir. Any
+new bulk simulation loop must clean per-iteration artifacts, and must know /tmp is tmpfs.
