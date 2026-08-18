@@ -418,7 +418,12 @@ Consolidation is bounded per night (caps processing time); no LLM calls in the c
 - Default local model: `Qwen3-4B-Instruct-Q4_K_M.gguf` (present in the local llama.cpp
   build tree). Configurable via `eidolon.toml` / CLI.
 - Teacher training / distillation for offline tooling may use NVIDIA NIM cloud models
-  (Python, conda env `eidolon`); never in the runtime path.
+  (Python, conda env `eidolon`); never in the runtime path. Teacher output is baked into
+  **frozen artifacts** — an `.eprp` policy prior (`--policy-prior`, `Policy::loadPrior`),
+  reward-tuning scenario suites, and optional LoRA adapters for the local 4B — so replays
+  stay deterministic. Baked priors are only an *initialization*: every small model keeps
+  updating online over the prior (see §8), which is what preserves adaptability,
+  emergence and sentience rather than a fixed "scripted" policy.
 
 ### Call types (rare, bounded)
 1. **parse** — user message → structured JSON semantic representation: intent, referenced

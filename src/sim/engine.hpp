@@ -92,6 +92,15 @@ public:
   // Learning-core access (tests + metrics).
   const LearnSystem& learn() const { return learn_; }
 
+  // Seed the policy bandit with teacher-baked weights (a "wisdom prior") instead of the
+  // random init. Only meaningful for a fresh organism; online learning continues on top.
+  bool loadPolicyPrior(const std::string& path);
+
+  // Optional offline experience dump (teacher training data): when set, each tick appends
+  // one JSONL record (features, action, reward, interpretable context). Used only by the
+  // headless CLI for offline teacher pipelines; never in the server hot path.
+  void setExperienceOut(std::FILE* f) { experienceOut_ = f; }
+
 private:
   void stepClock(StepKind kind) noexcept;
   void logStatus(EventLog& log) noexcept;
@@ -103,6 +112,8 @@ private:
   bool safeTick(float reward) const noexcept;
   static Action policyToAction(PolicyAction a) noexcept;
   static PolicyAction actionToPolicy(Action a) noexcept;
+  void dumpExperience(PolicyAction pa, bool agentic, float reward, float novelty,
+                      bool aversive, bool safe, double eaten, bool drank) noexcept;
 
   void serializeState(BinaryWriter& w) const;
   bool deserializeState(BinaryReader& r, std::string& err);
@@ -122,6 +133,7 @@ private:
   int prevMode_ = 0; // last logged life mode: 0=active,1=rest,2=sleep
   bool resting_ = false; // hysteresis for rest mode (prevents boundary oscillation)
   Archive* archive_ = nullptr; // optional durable sink; never owned
+  std::FILE* experienceOut_ = nullptr; // optional offline teacher-data dump (CLI only)
   // Feature buffers (decision + TD learning; fixed size, no heap churn).
   float featsBefore_[LearnSystem::kFeatures] = {};
   float featsAfter_[LearnSystem::kFeatures] = {};

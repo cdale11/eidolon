@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstring>
 
 namespace eidolon {
 
@@ -10,6 +12,32 @@ Policy::Policy(int nFeatures)
 
 void Policy::reset(Rng& r, float scale) {
   for (float& v : w_) v = static_cast<float>(r.range(-scale, scale));
+}
+
+bool Policy::loadPrior(const std::string& path) {
+  std::FILE* f = std::fopen(path.c_str(), "rb");
+  if (!f) return false;
+  char magic[4];
+  uint32_t version = 0, nf = 0, na = 0;
+  const bool hdr = std::fread(magic, 1, 4, f) == 4 &&
+                   std::memcmp(magic, "EPRP", 4) == 0 &&
+                   std::fread(&version, sizeof(version), 1, f) == 1 && version == 1 &&
+                   std::fread(&nf, sizeof(nf), 1, f) == 1 &&
+                   std::fread(&na, sizeof(na), 1, f) == 1;
+  if (!hdr || nf != static_cast<uint32_t>(nFeatures_) ||
+      na != static_cast<uint32_t>(kActions)) {
+    std::fclose(f);
+    return false;
+  }
+  std::vector<float> w(static_cast<size_t>(kActions) * (nFeatures_ + 1));
+  if (std::fread(w.data(), sizeof(float), w.size(), f) != w.size()) {
+    std::fclose(f);
+    return false;
+  }
+  std::fclose(f);
+  w_ = std::move(w);
+  metrics_ = LearnerMetrics{};
+  return true;
 }
 
 float Policy::score(PolicyAction a, const float* feats) const {

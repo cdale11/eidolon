@@ -5,6 +5,28 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 
 ## [Unreleased]
 
+### Teacher pipeline (Phase 4 branch)
+- `eidolon-sim --dump-experiences FILE`: one JSONL record per tick with the 27-feature
+  state vector plus interpretable context (body drives, weather, nearest bush/water,
+  eaten/drank, reward, novelty, threat, aversive/safe flags) for offline training.
+- `eidolon-sim --policy-prior FILE`: seed a fresh organism's policy from a teacher-baked
+  `.eprp` prior (magic "EPRP", version 1, 5×(27+1) float32 softmax-linear weights).
+  Online learning continues on top of the prior — it changes the initialization, never
+  scripts behaviour. Snapshot round-trip and bit-exact replay verified with a prior loaded.
+- `Policy::loadPrior` / `LearnSystem::loadPolicyPrior` / `Engine::loadPolicyPrior`: prior
+  loading with header validation; the prior is serialized into the snapshot with the rest
+  of learning state.
+- Python teacher pipeline (`python/teacher/`, conda env `eidolon`, CPU PyTorch):
+  `dataset.py` (validated JSONL loader), `label.py` (OpenAI-compatible teacher client —
+  local llama-server by default, NVIDIA NIM via `EIDOLON_TEACHER_*`; reward-guided offline
+  fallback so the pipeline runs fully without an LLM), `fit_prior.py` (softmax-linear fit
+  + `.eprp` read/write), `train_prior.py` (end-to-end CLI).
+- Tests: `policy_loads_prior_and_retrains_online` (prior dominates init, learning moves
+  weights, snapshot round-trip, identical continuation) and `python/tests/test_teacher.py`
+  (dump → dataset → fit → sim reload → deterministic replay with prior + online updates
+  running; stub OpenAI endpoint exercises the teacher client offline).
+- `python/requirements.txt` now pins `torch` (CPU) alongside numpy/requests.
+
 ### Phase 3 — Learning core (the mind starts)
 - New `src/mind/` learning stack, all seeded and serialized inside the engine snapshot
   (snapshot v3):

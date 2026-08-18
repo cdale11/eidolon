@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string>
 
 namespace eidolon {
 
@@ -41,6 +42,10 @@ void LearnSystem::init(Rng& r) {
   avgReward_ = rewardVar_ = avgNovelty_ = threatRate_ = avgValence_ = 0.0f;
   forageRate_ = drinkRate_ = restRate_ = avgPain_ = 0.0f;
   lifeTicks_ = 0;
+}
+
+bool LearnSystem::loadPolicyPrior(const std::string& path) {
+  return policy_.loadPrior(path);
 }
 
 void LearnSystem::buildFeatures(const Perception& p, const Physiology& b, float* out) {

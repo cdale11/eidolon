@@ -130,6 +130,10 @@ Action Engine::tick() noexcept {
   learn_.learnStep(featsBefore_, featsAfter_, pa, agentic, reward, novelty, aversive, safe);
   learn_.updateDaily(clock_.now());
 
+  // Offline teacher-data dump (CLI only): one JSONL record per tick.
+  if (experienceOut_)
+    dumpExperience(pa, agentic, reward, novelty, aversive, safe, eaten, drank);
+
   // Near-death experiences (health critically low) are highly important memories.
   if (body_.health() < 20.0 && !died_) {
     const Episode* last = memory_.last();
@@ -146,6 +150,8 @@ Action Engine::tick() noexcept {
   return action;
 }
 
+bool Engine::loadPolicyPrior(const std::string& path) { return learn_.loadPolicyPrior(path); }
+
 bool Engine::aversiveTick(const Physiology& before) const noexcept {
   // Acute danger only: pain, rapid health loss, or near-lethal core temperature.
   // Chronic cold is survival pressure (energy drain), not an immediate threat — it must
@@ -160,6 +166,45 @@ bool Engine::aversiveTick(const Physiology& before) const noexcept {
 bool Engine::safeTick(float reward) const noexcept {
   return reward >= 0.0f && body_.pain() < 5.0 &&
          std::fabs(body_.bodyTemp() - Physiology::kBodyTempC) <= 2.0;
+}
+
+void Engine::dumpExperience(PolicyAction pa, bool agentic, float reward, float novelty,
+                            bool aversive, bool safe, double eaten,
+                            bool drank) noexcept {
+  const Vec2i p = world_.organismPos();
+  static constexpr const char* kActionNames[] = {"Forage", "Drink", "Rest",
+                                                 "Wander", "Observe"};
+  int bushDist = -1;
+  if (const Bush* bush = world_.nearestBush(p, Perception::kSightRadius)) {
+    bushDist = distCheb(bush->pos, p);
+  }
+  int waterDist = -1;
+  for (int y = p.y - Perception::kSightRadius; y <= p.y + Perception::kSightRadius; ++y) {
+    for (int x = p.x - Perception::kSightRadius;
+         x <= p.x + Perception::kSightRadius; ++x) {
+      if (world_.grid().at(x, y) != Terrain::Water) continue;
+      const int d = distCheb({x, y}, p);
+      waterDist = (waterDist < 0 || d < waterDist) ? d : waterDist;
+    }
+  }
+  std::FILE* f = experienceOut_;
+  std::fprintf(f,
+               "{\"t\":%lld,\"agentic\":%d,\"action\":\"%s\",\"reward\":%.4f,"
+               "\"novelty\":%.4f,\"threat\":%.4f,\"aversive\":%d,\"safe\":%d,"
+               "\"body\":{\"h\":%.1f,\"t\":%.1f,\"f\":%.1f,\"e\":%.1f,\"hp\":%.1f,"
+               "\"p\":%.1f,\"s\":%.1f,\"temp\":%.1f},\"wx\":{\"tempC\":%.1f,\"desc\":\"%s\"},"
+               "\"bushDist\":%d,\"waterDist\":%d,\"eaten\":%.1f,\"drank\":%d,\"feats\":[",
+               static_cast<long long>(clock_.now()), agentic ? 1 : 0,
+               kActionNames[static_cast<int>(pa)], static_cast<double>(reward),
+               static_cast<double>(novelty), static_cast<double>(learn_.threatEstimate()),
+               aversive ? 1 : 0, safe ? 1 : 0, body_.hunger(), body_.thirst(),
+               body_.fatigue(), body_.energy(), body_.health(), body_.pain(),
+               body_.sleepPressure(), body_.bodyTemp(), world_.weather().ambientTempC(clock_),
+               world_.weather().describe(), bushDist, waterDist, eaten, drank ? 1 : 0);
+  for (int i = 0; i < LearnSystem::kFeatures; ++i) {
+    std::fprintf(f, "%s%.4f", i ? "," : "", static_cast<double>(featsBefore_[i]));
+  }
+  std::fprintf(f, "]}\n");
 }
 
 Action Engine::policyToAction(PolicyAction a) noexcept {

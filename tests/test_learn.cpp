@@ -221,6 +221,55 @@ TEST(engine_learned_policy_sustains_life) {
   CHECK(reward / n > 0.15);
 }
 
+TEST(policy_loads_prior_and_retrains_online) {
+  // Teacher-baked prior: Drink strongly preferred when the thirst feature (index 13) is
+  // high. Online learning must keep running on top of it, and the prior + learned state
+  // must round-trip through the snapshot.
+  const char* path = "/tmp/eidolon_test_prior.eprp";
+  {
+    std::FILE* f = std::fopen(path, "wb");
+    CHECK(f != nullptr);
+    std::fwrite("EPRP", 1, 4, f);
+    uint32_t v = 1, nf = 27, na = 5;
+    std::fwrite(&v, 4, 1, f);
+    std::fwrite(&nf, 4, 1, f);
+    std::fwrite(&na, 4, 1, f);
+    float w[5 * 28] = {};
+    float* row = &w[static_cast<int>(PolicyAction::Drink) * 28];
+    row[13] = 5.0f;  // strong preference on the thirst feature
+    row[27] = -0.5f; // mild negative bias (avoid defaulting to Drink)
+    std::fwrite(w, sizeof(float), 5 * 28, f);
+    std::fclose(f);
+  }
+
+  Engine e;
+  e.init(42, true, 64, 64);
+  CHECK(e.loadPolicyPrior(path));
+
+  float feats[LearnSystem::kFeatures] = {};
+  feats[13] = 0.8f; // thirsty
+  const float sForage = e.learn().policy().score(PolicyAction::Forage, feats);
+  const float sDrink = e.learn().policy().score(PolicyAction::Drink, feats);
+  CHECK(sDrink > sForage + 1.0f); // the prior dominates the random init
+
+  for (int i = 0; i < 500; ++i) e.tick();
+  const float after = e.learn().policy().score(PolicyAction::Drink, feats);
+  CHECK(std::fabs(after - sDrink) > 1e-6f); // online learning moved the weights
+
+  const auto snap = e.snapshot();
+  std::string err;
+  Engine f2;
+  CHECK(f2.restore(snap, err));
+  CHECK_EQ(f2.learn().policy().score(PolicyAction::Drink, feats),
+           e.learn().policy().score(PolicyAction::Drink, feats));
+  for (int i = 0; i < 100; ++i) {
+    e.tick();
+    f2.tick();
+  }
+  CHECK_EQ(f2.learn().policy().score(PolicyAction::Drink, feats),
+           e.learn().policy().score(PolicyAction::Drink, feats));
+}
+
 TEST(engine_survives_days_with_learning) {
   Engine e;
   e.init(42, true, 64, 64);

@@ -34,6 +34,10 @@ public:
 
   void init(Rng& r);
 
+  // Seed the policy bandit with teacher-baked weights (see Policy::loadPrior). The
+  // online updates in learnStep continue on top of the prior.
+  bool loadPolicyPrior(const std::string& path);
+
   // Build the current feature vector from the world/body/neuromod state.
   void buildFeatures(const Perception& p, const Physiology& b, float* out);
 

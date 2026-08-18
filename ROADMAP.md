@@ -69,6 +69,20 @@ passes.
 - Gate: overnight consolidation improves a rehearsed skill; retrieval returns relevant
   episodes; memory DB stays bounded over long runs; sleep occurs at sane intervals.
 
+### Teacher pipeline (Phase 4 branch — started)
+- Experience dump: `eidolon-sim --dump-experiences FILE` writes one JSONL record per tick
+  (27 features + interpretable body/weather/context) — done.
+- Policy prior: `--policy-prior FILE` seeds a fresh policy from a softmax-linear fit over
+  teacher labels (`.eprp`, magic "EPRP"); online learning continues on top — done.
+- Python tooling (conda env `eidolon`, CPU PyTorch): `python/teacher/` dataset loader,
+  OpenAI-compatible teacher client (local llama-server default; NVIDIA NIM via
+  `EIDOLON_TEACHER_*` env), reward-guided offline fallback, `train_prior` CLI — done.
+- Next: LoRA distillation of the local 4B (GGUF adapter served by the existing Vulkan
+  `llama-server --lora`); NIM-credentialed batch labeling; multi-seed prior training runs;
+  reward-tuning scenario suite.
+- Gate: a teacher-baked prior measurably improves day-1 survival/behaviour vs random init
+  on held-out seeds, while late-life learning still diverges per-organism (no scripting).
+
 ## Phase 5 — Rich world & wildlife
 - Seasons, weather events (rain/storm/heat/cold), temperature coupling
 - Plants (edible/toxic/medicinal), regrowth, depletion; water sources
@@ -166,9 +180,22 @@ passes.
   client-compute & sync, backend benchmark suite, adversarial: corrupt save, kill -9 during
   save, LLM garbage, divergent sync)
 - Documentation finalization; CHANGELOG entries; performance report
-- Optional: teacher-training pipeline (NVIDIA NIM) documented and wired into conda env
-  `eidolon` tooling (CPU PyTorch; iGPU experimental — see AGENTS.md hardware note)
 - Gate: full `ctest` + integration suite green on a clean checkout.
+
+## Future directions (deferred by design)
+Logged from user requirements; not yet sequenced into phases. No LLM in the hot path
+and "client does the maximum work" invariants apply to all of them.
+- **Deeper world / playground**: hobbies with real procedural depth — gardening (plant,
+  tend, harvest over days/weeks, seasonal yield, skill progression), reading books (world
+  artifacts with retrievable content the organism actually learns from, not cosmetic
+  flavour), leisure that competes meaningfully with survival drives.
+- **File attachments**: the organism reads documents the user drops into the chat (PDF /
+  text first; images later via a small local vision model). Becomes persistent, retrievable
+  memory, not prompt text.
+- **Internet access**: configurable, user-gated browsing so the organism can research —
+  always as *content it reads and learns from*, never as a live-mind backdoor.
+- **Client-side offload**: migrate most compute to the client per DESIGN §17 (Phases 11-12)
+  to free the server; headless fallback continues life when the client is away.
 
 ---
 

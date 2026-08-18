@@ -42,6 +42,8 @@ void printUsage(FILE* out, const char* prog) {
                "  --world WxH       world grid size (default 128x128)\n"
                "  --status-interval S  seconds between status lines (default 600)\n"
                "  --archive         also archive memories/events to memory.db (SQLite)\n"
+               "  --dump-experiences FILE  append teacher-training records (JSONL) per tick\n"
+               "  --policy-prior FILE      seed the fresh policy with teacher-baked weights\n"
                "  --help            this message\n",
                prog);
 }
@@ -64,6 +66,7 @@ int main(int argc, char** argv) {
   int worldW = 128, worldH = 128;
   int64_t statusInterval = 600;
   bool archive = false;
+  std::string dumpPath, priorPath;
 
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
@@ -87,6 +90,8 @@ int main(int argc, char** argv) {
       }
     } else if (a == "--status-interval") statusInterval = std::atoll(need("S"));
     else if (a == "--archive") archive = true;
+    else if (a == "--dump-experiences") dumpPath = need("FILE");
+    else if (a == "--policy-prior") priorPath = need("FILE");
     else if (a == "--help") {
       printUsage(stdout, argv[0]);
       return 0;
@@ -141,11 +146,29 @@ int main(int argc, char** argv) {
   } else {
     if (!haveSeed) seed = entropySeed();
     engine.init(seed, deterministic, worldW, worldH);
+    if (!priorPath.empty()) {
+      if (!engine.loadPolicyPrior(priorPath)) {
+        std::fprintf(stderr, "error: cannot load policy prior %s\n", priorPath.c_str());
+        return 1;
+      }
+      std::fprintf(stderr, "policy prior loaded from %s (online learning continues)\n",
+                   priorPath.c_str());
+    }
     std::fprintf(stderr, "fresh organism: seed=%llu deterministic=%d world=%dx%d\n",
                  static_cast<unsigned long long>(seed), deterministic ? 1 : 0, worldW,
                  worldH);
   }
   if (statusInterval > 0) engine.setStatusInterval(statusInterval);
+
+  std::FILE* expOut = nullptr;
+  if (!dumpPath.empty()) {
+    expOut = std::fopen(dumpPath.c_str(), "w");
+    if (!expOut) {
+      std::fprintf(stderr, "error: cannot open experience dump %s\n", dumpPath.c_str());
+      return 1;
+    }
+    engine.setExperienceOut(expOut);
+  }
 
   if (!log.open(logPath)) {
     std::fprintf(stderr, "error: cannot open log %s\n", logPath.c_str());
@@ -185,6 +208,11 @@ int main(int argc, char** argv) {
     whyStopped = "organism died";
   }
   log.flush();
+
+  if (expOut) {
+    std::fclose(expOut);
+    engine.setExperienceOut(nullptr);
+  }
 
   std::string err;
   if (!engine.saveFile(savePath, err)) {

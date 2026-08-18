@@ -32,6 +32,12 @@ public:
 
   void reset(Rng& r, float scale);
 
+  // Load a teacher-baked "wisdom prior": bandit weights from a linear-softmax fit over
+  // labeled experience (magic "EPRP", version 1, nFeatures, kActions, then
+  // kActions*(nFeatures+1) f32 row-major, bias last). Online updates continue on top, so
+  // this only changes the initialization.
+  bool loadPrior(const std::string& path);
+
   // Preference score for one action (deterministic; no RNG).
   float score(PolicyAction a, const float* feats) const;
 
