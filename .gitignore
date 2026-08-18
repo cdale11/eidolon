@@ -22,3 +22,5 @@ __pycache__/
 .idea/
 *.swp
 .DS_Store
+# opencode sqlite MCP scratch db (never commit)
+sqlite_mcp_server.db
