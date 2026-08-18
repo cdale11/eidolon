@@ -62,6 +62,7 @@ void Engine::recordEpisode(EventKind kind, uint8_t detail, double importance) no
   e.detail = detail;
   e.importance = std::max(0.0, std::min(1.0, importance));
   memory_.add(e);
+  if (archive_) archive_->episode(e);
 }
 
 void Engine::stepClock(StepKind kind) noexcept {
@@ -283,20 +284,26 @@ if (world_.adjacentToWater(p)) {
 void Engine::checkEvents(EventLog* log) noexcept {
   EventQueue::Event e;
   while (events_.popDue(clock_.now(), e)) {
-    if (!log) continue;
+    const char* type = nullptr;
+    char buf[64];
     switch (e.kind) {
       case 1:
-        log->line(clock_.now(), "weather", "%s", world_.weather().describe());
+        type = "weather";
+        std::snprintf(buf, sizeof(buf), "%s", world_.weather().describe());
         break;
       case 2:
-        log->line(clock_.now(), "forage", "berries=%.1f", e.payload / 10.0);
+        type = "forage";
+        std::snprintf(buf, sizeof(buf), "berries=%.1f", e.payload / 10.0);
         break;
       case 3:
-        log->line(clock_.now(), "drink", "water=8.0");
+        type = "drink";
+        std::snprintf(buf, sizeof(buf), "water=8.0");
         break;
       default:
         break;
     }
+    if (log && type) log->line(clock_.now(), type, "%s", buf);
+    if (archive_ && type) archive_->event(clock_.now(), type, buf);
   }
 }
 

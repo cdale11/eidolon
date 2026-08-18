@@ -9,6 +9,11 @@ add_library(eidolon_core STATIC
   sim/engine.cpp)
 target_include_directories(eidolon_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
+add_library(eidolon_store STATIC
+  store/sqlite_archive.cpp)
+target_link_libraries(eidolon_store PRIVATE eidolon_core sqlite3)
+target_include_directories(eidolon_store PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
 add_executable(eidolon-sim tools/eidolon-sim.cpp)
-target_link_libraries(eidolon-sim PRIVATE eidolon_core)
+target_link_libraries(eidolon-sim PRIVATE eidolon_core eidolon_store)
 set_target_properties(eidolon-sim PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)

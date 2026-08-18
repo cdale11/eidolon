@@ -8,10 +8,12 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <memory>
 #include <random>
 #include <string>
 
 #include "sim/engine.hpp"
+#include "store/sqlite_archive.hpp"
 
 using namespace eidolon;
 
@@ -39,6 +41,7 @@ void printUsage(FILE* out, const char* prog) {
                "  --deterministic   disable entropy mixing for bit-exact replay\n"
                "  --world WxH       world grid size (default 128x128)\n"
                "  --status-interval S  seconds between status lines (default 600)\n"
+               "  --archive         also archive memories/events to memory.db (SQLite)\n"
                "  --help            this message\n",
                prog);
 }
@@ -60,6 +63,7 @@ int main(int argc, char** argv) {
   uint64_t seed = 0;
   int worldW = 128, worldH = 128;
   int64_t statusInterval = 600;
+  bool archive = false;
 
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
@@ -82,6 +86,7 @@ int main(int argc, char** argv) {
         return 2;
       }
     } else if (a == "--status-interval") statusInterval = std::atoll(need("S"));
+    else if (a == "--archive") archive = true;
     else if (a == "--help") {
       printUsage(stdout, argv[0]);
       return 0;
@@ -112,6 +117,17 @@ int main(int argc, char** argv) {
 
   Engine engine;
   EventLog log;
+
+  std::unique_ptr<SQLiteArchive> archiveStore;
+  if (archive) {
+    std::string err;
+    archiveStore = std::make_unique<SQLiteArchive>(dataDir + "/memory.db", err);
+    if (!archiveStore) {
+      std::fprintf(stderr, "error: cannot open archive: %s\n", err.c_str());
+      return 1;
+    }
+    engine.setArchive(archiveStore.get());
+  }
 
   bool resumed = false;
   if (std::filesystem::exists(savePath)) {

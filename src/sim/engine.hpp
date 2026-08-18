@@ -11,6 +11,7 @@
 #include "core/log.hpp"
 #include "core/rng.hpp"
 #include "core/serialize.hpp"
+#include "mind/archive.hpp"
 #include "mind/memory.hpp"
 #include "world/world.hpp"
 
@@ -78,6 +79,9 @@ public:
 
   void setStatusInterval(int64_t seconds) { statusInterval_ = seconds; }
 
+  // Optional durable archive sink (SQLite behind the Archive interface). May be null.
+  void setArchive(Archive* archive) { archive_ = archive; }
+
   // Movement helpers (deterministic greedy best-step with random escape fallback).
   // Try to move one tile toward `target` (see moveToward in engine.cpp). Returns true
   // if the organism moved.
@@ -107,6 +111,7 @@ private:
   int64_t statusInterval_ = 600; // sim-seconds between status lines
   int prevMode_ = 0; // last logged life mode: 0=active,1=rest,2=sleep
   bool resting_ = false; // hysteresis for rest mode (prevents boundary oscillation)
+  Archive* archive_ = nullptr; // optional durable sink; never owned
   // Per-subsystem RNG streams (isolated so subsystem randomness never perturbs others).
   Rng rngWorld_, rngWeather_, rngBody_, rngCognition_, rngEvents_;
 };
