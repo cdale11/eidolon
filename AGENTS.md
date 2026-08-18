@@ -51,11 +51,16 @@ Rules for any agent (AI or human) working in this repo. Read before touching any
   (`Qwen3-4B-Instruct-Q4_K_M.gguf` recommended default). The sim must run fully without it.
   - **iGPU inference (default for the LLM)**: rebuild llama.cpp with the Vulkan backend
     (`cmake -B build-vulkan -DGGML_VULKAN=ON -DGGML_CUDA=OFF`; Mesa `libvulkan_radeon.so`
-    + `glslc` present) and launch inference on the Radeon 740M:
+    + `glslc` present) and launch inference on the Radeon 740M. Optimized for ~6 GB total
+    RAM and the 740M's tiny VRAM (cap ~1 GB via exact layer count; `auto` offloads too much):
     `~/llama.cpp/build-vulkan/bin/llama-server -m ~/llama.cpp/Qwen3-4B-Instruct-Q4_K_M.gguf
-    --device Vulkan0 --threads 8 --ctx-size 2048 --port 8080` (RADV gives ~4 GiB shared
-    memory via GTT; ~100 tok/s prompt / ~13 tok/s generation). Note the model path lives in
-    `~/llama.cpp/` root, not `models/`.
+    --device Vulkan0 --threads 8 --ctx-size 2048 --port 8080 --n-gpu-layers 14
+    --no-kv-offload --cache-ram 0 --cache-type-k q8_0 --cache-type-v q8_0 --no-mmproj`
+    (~1.05 GiB GTT on the iGPU, KV cache quantized in CPU RAM, no prompt-cache RAM).
+    Note the model path lives in `~/llama.cpp/` root, not `models/`.
+  - **eidolon-server on the LAN**: launch with `--host 0.0.0.0 --llm
+    http://127.0.0.1:8080/v1 --llm-timeout 20000`; firewall already permits
+    ports 1025-65535/tcp, so the chat UI is reachable at `http://<lan-ip>:8081`.
 - **Conda env `eidolon`**: Python 3.12.13, activated by default in this shell. Current
   packages: pip/setuptools/wheel only. Packages needed for tooling (e.g. numpy, pyyaml,
   requests, torch-CPU) must be installed here and recorded in `python/requirements.txt`.
