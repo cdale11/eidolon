@@ -15,6 +15,7 @@
 #include "mind/archive.hpp"
 #include "mind/learn.hpp"
 #include "mind/memory.hpp"
+#include "mind/memory_system.hpp"
 #include "world/world.hpp"
 
 namespace eidolon {
@@ -67,7 +68,9 @@ public:
   const SimClock& clock() const { return clock_; }
   const World& world() const { return world_; }
   const Physiology& body() const { return body_; }
-  const MemoryRing& memory() const { return memory_; }
+  const MemoryRing& memory() const { return memorySys_.ring(); }
+  MemorySystem& memorySys() { return memorySys_; }
+  const MemorySystem& memorySys() const { return memorySys_; }
   const Stats& stats() const { return stats_; }
   uint64_t masterSeed() const { return masterSeed_; }
   bool deterministic() const { return deterministic_; }
@@ -107,7 +110,11 @@ private:
   Action decide() noexcept;
   void execute(Action a) noexcept;
   void checkEvents(EventLog* log) noexcept;
-  void recordEpisode(EventKind kind, uint8_t detail, double importance) noexcept;
+  void recordEpisode(EventKind kind, uint8_t detail, double importance,
+                       uint8_t action = 255, Participant participants = Participant::None,
+                       Outcome outcome = Outcome::Unknown, float prediction = 0.0f,
+                       float predictionError = 0.0f, float emotionalValence = 0.0f,
+                       float socialRelevance = 0.0f, Relevance relevance = Relevance::None) noexcept;
   bool aversiveTick(const Physiology& before) const noexcept;
   bool safeTick(float reward) const noexcept;
   static Action policyToAction(PolicyAction a) noexcept;
@@ -121,7 +128,7 @@ private:
   SimClock clock_;
   World world_;
   Physiology body_;
-  MemoryRing memory_;
+  MemorySystem memorySys_;
   LearnSystem learn_;
   EventQueue events_;
   Stats stats_;

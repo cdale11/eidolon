@@ -7,6 +7,7 @@ add_library(eidolon_core STATIC
   world/world.cpp
   body/physiology.cpp
   mind/memory.cpp
+  mind/memory_system.cpp
   mind/mlp.cpp
   mind/neuromod.cpp
   mind/value_net.cpp

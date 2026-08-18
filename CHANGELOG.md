@@ -5,7 +5,22 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 
 ## [Unreleased]
 
-### Deterministic generative systems (DESIGN §22)
+### Phase 4 — Memory systems & sleep
+- Full episodic encoding: Episode struct now carries participants, action, outcome,
+  prediction, prediction error, emotional valence, social relevance, and relevance
+  tags in addition to the original fields.
+- MemorySystem: learned retrieval with recency/relevance weighting, per-tick importance
+  decay, explicit strengthening API, and sleep consolidation pipeline.
+- Sleep consolidation: runs on wake; replays high-importance episodes, rehearses skill
+  sequences, extracts goal-relevant traces, creates compressed summaries, and archives
+  consolidated episodes to the durable SQLite store.
+- Dreams v1: associative recombination during sleep — randomly pairs recent episodes
+  sharing location/participants/outcome to generate "dream traces" that nudge the
+  policy toward recombined action sequences (no LLM).
+- Engine hooks: per-tick importance decay; sleep-to-wake transition triggers
+  consolidation + dreams; episode recording now captures full semantic context
+  (participants, outcome, prediction/PE, emotional valence, social relevance).
+- All C++ unit tests and Python integration tests pass; deterministic replay verified.
 - Feasibility mapping of deterministic, seedable, LLM-free generative techniques into
   Eidolon: cellular automata (terrain/biome shaping + live plant ecology), L-systems
   (plant/branch geometry, river/root networks), procedural generation (landmarks,
