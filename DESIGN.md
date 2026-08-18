@@ -198,6 +198,13 @@ persistence, attachmentSensitivity, stressReactivity. They modulate learning rat
 factors, drive weights and risk posture at birth, and they are themselves slowly adjusted by
 experience (see §12 personality latent).
 
+**Intrinsic drives** (homeostatic + hedonic, *not scripted goals*): survival, energy, safety,
+exploration, novelty, affiliation, attachment (to the user), competence, curiosity, and
+optionally status/achievement (a self-model-derived drive that can emerge when competence and
+social evaluation history support it). Their relative strengths live in `DriveWeights` and
+evolve through experience. Goals emerge from drives + internal state + environmental
+opportunities + learned predictions (§9); the organism may pursue goals nobody specified.
+
 ---
 
 ## 7. Perception & Attention
@@ -242,6 +249,12 @@ Principles:
 - **Prefer the simplest model that produces the emergent behaviour.** A frequency table beats
   an MLP for habits; a Beta posterior beats gradient descent for success rates; an online
   linear model beats an MLP for attention.
+- **Quantized where appropriate**: models that do not need float precision may be run in
+  int8/fixed-point (compiled variants and WASM/WebGPU paths); exact parity is not required,
+  only bounded behavioural divergence — the organism is adaptive by design.
+- **Tiny recurrent cells are allowed** where temporal structure matters (e.g. short-term
+  state summaries feeding WorldPredictor or the policy); an RNN is only preferred when a
+  feed-forward or tabular model measurably fails.
 - **Online learning rates** are small and individually configurable; learning is gated by
   arousal/predictionError (surprise-gated, salience-gated).
 - **Architecture allows swapping models** behind a `Learner` interface; each learner reports
@@ -354,6 +367,9 @@ not assigned.
 ### Concepts
 - Recurring perceptual patterns → incremental online clustering in concept space
   (stream k-means / resonance with novelty threshold). Expandable ontology stored in SQLite.
+- Concepts carry **learned relationships** (edges in the concept graph: predator→fear,
+  dawn→safe-forage, tool→crafting), formed and strengthened by co-occurrence and outcome
+  associations; relationships decay and are re-weighted like memories.
 - When language is available, the organism may **name** concepts (LLM-assisted naming
   ceremony, rare); names persist; no hardcoded full ontology — only seed concepts for
   fundamental classes (self, food, water, threat, shelter, user).
@@ -364,6 +380,9 @@ not assigned.
   Updated by chat interactions and their consequences (e.g. user warns of danger →
   danger materializes → trust+; user ignores → trust−). Relationships affect attention,
   memory, motivation, decisions. The model is learned and may be wrong.
+- **Theory of mind**: beliefs about what others believe — e.g. the user's beliefs about the
+  organism, or a predator's beliefs about where prey hides — represented as nested,
+  low-confidence belief propositions, tested by experience and corrected on mismatch.
 - **Wildlife models**: per-species and per-individual familiarity/fear/valence; predation
   events shape them. Rudimentary expectation of other agents' behaviour.
 - **Learning from the user**: conversation teaches the organism about the world (facts it
@@ -454,7 +473,7 @@ the runtime checks responses for consistency.
   - `GET/POST /api/conversations`, `/api/messages` — conversation persistence.
   - `POST /api/send` — user message → organism response (streamed).
   - `GET /api/status` — compact status (sim time, awake/asleep, mood summary).
-  - `GET /api/metrics` — observability (see §17).
+  - `GET /api/metrics` — observability (see §18).
   - `GET /api/debug/{status,memories,goals,relations,state}` — expandable debug panels
     (optional, dev-facing).
 - UI: left sidebar of conversations, main chat area, input + send button, minimal status
@@ -464,7 +483,144 @@ the runtime checks responses for consistency.
 
 ---
 
-## 17. Observability & Performance
+## 17. Client-First Compute Architecture (Portable Engine)
+
+**Critical invariant: the server is NOT required for every thought, action, simulation tick,
+neural update or memory operation.** The client performs the maximum amount of work it can
+support. The server provides persistence, synchronization, session management, recovery and
+(optionally) LLM inference — and guarantees continuous life via a native headless engine when
+no capable client is attached.
+
+### Platform layer (clean separation, no browser APIs in the core)
+
+```
+ReplicaCore  (the whole organism: world, body, neural, learning, memory, cognition,
+              planning, persistence logic — 100% platform-independent C++)
+  → NativeBackend          (PC/server: pthreads, filesystem, native GPU)
+  → WebAssemblyBackend     (browser: Workers, SharedArrayBuffer, WASM SIMD, WebGPU)
+  → future ConsoleBackend  (native Xbox: exposes console CPU/GPU without touching the organism)
+```
+
+- The core depends on a thin `Platform` interface (threads, storage, time, RNG entropy,
+  optional GPU/ML backend). Nothing in the simulation, organism, neural systems, memory,
+  learning, world, planning or persistence layers depends on browser APIs.
+- Native and WASM executions use **the same core logic and the same state schema**, so the
+  organism remains the same individual regardless of where it runs.
+- Simulation logic is never implemented in JavaScript and is never coupled to the frontend.
+
+### Capability detection & ComputeProfile
+
+On startup the client detects: WASM SIMD, Web Workers, SharedArrayBuffer (COOP/COEP
+permitting), WebGPU (and WebGL fallback), hardware concurrency, available memory, storage
+capacity. The result is a `ComputeProfile`; the engine **automatically selects the best
+backend** from this hierarchy:
+
+1. WebGPU — massively parallel neural/ML workloads (when available; never assumed).
+2. WASM SIMD + Web Workers — CPU workloads.
+3. Plain WASM — fallback.
+4. Server-side computation — only when the client cannot safely/efficiently run the workload.
+
+### Workload partitioning & worker separation
+
+Independently schedulable workloads: world, physiology/cognition, neural/ML inference,
+memory/consolidation, planning, social simulation. Typical worker layout:
+
+```
+Browser
+├── Chat/UI main thread (never runs heavy simulation)
+├── Replica WASM core
+├── Web Workers
+│    ├── world
+│    ├── physiology/cognition
+│    ├── neural/ML
+│    └── memory/consolidation
+├── WebGPU ML backend when available
+└── local persistent cache (IndexedDB/OPFS, compact binary)
+```
+
+- Workers communicate via SharedArrayBuffer or compact message passing; large buffers are
+  never copied between workers.
+- Do **not** spawn workers for tiny workloads — worker overhead is benchmarked and batching
+  strategies are chosen dynamically.
+- A `ComputeScheduler` maintains priority queues: interactive chat and organism
+  responsiveness first, then active simulation, then background consolidation/learning;
+  heavy background work yields to UI responsiveness.
+
+### Adaptive fidelity
+
+The same organism runs at different fidelity levels: a powerful PC runs high-frequency
+simulation, larger model budgets, more detailed perception, more wildlife; a constrained
+client automatically reduces simulation frequency, neural model sizes and world-detail
+fidelity. **Persistent identity must remain compatible across fidelity levels** (same state
+schema, same individual; only detail/frequency scale).
+
+### Synchronization (checkpoint/delta, never tick streaming)
+
+- The client periodically sends **compact state deltas**: changed physiology, learned-model
+  weight deltas or snapshots, new memories, modified beliefs, relationships, skills,
+  concepts, important world events, simulation time. Batched and compressed. The server
+  persists them.
+- The server does not receive every simulation event and never continuously streams ticks.
+- Offline client execution: if connectivity is lost, the organism keeps running locally;
+  on reconnect the client reconciles and uploads state. For the single-user organism,
+  **client-authoritative cognition and learning** is the default; the server validates
+  structural consistency rather than reproducing neural calculations.
+- **World-state authority is configurable**: client-authoritative for private/single-user
+  runs; server-authoritative world (cognition stays client-side) for future shared-world
+  deployments. Neither model is hardwired.
+
+### Client-side checkpointing
+
+The browser periodically persists local state (IndexedDB/OPFS) using **compact binary
+serialization** (never JSON for simulation state), so a tab crash does not destroy the
+organism. Human-readable diagnostic exports are separate.
+
+### Server roles
+
+```
+Server
+├── authentication/session
+├── persistent Replica storage
+├── synchronization/checkpoints
+├── optional LLM endpoint
+└── native headless fallback (unattended simulation when no client is attached)
+```
+
+The server runs the same headless native engine as fallback, for testing and for
+unattended periods. Language processing falls back to server-side LLM inference when the
+client has none; browser-side local LLM inference is an optional provider, never a hard
+dependency.
+
+### UI contract
+
+The UI communicates with the engine through a **compact API**; raw world state is never
+sent to the frontend. The ChatGPT-like frontend stays lightweight and responsive while the
+organism simulation runs independently wherever it runs.
+
+### Xbox policy
+
+No undocumented hardware access, no sandbox bypasses, no platform hacks — the Xbox browser
+can only use capabilities legitimately exposed to web applications; capability detection
+automatically gives it the maximum compute path its browser actually exposes (WASM SIMD →
+plain WASM → server fallback; never degrade the core simulation merely because GPU
+acceleration is unavailable). The architecture keeps a future native Xbox client possible by
+reusing the exact same `ReplicaCore` through `ConsoleBackend` without organism changes.
+Actual browser capabilities are measured and benchmarked, never assumed.
+
+### Profiling & backend benchmarks (from the beginning)
+
+- Per-backend profiling: simulation steps/sec, simulated hours/sec, neural inferences/sec,
+  memory processing latency, CPU time, GPU time where available, WASM memory usage, worker
+  utilization, synchronization bandwidth, LLM calls. Shown in a compact developer
+  diagnostics panel in the UI.
+- A benchmark suite runs the same scenario on native C++, WASM CPU, WASM SIMD, WASM
+  multithreaded and WebGPU (where available) and compares throughput/memory/latency; the
+  system automatically picks the fastest stable backend for the device.
+- No premature optimization on assumed hardware: measure first, then tune.
+
+---
+
+## 18. Observability & Performance
 
 ### Metrics (`GET /api/metrics` / `--stats` / `--bench`)
 simulated time, wall time, tick counts by step-size class, avg tick time (p50/p95),
@@ -482,7 +638,7 @@ active goals, memory counts (hot/archive), model sizes (bytes), world event coun
 
 ---
 
-## 18. Testing Strategy
+## 19. Testing Strategy
 
 Test levels (all in `tests/`; C++ unit tests with the embedded minimal harness, Python
 integration drivers in conda env `eidolon`):
@@ -500,8 +656,18 @@ integration drivers in conda env `eidolon`):
    improve overnight), LLM failure (provider down → organism continues, honest replies),
    save/load identity (same individual, same fears), long-run memory stability (month of sim
    time, bounded memory), performance (`--bench` budgets).
-4. **Adversarial** — corrupted save → clean error; kill -9 during save → previous snapshot
-   intact; provider returning garbage → fallback path.
+4. **Client-compute & sync** — WASM build parity with native (same scenario → same
+   individual state); capability detection → correct ComputeProfile for mocked profiles;
+   ComputeScheduler priority behaviour; offline client execution then reconnect →
+   deltas reconcile without loss or duplication; client-authoritative vs
+   server-authoritative world modes; browser checkpoint survives simulated tab crash;
+   delta/compression bandwidth bounded; server headless fallback continues unattended life.
+5. **Backend benchmark suite** — same scenario on native / WASM CPU / WASM SIMD / WASM MT /
+   WebGPU (where available): throughput, memory, latency; automatic backend selection picks
+   the fastest stable one for the measured profile.
+6. **Adversarial** — corrupted save → clean error; kill -9 during save → previous snapshot
+   intact; provider returning garbage → fallback path; sync from divergent client states →
+   structural validation rejects or cleanly merges.
 
 Every phase ends with: compile → unit tests → integration tests → **run an actual
 autonomous simulation and inspect the log for anomalous behaviour** → fix root causes →
@@ -509,7 +675,7 @@ commit.
 
 ---
 
-## 19. Risks & Mitigations
+## 20. Risks & Mitigations
 
 | Risk | Mitigation |
 |---|---|
@@ -521,16 +687,25 @@ commit.
 | Personality written by accident | No personality in prompts; PersonalityLatent is data only |
 | Fabricated memories | Retrieval-grounded replies; honesty fallback; tests assert no fabrication |
 | World feels decorative | Every world element coupled to physiology/learning; scarcity chains tested |
+| WASM path drifts from native behaviour | Same core code + same state schema; parity tests per §19.4; fidelity scaling affects detail, not identity |
+| Sync conflicts / lost offline progress | Client-authoritative cognition; structural validation; deltas with sim-clock ordering; reconcile tests |
+| Browser tab crash destroys the organism | Periodic client checkpoints (IndexedDB/OPFS, binary); server headless fallback continues unattended life |
+| WebGPU assumed everywhere | Capability detection; WebGPU never a hard dependency; WASM SIMD / WASM / server hierarchy |
+| Premature optimization on assumed hardware | Measure-first rule; per-backend benchmark suite; auto-select fastest stable backend |
 
 ---
 
-## 20. Development Process
+## 21. Development Process
 
 1. Inspect existing repo first; never blindly rewrite (repo is currently empty; this doc
    fixes the baseline).
 2. Build minimal end-to-end organism first (§2–§16 slice), then add systems incrementally per
    `ROADMAP.md`.
-3. After every change: compile, run unit + integration tests, run an autonomous simulation,
+3. Isolate the C++ core from server/UI from the start (no browser APIs in `ReplicaCore`),
+   then: native headless build → same engine compiled to WASM → Web Workers → SIMD →
+   WebGPU neural inference (experimental) → synchronization + offline persistence →
+   benchmark across devices and auto-select the execution profile (§17).
+4. After every change: compile, run unit + integration tests, run an autonomous simulation,
    inspect anomalies, fix root causes.
-4. Follow `AGENTS.md` SOP: commit at every step, conda env `eidolon` for all Python, ask the
+5. Follow `AGENTS.md` SOP: commit at every step, conda env `eidolon` for all Python, ask the
    user when in doubt, install missing tools (or ask the user to install).

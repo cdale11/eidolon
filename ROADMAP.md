@@ -39,6 +39,9 @@ passes.
 - `eidolon-server` runs sim + UI; browser disconnect does not stop it
 - Gate: user can start a conversation; organism replies grounded in real state; killing the
   LLM doesn't stop the sim; save/load preserves the conversation's individual.
+- Note: Phase 2 runs the sim on the server (the guaranteed-continuity path). The engine core
+  is already UI-independent (libeidolon); browser-side compute lands in Phases 11–12
+  (DESIGN §17), after the mind features stabilize.
 
 ## Phase 3 — Learning core (the mind starts)
 - ValueNet (TD), ThreatNet (aversive + extinction), policy bandit with temperature
@@ -112,16 +115,49 @@ passes.
 - Gate: conversation asks about a real past event → accurate details; asks about an
   unrecorded event → honest uncertainty (no fabrication, tested).
 
-## Phase 11 — Performance & long-run stability
+## Phase 11 — Portable WASM client compute
+- Compile the same `ReplicaCore` to WebAssembly (Emscripten): WASM, WASM SIMD, and
+  multithreaded builds (Workers + SharedArrayBuffer where browser security permits)
+- Capability detection → `ComputeProfile` (SIMD, Workers, SAB, WebGPU, WebGL fallback,
+  concurrency, memory limits); auto backend selection hierarchy (WebGPU → WASM SIMD+MT →
+  plain WASM → server fallback)
+- `ComputeScheduler`: priority queues (chat/responsiveness > active sim > background
+  consolidation); worker separation (world / physiology-cognition / neural-ML /
+  memory-consolidation); compact message passing, no big buffer transfers
+- Adaptive fidelity: constrained clients reduce sim frequency, model budget, world detail —
+  identity unchanged
+- Profiling from the beginning: per-backend sim steps/sec, simulated hours/sec, inferences/
+  sec, worker utilization, WASM memory, latency — diagnostics panel in the UI
+- Gate: same seeded scenario produces the same individual state on native and WASM
+  (parity test); no heavy work on the main UI thread; fidelity reduction works.
+
+## Phase 12 — Synchronization, offline persistence & backend selection
+- Checkpoint/delta sync protocol (compact binary deltas: physiology, weight deltas,
+  memories, beliefs, relationships, skills, concepts, world events, sim clock; batched +
+  compressed; no tick streaming)
+- Client-authoritative cognition/learning; server validates structural consistency;
+  configurable world-state authority (client vs server-authoritative for future shared
+  worlds)
+- Offline client execution: organism keeps running without connectivity; reconcile + upload
+  on reconnect; browser checkpoints (IndexedDB/OPFS) survive tab crash
+- Server roles: session/auth, persistent storage, sync, optional LLM endpoint, native
+  headless fallback for unattended life
+- Benchmark suite: native / WASM CPU / WASM SIMD / WASM MT / WebGPU (where available) →
+  auto-select fastest stable backend; Xbox-style restricted clients measured, not assumed
+- Gate: kill browser mid-run → server fallback continues life; reconnect → clean reconcile
+  (no loss/duplication); benchmarks produce the selection decision automatically.
+
+## Phase 13 — Performance & long-run stability
 - Profiling: hot-path allocation audits, adaptive-clock tuning
 - Benchmarks: 30 sim-days headless target < ~10 min; fine tick p50 ≤ 2 ms; snapshot ≤ 100 ms
 - Long-run tests: weeks of simulated time, RSS flat, archive bounded, no drift in metrics
 - Observability polish: /api/metrics complete, headless --stats, --bench report
 - Gate: all performance budgets met; long-run memory stability test green.
 
-## Phase 12 — Full test matrix & release
-- Complete test suite per DESIGN §18 (unit, seeded replay, behavioural scenarios,
-  adversarial: corrupt save, kill -9 during save, LLM garbage)
+## Phase 14 — Full test matrix & release
+- Complete test suite per DESIGN §19 (unit, seeded replay, behavioural scenarios,
+  client-compute & sync, backend benchmark suite, adversarial: corrupt save, kill -9 during
+  save, LLM garbage, divergent sync)
 - Documentation finalization; CHANGELOG entries; performance report
 - Optional: teacher-training pipeline (NVIDIA NIM) documented and wired into conda env
   `eidolon` tooling (CPU PyTorch; iGPU experimental — see AGENTS.md hardware note)
@@ -135,4 +171,8 @@ passes.
 - Memory, context and model sizes stay bounded; every phase re-verifies memory stability.
 - All stochastic behaviour seedable; important tests use fixed seeds.
 - All Python tooling runs in conda env `eidolon`; C++ runtime never calls Python.
+- `ReplicaCore` stays free of browser APIs and platform dependencies (DESIGN §17); native
+  and WASM share one core and one state schema.
+- The server is never the default compute bottleneck; the client does the maximum work it
+  can support (DESIGN §17 critical invariant).
 - Commit at every step (AGENTS.md SOP).

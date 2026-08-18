@@ -72,9 +72,16 @@ cmake --build build -j
 ./build/bin/eidolon-sim --seed 42 --deterministic --data data/runs/replay1 --days 1
 ```
 
-The simulation runs entirely inside the C++ process. The browser is only a client; closing
-it never stops the organism. The LLM is optional at runtime: the organism lives, learns and
-acts with zero LLM calls; language is added when a provider is reachable.
+The simulation runs in the portable `ReplicaCore` engine (C++17). The browser is only a
+client; closing it never stops the organism. The LLM is optional at runtime: the organism
+lives, learns and acts with zero LLM calls; language is added when a provider is reachable.
+
+## Client-first compute (portable engine)
+
+The same core runs natively (PC/server) and, from Phase 11 on, in the browser via
+WebAssembly (Workers, SIMD, WebGPU where available). The client performs the maximum work
+it can support; the server persists, syncs and guarantees continuity via a headless native
+fallback when no capable client is attached. See DESIGN §17.
 
 ## Configuration
 

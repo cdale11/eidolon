@@ -79,6 +79,12 @@ previous commit's log where determinism is expected.
 - Persistence is hybrid binary snapshot + SQLite (WAL), versioned, atomic, with migrations.
 - Only one humanoid organism; other agents are wildlife; social cognition targets the user
   and wildlife.
+- **Engine portability**: `ReplicaCore` (simulation, organism, neural systems, memory,
+  learning, world, planning, persistence logic) must never depend on browser or platform
+  APIs; platform code lives behind `NativeBackend` / `WebAssemblyBackend` / future
+  `ConsoleBackend` (DESIGN §17). The server is never the default compute bottleneck — the
+  client performs the maximum work it can support; the server persists, syncs and guarantees
+  continuity via headless fallback.
 
 ## 5. Coding conventions
 
