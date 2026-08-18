@@ -187,6 +187,64 @@ def test_teacher_client_reasoning_model(tmp):
         srv.shutdown()
 
 
+def test_rpm_limiter(tmp):
+    from teacher.label import RpmLimiter
+
+    class FakeClock:
+        def __init__(self):
+            self.t = 0.0
+
+        def now(self):
+            return self.t
+
+        def sleep(self, s):
+            self.t += s
+
+    clk = FakeClock()
+    lim = RpmLimiter(4, now=clk.now, sleep=clk.sleep)
+    for _ in range(4):
+        lim.acquire()
+        clk.t += 0.5  # 4 requests land within ~2 s
+    assert lim.measured_rpm() == 4
+    before = clk.t
+    lim.acquire()  # window full -> must wait until the oldest request leaves the window
+    assert clk.t - before >= 55.0, "did not wait for the sliding window to open"
+    assert lim.measured_rpm() <= 4, "exceeded rpm"
+    # steady-state burst still bounded
+    for _ in range(3):
+        lim.acquire()
+    assert lim.measured_rpm() <= 4
+
+
+def test_progress_server(tmp):
+    import json as _json
+    import urllib.request
+
+    from teacher.progress import ProgressState
+    from teacher.progress_server import ProgressServer
+
+    p = ProgressState()
+    p.start("labeling", 100, "nvidia/nemotron-3-super-120b-a12b")
+    p.tick(label="Forage", context="hunger=50; clear", fallback=False)
+    p.tick(label="Drink", context="thirst=80; storm")
+    p.tick(label=None, context="bad", fallback=True, failed=True)
+    srv = ProgressServer(p, port=0)
+    assert srv.start()
+    try:
+        url = srv.url()
+        with urllib.request.urlopen(f"{url}/api/progress", timeout=5) as resp:
+            d = _json.loads(resp.read().decode())
+        assert d["stage"] == "labeling"
+        assert d["total"] == 100 and d["done"] == 3 and d["percent"] == 3.0
+        assert d["action_counts"] == {"Forage": 1, "Drink": 1}
+        assert d["fallback"] == 1 and d["failed"] == 1
+        assert d["eta_seconds"] is not None
+        html = urllib.request.urlopen(url, timeout=5).read().decode()
+        assert "Dataset generation" in html and "Labels" in html
+    finally:
+        srv.stop()
+
+
 def main():
     if not os.path.exists(SIM):
         print(f"error: {SIM} not built", file=sys.stderr)

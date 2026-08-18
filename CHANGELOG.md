@@ -5,6 +5,19 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 
 ## [Unreleased]
 
+### Teacher pipeline: rate limiting + progress web UI
+- Teacher requests are rate-limited to 25 RPM by default (NVIDIA NIM free-tier limit;
+  configurable via `--rpm` / `EIDOLON_TEACHER_RPM`). The limiter is a sliding-window
+  `RpmLimiter` in `python/teacher/label.py`.
+- Dataset-generation progress web UI (`python/teacher/progress_server.py`): `train_prior
+  --progress-port 8090` serves a light-theme dashboard at `http://127.0.0.1:8090`
+  showing stage, records done/total, % bar, fallback/failed/skipped, rate + measured RPM,
+  elapsed, ETA, per-action label counts and recent errors.
+- `TeacherClient` supports NIM reasoning models: `--teacher-thinking` /
+  `--teacher-reasoning-budget` (or `EIDOLON_TEACHER_THINKING` / `_REASONING_BUDGET`)
+  send `chat_template_kwargs: {enable_thinking: true}` + `reasoning_budget`; `max_tokens`
+  raised to 1024 so the final answer always fits after the chain-of-thought.
+
 ### Web UI (ChatGPT-style light theme)
 - Light theme, ChatGPT-like layout: left sidebar with "New chat" and "Restart world"
   buttons, centered message column with avatars, dark user bubbles, auto-growing input.
