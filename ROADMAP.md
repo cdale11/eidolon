@@ -18,15 +18,17 @@ passes.
 - [x] Verify toolchain: g++ 14.3.1, CMake 3.30.8, ninja, sqlite3 dev headers, conda env `eidolon` (Python 3.12), llama.cpp + GGUF models, ROCm 6.2.1 iGPU runtime
 - Gate: `cmake -B build && cmake --build build` succeeds; empty unit-test binary passes.
 
-## Phase 1 — Core runtime skeleton
-- RNG (`xoshiro256++` + per-subsystem streams, seedable, persisted)
-- Adaptive simulation clock (fine/coarse/sleep step sizes, event queue)
-- Serialization primitives (versioned binary snapshot, atomic rename)
-- Minimal world: grid, terrain, day/night + weather stats
-- Minimal body: energy/hunger/thirst/fatigue/sleepPressure/temperature
-- Minimal headless loop: world → body → simple heuristic decision → action → log
-- `eidolon-sim --seed N --deterministic --days D` reproduces identical logs
-- Gate: deterministic replay test passes; save/load round-trips identical state.
+## Phase 1 — Core runtime skeleton (done in this commit)
+- [x] RNG (`xoshiro256++` + per-subsystem streams, seedable, persisted)
+- [x] Adaptive simulation clock (fine/coarse/sleep step sizes, event queue)
+- [x] Serialization primitives (versioned binary snapshot, atomic rename)
+- [x] Minimal world: grid, terrain, day/night + weather stats
+- [x] Minimal body: energy/hunger/thirst/fatigue/sleepPressure/temperature
+- [x] Minimal headless loop: world → body → simple heuristic decision → action → log
+- [x] `eidolon-sim --seed N --deterministic --days D` reproduces identical logs
+- [x] Gate: deterministic replay test passes; save/load round-trips identical state.
+- Note: Phase 1 organisms have no food/water sources yet, so a long run ends in starvation
+  death (≈21h) — this is expected; foraging/drinking land in Phase 2.
 
 ## Phase 2 — Minimal end-to-end organism (first living milestone)
 - Perception: sight/hearing radii → compact feature vector (no attention yet)

@@ -1,6 +1,13 @@
-# C++ unit tests (minimal embedded harness — no external test framework).
-add_executable(eidolon_tests test_main.cpp)
+add_executable(eidolon_tests
+  test_main.cpp
+  test_rng.cpp
+  test_serialize.cpp
+  test_clock.cpp
+  test_world.cpp
+  test_physiology.cpp
+  test_engine.cpp)
 target_link_libraries(eidolon_tests PRIVATE eidolon_core)
+target_include_directories(eidolon_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 enable_testing()
 add_test(NAME eidolon_tests COMMAND eidolon_tests)
