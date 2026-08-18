@@ -476,15 +476,28 @@ the runtime checks responses for consistency.
   replies. Endpoints:
   - `GET /` — chat UI (vanilla JS/CSS, no framework).
   - `GET/POST /api/conversations`, `/api/messages` — conversation persistence.
+  - `POST /api/conversations/new` — start a new chat (conversation titled from its first
+    message).
+  - `POST /api/conversations/delete` — remove an old chat and its messages.
+  - `POST /api/world/reset` — spawn a fresh world + brand-new organism (entropy seed unless
+    a `seed` is given; applies the policy prior if configured).
   - `POST /api/send` — user message → organism response (streamed).
   - `GET /api/status` — compact status (sim time, awake/asleep, mood summary).
   - `GET /api/metrics` — observability (see §18).
   - `GET /api/debug/{status,memories,goals,relations,state}` — expandable debug panels
     (optional, dev-facing).
-- UI: left sidebar of conversations, main chat area, input + send button, minimal status
-  strip. Expandable panels for organism state (body/neural), recent memories, relationships,
-  goals, sim time. Lightweight; no bundler; the browser is disposable (server keeps sim).
+- UI: light theme, ChatGPT-style; left sidebar of conversations (new chat, delete chat,
+  restart-world), centered message column with avatars, auto-growing input. No bundler;
+  the browser is disposable (server keeps sim).
 - `eidolon-sim` headless: same engine, no server, `--stats` reporter to stdout.
+
+### LLM response parsing (reasoning models)
+- The OpenAI-compatible client must survive reasoning-enabled models (DeepSeek, Nemotron,
+  Qwen3, …) that emit a long chain-of-thought in `reasoning_content` and/or at the start of
+  `content`. Rules: the structured answer is the **last balanced JSON object** in `content`
+  (teacher labels, message parse); chat replies strip fence/thinking wrappers and cap
+  length; `reasoning_content` is never used as the answer and is never surfaced to the user
+  or stored as a memory.
 
 ---
 

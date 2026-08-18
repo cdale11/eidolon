@@ -50,6 +50,9 @@ public:
                           std::string& err);
   std::string conversationsJson();
   std::string messagesJson(const std::string& conversationIdStr, std::string& err);
+  std::string newConversationJson();
+  std::string deleteConversationJson(const std::string& conversationIdStr);
+  std::string resetWorldJson(const std::string& seedStr);
   std::string snapshotJson();
 
 private:

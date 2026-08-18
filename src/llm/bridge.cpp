@@ -34,6 +34,49 @@ std::string trim(std::string s) {
   while (b > a && issp(s[b - 1])) --b;
   return s.substr(a, b - a);
 }
+
+// Reasoning-enabled models (DeepSeek, Nemotron, …) may emit a long chain-of-thought in
+// `content` (or a separate `reasoning_content` field). For structured outputs we only
+// care about the final answer, so extract the LAST balanced JSON object in the text —
+// reasoning precedes the answer, and the answer is typically the final structured
+// payload. Returns "" when no balanced object exists.
+std::string extractJsonObject(const std::string& s) {
+  std::string last;
+  size_t pos = 0;
+  while ((pos = s.find('{', pos)) != std::string::npos) {
+    int depth = 0;
+    bool inStr = false;
+    size_t end = std::string::npos;
+    for (size_t i = pos; i < s.size(); ++i) {
+      const char c = s[i];
+      if (inStr) {
+        if (c == '\\') { ++i; }
+        else if (c == '"') { inStr = false; }
+        continue;
+      }
+      if (c == '"') inStr = true;
+      else if (c == '{') ++depth;
+      else if (c == '}') {
+        if (--depth == 0) {
+          end = i;
+          break;
+        }
+      }
+    }
+    if (end != std::string::npos) last = s.substr(pos, end - pos + 1);
+    pos = (end == std::string::npos) ? pos + 1 : end + 1;
+  }
+  return last;
+}
+
+// The final answer of a reasoning model lives in `message.content`. Some servers put the
+// chain-of-thought in `reasoning_content` and leave `content` short, or null when the
+// request ran out of tokens. Returns the content string (possibly empty).
+std::string assistantContent(const JsonValue& message) {
+  const JsonValue* c = message.find("content");
+  if (!c || c->type() != JsonValue::Type::String) return "";
+  return trim(c->asString());
+}
 } // namespace
 
 CognitiveSnapshot makeSnapshot(int64_t simTime, bool alive, bool awake, double energy,
@@ -172,15 +215,10 @@ bool LLMBridge::parse(const std::string& userText, const CognitiveSnapshot& s,
   if (!chatComplete(msgs, 200, choice)) return false;
   const JsonValue* msg = choice.find("message");
   if (!msg) return false;
-  raw = trim(msg->str("content"));
-  // Strip code fences if the model wraps the JSON.
-  if (raw.size() >= 2 && raw.front() == '`') {
-    size_t a = raw.find('{');
-    size_t b = raw.rfind('}');
-    if (a != std::string::npos && b != std::string::npos && b > a) {
-      raw = raw.substr(a, b - a + 1);
-    }
-  }
+  // Reasoning models may bury the JSON under a long chain-of-thought; the answer is the
+  // last/outermost object in `content`. Extract it wherever it appears.
+  raw = extractJsonObject(assistantContent(*msg));
+  if (raw.empty()) return false;
   JsonValue parsed;
   if (!jsonParse(raw, parsed)) return false;
   out.intent = parsed.str("intent", "other");
@@ -230,8 +268,16 @@ bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
   if (!chatComplete(msgs, 1024, choice)) return false;
   const JsonValue* msg = choice.find("message");
   if (!msg) return false;
-  raw = trim(msg->str("content"));
-  reply = raw.substr(0, kMaxReplyChars);
+  raw = assistantContent(*msg);
+  if (raw.empty()) return false;
+  // If the reply hides reasoning before the answer (some servers stream it into content),
+  // keep only the trailing prose: drop leading '...' thinking blocks and code fences.
+  const size_t fenceA = raw.find("```");
+  if (fenceA != std::string::npos) {
+    const size_t fenceB = raw.rfind("```");
+    if (fenceB > fenceA) raw = raw.substr(fenceA + 3, fenceB - fenceA - 3);
+  }
+  reply = trim(raw).substr(0, kMaxReplyChars);
   return !reply.empty();
 }
 

@@ -1,11 +1,14 @@
 """Server integration tests: eidolon-server runs the sim independently of any browser,
 serves the chat UI, persists conversations, survives restarts and LLM outages."""
 
+import http.server as http_server
 import json
 import os
 import shutil
+import socketserver
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 
@@ -175,6 +178,97 @@ def test_server_loads_policy_prior(work):
     finally:
         proc.kill()
         proc.wait()
+
+
+def test_chat_lifecycle(work):
+    port = PORT_BASE + 7
+    proc = start_server(work, port)
+    try:
+        # new chat
+        nc = http(port, "/api/conversations/new", {})
+        cid = nc["conversation_id"]
+        assert cid > 0
+        # send the first message -> conversation gets a title from it
+        r = http(port, "/api/send", {"message": "hello new world", "conversation_id": str(cid)})
+        assert r["conversation_id"] == cid
+        convs = http(port, "/api/conversations")
+        mine = [c for c in convs if c["id"] == cid]
+        assert mine and mine[0]["title"].startswith("hello new world"), mine
+        # delete it
+        http(port, "/api/conversations/delete", {"conversation_id": str(cid)})
+        convs = http(port, "/api/conversations")
+        assert not any(c["id"] == cid for c in convs)
+    finally:
+        proc.kill()
+        proc.wait()
+
+
+def test_world_reset(work):
+    port = PORT_BASE + 8
+    proc = start_server(work, port)
+    try:
+        time.sleep(2)
+        t1 = http(port, "/api/status")["simTime"]
+        assert t1 > 0
+        s = http(port, "/api/world/reset", {})
+        assert s["alive"] is True
+        # fresh organism: simTime starts near zero again
+        assert s["simTime"] < 3600, f"world reset did not restart the sim: {s['simTime']}"
+        time.sleep(1)
+        t2 = http(port, "/api/status")["simTime"]
+        assert t2 > s["simTime"], "sim not advancing after reset"
+    finally:
+        proc.kill()
+        proc.wait()
+
+
+def test_reasoning_model_replies(work):
+    """Reasoning models emit long reasoning_content + a final answer. The server must
+    extract the structured JSON (parse) and the prose reply (respond) correctly."""
+    class RHandler(http_server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", 0))
+            req = json.loads(self.rfile.read(length) or b"{}")
+            mt = int(req.get("max_tokens", 0))
+            think = "The organism is autonomous. " * 120  # long chain-of-thought
+            if mt <= 200:  # /parse call: JSON object wrapped after the reasoning
+                msg = {"reasoning_content": think,
+                       "content": "Let me classify this message carefully. "
+                                  "```json\n{\"intent\":\"question\",\"topic\":\"weather\","
+                                  "\"tone\":\"neutral\",\"references_memory\":false}\n```"}
+            else:  # /respond call: prose answer wrapped in fences
+                msg = {"reasoning_content": think,
+                       "content": "```\nThe weather is pleasant right now.\n```"}
+            body = json.dumps({"choices": [{"message": msg}]}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    class Srv(socketserver.ThreadingMixIn, http_server.HTTPServer):
+        daemon_threads = True
+
+    srv = Srv(("127.0.0.1", 0), RHandler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        base = f"http://127.0.0.1:{srv.server_address[1]}/v1"
+        port = PORT_BASE + 9
+        proc = start_server(work, port, extra=["--llm", base, "--llm-timeout", "5000"])
+        try:
+            r = http(port, "/api/send", {"message": "how is the weather?"})
+            assert r["reply"].strip(), "no reply from reasoning model"
+            # the fence-wrapped reply must be unwrapped, not leaked raw
+            assert "```" not in r["reply"], f"fences leaked: {r['reply']!r}"
+            assert r["reply"].strip() == "The weather is pleasant right now."
+        finally:
+            proc.kill()
+            proc.wait()
+    finally:
+        srv.shutdown()
 
 
 def main():

@@ -44,6 +44,8 @@ public:
   int64_t createConversation(const std::string& title, int64_t t);
   void appendMessage(int64_t conversationId, const std::string& role,
                      const std::string& text, int64_t t);
+  void setConversationTitle(int64_t conversationId, const std::string& title);
+  void deleteConversation(int64_t conversationId);
   std::vector<ConversationInfo> listConversations() const;
   std::vector<Message> listMessages(int64_t conversationId, int limit = 200) const;
 

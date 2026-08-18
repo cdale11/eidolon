@@ -5,6 +5,23 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 
 ## [Unreleased]
 
+### Web UI (ChatGPT-style light theme)
+- Light theme, ChatGPT-like layout: left sidebar with "New chat" and "Restart world"
+  buttons, centered message column with avatars, dark user bubbles, auto-growing input.
+- Delete old chats (`POST /api/conversations/delete`, ✕ per conversation).
+- Start new chats (`POST /api/conversations/new`); conversations are titled from their
+  first message.
+- Start a fresh world with a brand-new organism (`POST /api/world/reset`; entropy seed by
+  default, optional `seed`; re-applies the policy prior). The organism itself never sees
+  the reset — it simply gets a new birth.
+
+### LLM response parsing (reasoning models)
+- Teacher client and server LLM bridge now handle reasoning-enabled models (DeepSeek,
+  Nemotron, Qwen3, …) that emit a long chain-of-thought: the structured answer is taken
+  from the **last balanced JSON object** in `content`, chat replies strip fence/thinking
+  wrappers and stay bounded, and `reasoning_content` is never treated as the answer or
+  surfaced to the user. Verified end-to-end against stub reasoning responses.
+
 ### Teacher pipeline (Phase 4 branch)
 - `eidolon-sim --dump-experiences FILE`: one JSONL record per tick with the 27-feature
   state vector plus interpretable context (body drives, weather, nearest bush/water,

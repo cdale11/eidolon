@@ -23,10 +23,35 @@ SYSTEM_PROMPT = (
     "only food and water its only drink. Its only actions are: Forage (search for and eat "
     "berries), Drink (find water and drink), Rest (recover energy, does not consume food "
     "or water), Wander (move to find food/water), Observe (look around, reduces "
-    "uncertainty). Pick the single wisest action for the CURRENT situation. Reply with "
-    "strict JSON only: {\"action\": \"Forage\"} where the value is exactly one of the five "
-    "action names."
+    "uncertainty). Pick the single wisest action for the CURRENT situation. Reason "
+    "briefly if you must, but end your answer with strict JSON on its own line: "
+    '{"action": "Forage"} where the value is exactly one of the five action names.'
 )
+
+
+def _action_from_content(content: Any) -> str | None:
+    """Extract the action name from a possibly reasoning-wrapped assistant message.
+
+    Reasoning models (DeepSeek, Nemotron, …) put a long chain-of-thought in
+    `reasoning_content` and/or at the start of `content`; the final JSON answer is the
+    last `{"action": ...}` in `content`. We never parse the chain-of-thought as the
+    answer — only the final structured payload.
+    """
+    if content is None:
+        return None
+    if isinstance(content, list):  # OpenAI content parts
+        content = "".join(
+            p.get("text", "") if isinstance(p, dict) else str(p) for p in content
+        )
+    if not isinstance(content, str):
+        return None
+    last = None
+    for m in re.finditer(r'"action"\s*:\s*"(\w+)"', content):
+        last = m
+    if last is None:
+        return None
+    action = last.group(1)
+    return action if action in ACTION_NAMES else None
 
 
 class TeacherClient:
@@ -40,7 +65,8 @@ class TeacherClient:
         self.timeout = timeout
 
     def label(self, context: str) -> str | None:
-        """Return the teacher's chosen action name, or None if the endpoint is unavailable."""
+        """Return the teacher's chosen action name, or None if the endpoint is unavailable
+        or the message contains no parseable final answer."""
         headers = {"Content-Type": "application/json"}
         if self.key:
             headers["Authorization"] = f"Bearer {self.key}"
@@ -51,21 +77,19 @@ class TeacherClient:
                 {"role": "user", "content": f"Situation: {context}. Which action is wisest?"},
             ],
             "temperature": 0.2,
-            "max_tokens": 24,
+            "max_tokens": 256,
             "response_format": {"type": "json_object"},
         }
         try:
             r = requests.post(f"{self.base}/chat/completions", json=payload,
                               headers=headers, timeout=self.timeout)
             r.raise_for_status()
-            text = r.json()["choices"][0]["message"]["content"]
+            msg = r.json()["choices"][0]["message"]
         except (requests.RequestException, KeyError, IndexError, ValueError):
             return None
-        m = re.search(r'"action"\s*:\s*"(\w+)"', text)
-        if not m:
-            return None
-        action = m.group(1)
-        return action if action in ACTION_NAMES else None
+        # `reasoning_content` (chain-of-thought) is deliberately ignored; the label comes
+        # only from the final `content`, which reasoning models populate after thinking.
+        return _action_from_content(msg.get("content"))
 
 
 def label_experiences(exp: list[Any], client: TeacherClient | None = None,

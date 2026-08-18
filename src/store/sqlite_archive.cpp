@@ -143,6 +143,31 @@ void SQLiteArchive::appendMessage(int64_t conversationId, const std::string& rol
   runStatement(stmt);
 }
 
+void SQLiteArchive::setConversationTitle(int64_t conversationId,
+                                         const std::string& title) {
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) return;
+  sqlite3_stmt* stmt = nullptr;
+  if (!prepare("UPDATE conversations SET title=? WHERE id=?", &stmt) || !stmt) return;
+  sqlite3_bind_text(stmt, 1, title.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_int64(stmt, 2, conversationId);
+  runStatement(stmt);
+}
+
+void SQLiteArchive::deleteConversation(int64_t conversationId) {
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) return;
+  sqlite3_stmt* stmt = nullptr;
+  if (prepare("DELETE FROM messages WHERE conversation_id=?", &stmt) && stmt) {
+    sqlite3_bind_int64(stmt, 1, conversationId);
+    runStatement(stmt);
+  }
+  if (prepare("DELETE FROM conversations WHERE id=?", &stmt) && stmt) {
+    sqlite3_bind_int64(stmt, 1, conversationId);
+    runStatement(stmt);
+  }
+}
+
 std::vector<ConversationInfo> SQLiteArchive::listConversations() const {
   std::lock_guard<std::mutex> lock(mu_);
   std::vector<ConversationInfo> out;

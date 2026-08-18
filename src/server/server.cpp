@@ -2,7 +2,10 @@
 
 #include <csignal>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
+#include <random>
+#include <thread>
 
 #include "httplib.h"
 
@@ -16,121 +19,228 @@ const char* kIndexHtml = R"html(<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Eidolon</title>
 <style>
-  :root { color-scheme: dark; }
+  :root { color-scheme: light; }
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: system-ui, sans-serif; background: #111; color: #ddd;
-         display: flex; height: 100vh; }
-  #sidebar { width: 240px; border-right: 1px solid #333; padding: 12px; overflow-y: auto; }
-  #sidebar h2 { font-size: 14px; color: #888; margin: 0 0 8px; }
-  .conv { padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; }
-  .conv:hover { background: #1c1c1c; }
-  .conv.active { background: #263; }
-  #main { flex: 1; display: flex; flex-direction: column; }
-  #statusbar { padding: 4px 12px; font-size: 12px; color: #8a8; border-bottom: 1px solid #333; }
-  #chat { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
-  .msg { max-width: 70%; padding: 8px 12px; border-radius: 10px; white-space: pre-wrap; }
-  .user { align-self: flex-end; background: #1e3a5f; }
-  .organism { align-self: flex-start; background: #222; }
-  #inputrow { display: flex; gap: 8px; padding: 12px; border-top: 1px solid #333; }
-  #input { flex: 1; background: #1a1a1a; color: #ddd; border: 1px solid #333;
-           border-radius: 8px; padding: 10px; }
-  #send { background: #2c5; color: #fff; border: 0; border-radius: 8px; padding: 0 18px;
-          cursor: pointer; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+         sans-serif; background: #fff; color: #0d0d0d; display: flex; height: 100vh; }
+  #sidebar { width: 260px; background: #f7f7f8; border-right: 1px solid #e5e5e5;
+             display: flex; flex-direction: column; }
+  #sidehead { padding: 12px; display: flex; flex-direction: column; gap: 8px;
+              border-bottom: 1px solid #ececec; }
+  #newchat { width: 100%; padding: 10px 12px; border: 1px solid #d9d9e3; border-radius: 8px;
+             background: #fff; color: #0d0d0d; font-size: 14px; cursor: pointer; }
+  #newchat:hover { background: #f0f0f4; }
+  #newworld { width: 100%; padding: 8px 12px; border: 1px solid #d9d9e3; border-radius: 8px;
+              background: #ececf1; color: #0d0d0d; font-size: 13px; cursor: pointer; }
+  #newworld:hover { background: #e3e3ea; }
+  #convlist { flex: 1; overflow-y: auto; padding: 8px; }
+  .conv { display: flex; align-items: center; padding: 8px 10px; border-radius: 8px;
+          cursor: pointer; font-size: 13px; gap: 6px; color: #0d0d0d; }
+  .conv:hover { background: #ececf1; }
+  .conv.active { background: #e0e0ea; }
+  .conv .title { flex: 1; overflow: hidden; text-overflow: ellipsis;
+                 white-space: nowrap; }
+  .conv .del { border: 0; background: none; cursor: pointer; color: #8e8ea0;
+               font-size: 14px; padding: 0 2px; border-radius: 4px; }
+  .conv .del:hover { color: #d0312d; background: #fff; }
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #statusbar { padding: 8px 16px; font-size: 12px; color: #6b6b70;
+               border-bottom: 1px solid #ececec; background: #fafafa; }
+  #chat { flex: 1; overflow-y: auto; background: #f9f9f9; }
+  #chat .col { max-width: 760px; margin: 0 auto; padding: 24px 16px;
+               display: flex; flex-direction: column; gap: 16px; }
+  .msg { display: flex; gap: 12px; align-items: flex-start; }
+  .msg.user { flex-direction: row-reverse; }
+  .avatar { width: 30px; height: 30px; border-radius: 50%; flex: none;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 13px; font-weight: 600; }
+  .msg.user .avatar { background: #10a37f; color: #fff; }
+  .msg.organism .avatar { background: #ececf1; color: #0d0d0d; }
+  .bubble { padding: 10px 14px; border-radius: 14px; white-space: pre-wrap;
+            line-height: 1.5; font-size: 14px; max-width: 100%; }
+  .msg.user .bubble { background: #0d0d0d; color: #fff;
+                      border-bottom-right-radius: 4px; }
+  .msg.organism .bubble { background: #fff; color: #0d0d0d; border: 1px solid #ececec;
+                          border-bottom-left-radius: 4px; }
+  #inputrow { padding: 12px 16px; background: #fff; border-top: 1px solid #ececec; }
+  #inputwrap { max-width: 760px; margin: 0 auto; display: flex; gap: 8px;
+               align-items: flex-end; }
+  #input { flex: 1; resize: none; background: #f7f7f8; color: #0d0d0d;
+           border: 1px solid #e5e5e5; border-radius: 12px; padding: 12px 14px;
+           font-family: inherit; font-size: 14px; line-height: 1.4; max-height: 200px;
+           outline: none; }
+  #input:focus { border-color: #10a37f; background: #fff; }
+  #send { background: #10a37f; color: #fff; border: 0; border-radius: 12px;
+          padding: 12px 18px; cursor: pointer; font-size: 14px; font-weight: 600; }
+  #send:hover { background: #0e8f6f; }
   #send:disabled { opacity: .5; cursor: default; }
+  .typing { opacity: .6; }
+  @media (max-width: 700px) { #sidebar { width: 200px; } }
 </style>
 </head>
 <body>
 <div id="sidebar">
-  <h2>Conversations</h2>
-  <div id="convs"></div>
+  <div id="sidehead">
+    <button id="newchat">+ New chat</button>
+    <button id="newworld">Restart world (fresh organism)</button>
+  </div>
+  <div id="convlist"></div>
 </div>
 <div id="main">
   <div id="statusbar">connecting…</div>
-  <div id="chat"></div>
+  <div id="chat"><div class="col" id="chatcol"></div></div>
   <div id="inputrow">
-    <input id="input" placeholder="Message the organism…" autocomplete="off">
-    <button id="send">Send</button>
+    <div id="inputwrap">
+      <textarea id="input" rows="1" placeholder="Message the organism…" autocomplete="off"></textarea>
+      <button id="send">Send</button>
+    </div>
   </div>
 </div>
 <script>
 const chat = document.getElementById('chat');
+const chatcol = document.getElementById('chatcol');
 const input = document.getElementById('input');
 const sendBtn = document.getElementById('send');
-const convsEl = document.getElementById('convs');
+const convsEl = document.getElementById('convlist');
 let convId = null;
 
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
 async function refreshStatus() {
   try {
     const r = await fetch('/api/status');
     const s = await r.json();
     document.getElementById('statusbar').textContent =
-      `day ${s.day} · hour ${s.hour.toFixed(1)} · ${s.awake ? 'awake' : 'asleep'} · ` +
+      `Day ${s.day} · hour ${s.hour.toFixed(1)} · ${s.awake ? 'awake' : 'asleep'} · ` +
       `energy ${s.energy.toFixed(0)} · hunger ${s.hunger.toFixed(0)} · ` +
-      `thirst ${s.thirst.toFixed(0)} · health ${s.health.toFixed(0)} · ${s.weather} ${s.tempC.toFixed(1)}C`;
+      `thirst ${s.thirst.toFixed(0)} · health ${s.health.toFixed(0)} · ` +
+      `${s.weather} ${s.tempC.toFixed(1)}C`;
   } catch (e) {}
 }
 async function refreshConvs() {
-  const r = await fetch('/api/conversations');
-  const list = await r.json();
-  convsEl.innerHTML = '';
-  for (const c of list) {
-    const el = document.createElement('div');
-    el.className = 'conv' + (c.id === convId ? ' active' : '');
-    el.textContent = c.title || `conversation ${c.id}`;
-    el.onclick = () => selectConv(c.id);
-    convsEl.appendChild(el);
-  }
+  try {
+    const r = await fetch('/api/conversations');
+    const list = await r.json();
+    convsEl.innerHTML = '';
+    for (const c of list) {
+      const el = document.createElement('div');
+      el.className = 'conv' + (c.id === convId ? ' active' : '');
+      el.dataset.id = c.id;
+      const title = document.createElement('span');
+      title.className = 'title';
+      title.textContent = c.title || `conversation ${c.id}`;
+      const del = document.createElement('button');
+      del.className = 'del';
+      del.textContent = '✕';
+      del.title = 'Delete chat';
+      del.onclick = async (e) => {
+        e.stopPropagation();
+        if (!confirm('Delete this chat?')) return;
+        await fetch('/api/conversations/delete', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({conversation_id: String(c.id)})
+        });
+        if (convId === c.id) { convId = null; chatcol.innerHTML = ''; }
+        await refreshConvs();
+      };
+      el.onclick = () => selectConv(c.id);
+      el.appendChild(title);
+      el.appendChild(del);
+      convsEl.appendChild(el);
+    }
+  } catch (e) {}
+}
+function addMsg(role, text) {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg ' + role;
+  const av = document.createElement('div');
+  av.className = 'avatar';
+  av.textContent = role === 'user' ? 'You' : 'E';
+  const b = document.createElement('div');
+  b.className = 'bubble';
+  b.textContent = text;
+  wrap.appendChild(av);
+  wrap.appendChild(b);
+  chatcol.appendChild(wrap);
+  chat.scrollTop = chat.scrollHeight;
+  return b;
 }
 async function selectConv(id) {
   convId = id;
   await refreshConvs();
   const r = await fetch(`/api/messages?conversation_id=${id}`);
   const msgs = await r.json();
-  chat.innerHTML = '';
-  for (const m of msgs) {
-    const el = document.createElement('div');
-    el.className = 'msg ' + (m.role === 'user' ? 'user' : 'organism');
-    el.textContent = m.text;
-    chat.appendChild(el);
+  chatcol.innerHTML = '';
+  for (const m of msgs) addMsg(m.role === 'user' ? 'user' : 'organism', m.text);
+}
+async function newChat() {
+  const r = await fetch('/api/conversations/new', {method: 'POST'});
+  const j = await r.json();
+  if (j.conversation_id) {
+    convId = j.conversation_id;
+    chatcol.innerHTML = '';
+    await refreshConvs();
   }
-  chat.scrollTop = chat.scrollHeight;
+}
+async function resetWorld() {
+  if (!confirm('Start a fresh world with a brand-new organism? Current life and world are replaced.')) return;
+  await fetch('/api/world/reset', {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'
+  });
+  await refreshStatus();
+  await newChat();
+}
+function autoGrow() {
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 200) + 'px';
 }
 async function send() {
   const text = input.value.trim();
   if (!text) return;
   input.value = '';
+  autoGrow();
   sendBtn.disabled = true;
-  const el = document.createElement('div');
-  el.className = 'msg user';
-  el.textContent = text;
-  chat.appendChild(el);
-  const thinking = document.createElement('div');
-  thinking.className = 'msg organism';
-  thinking.textContent = '…';
-  chat.appendChild(thinking);
+  addMsg('user', text);
+  const thinking = addMsg('organism', '…');
+  thinking.classList.add('typing');
   try {
     const r = await fetch('/api/send', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({message: text})
+      body: JSON.stringify({message: text, conversation_id: convId ? String(convId) : ''})
     });
     const j = await r.json();
     thinking.textContent = j.reply || j.error || '(no reply)';
+    thinking.classList.remove('typing');
     if (j.conversation_id && convId !== j.conversation_id) {
       convId = j.conversation_id;
       await refreshConvs();
     }
   } catch (e) {
     thinking.textContent = 'connection error';
+    thinking.classList.remove('typing');
   }
   sendBtn.disabled = false;
   chat.scrollTop = chat.scrollHeight;
 }
 sendBtn.onclick = send;
-input.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+document.getElementById('newchat').onclick = newChat;
+document.getElementById('newworld').onclick = resetWorld;
+input.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+input.addEventListener('input', autoGrow);
 (async () => {
   await refreshConvs();
-  if (convId === null && convsEl.children.length > 0) await selectConv(parseInt(convsEl.children[0].dataset.id || convsEl.children[0].textContent.split(' ')[1]));
+  if (convId === null && convsEl.children.length > 0) {
+    await selectConv(parseInt(convsEl.children[0].dataset.id));
+  } else if (convsEl.children.length === 0) {
+    await newChat();
+  }
   refreshStatus();
   setInterval(refreshStatus, 5000);
 })();
@@ -315,6 +425,12 @@ std::string Server::sendMessage(const std::string& conversationIdStr,
   }
 
   if (archive_) {
+    // Title the conversation from its first user message (ChatGPT-style).
+    if (archive_->listMessages(convId, 1).empty()) {
+      std::string title = trimmed;
+      if (title.size() > 40) title = title.substr(0, 40) + "...";
+      archive_->setConversationTitle(convId, title);
+    }
     archive_->appendMessage(convId, "user", trimmed, snap.simTime);
   }
 
@@ -353,6 +469,51 @@ std::string Server::conversationsJson() {
            "\",\"created_at\":" + std::to_string(c.createdAt) + "}";
   }
   return out + "]";
+}
+
+std::string Server::newConversationJson() {
+  if (!archive_) return "{\"error\":\"no archive\"}";
+  const int64_t id = archive_->createConversation("New chat",
+                                                  engine_.clock().now());
+  if (id < 0) return "{\"error\":\"create failed\"}";
+  return "{\"conversation_id\":" + std::to_string(id) + "}";
+}
+
+std::string Server::deleteConversationJson(const std::string& conversationIdStr) {
+  const int64_t convId = std::strtoll(conversationIdStr.c_str(), nullptr, 10);
+  if (archive_ && convId > 0) {
+    archive_->deleteConversation(convId);
+    if (conversationId_ == convId) conversationId_ = -1;
+  }
+  return "{\"ok\":true}";
+}
+
+std::string Server::resetWorldJson(const std::string& seedStr) {
+  uint64_t seed = std::strtoull(seedStr.c_str(), nullptr, 10);
+  if (seedStr.empty() || seed == 0) {
+    std::random_device rd;
+    seed = (static_cast<uint64_t>(std::chrono::high_resolution_clock::now()
+                                      .time_since_epoch()
+                                      .count()) ^
+            (static_cast<uint64_t>(rd()) << 1) ^ (static_cast<uint64_t>(getpid()) << 33));
+  }
+  {
+    std::lock_guard<std::mutex> lock(engineMu_);
+    engine_.init(seed, opts_.deterministic, opts_.worldW, opts_.worldH);
+    if (!opts_.policyPriorPath.empty()) {
+      engine_.loadPolicyPrior(opts_.policyPriorPath);
+    }
+    engine_.setArchive(archive_.get());
+    log_.line(engine_.clock().now(), "birth",
+              "world reset seed=%llu (fresh organism, fresh world)",
+              static_cast<unsigned long long>(seed));
+    log_.flush();
+    std::string err;
+    if (!engine_.saveFile(opts_.dataDir + "/save.snap", err)) {
+      std::fprintf(stderr, "warning: reset save failed: %s\n", err.c_str());
+    }
+  }
+  return statusJson();
 }
 
 std::string Server::messagesJson(const std::string& conversationIdStr,
@@ -397,6 +558,31 @@ int Server::run() {
   svr.Get("/api/conversations", [this](const httplib::Request&,
                                        httplib::Response& res) {
     res.set_content(conversationsJson(), "application/json");
+  });
+  svr.Post("/api/conversations/new", [this](const httplib::Request&,
+                                            httplib::Response& res) {
+    res.set_content(newConversationJson(), "application/json");
+  });
+  svr.Post("/api/conversations/delete",
+           [this](const httplib::Request& req, httplib::Response& res) {
+             JsonValue body;
+             if (!jsonParse(req.body, body)) {
+               res.status = 400;
+               res.set_content("{\"error\":\"bad json\"}", "application/json");
+               return;
+             }
+             res.set_content(deleteConversationJson(body.str("conversation_id")),
+                             "application/json");
+           });
+  svr.Post("/api/world/reset", [this](const httplib::Request& req,
+                                      httplib::Response& res) {
+    JsonValue body;
+    if (!jsonParse(req.body, body)) {
+      res.status = 400;
+      res.set_content("{\"error\":\"bad json\"}", "application/json");
+      return;
+    }
+    res.set_content(resetWorldJson(body.str("seed")), "application/json");
   });
   svr.Get("/api/messages", [this](const httplib::Request& req,
                                   httplib::Response& res) {

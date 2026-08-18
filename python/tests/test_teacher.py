@@ -138,6 +138,55 @@ def test_teacher_client_against_stub(tmp):
         srv.shutdown()
 
 
+def test_teacher_client_reasoning_model(tmp):
+    """Reasoning models put a long chain-of-thought in `reasoning_content` and wrap the
+    final answer in prose/fences inside `content`. The client must ignore the reasoning
+    and read the LAST `{"action": ...}` from content; a null content (only reasoning)
+    yields None so the pipeline falls back."""
+    final_action = ACTION_NAMES[1]  # Drink
+
+    class ReasoningHandler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", 0))
+            req = json.loads(self.rfile.read(length) or b"{}")
+            user = req["messages"][-1]["content"]
+            think = "The organism has been awake for a while. " * 150
+            if "(case null_content)" in user:
+                msg = {"reasoning_content": think, "content": None}
+            elif "(case fences)" in user:
+                msg = {"reasoning_content": think,
+                       "content": "I must decide carefully.\n```json\n"
+                                  '{"action": "%s"}\n```' % final_action}
+            else:
+                msg = {"reasoning_content": think,
+                       "content": "Let me reason step by step. " * 40 +
+                                  f'Final answer: {{"action": "{final_action}"}}'}
+            body = json.dumps({"choices": [{"message": msg}]}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):  # silence
+            pass
+
+    class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
+        daemon_threads = True
+
+    srv = Server(("127.0.0.1", 0), ReasoningHandler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        client = TeacherClient(base=f"http://127.0.0.1:{srv.server_address[1]}/v1",
+                               model="stub", timeout=5.0)
+        ctx = "hunger=10, thirst=70; clear weather"
+        assert client.label(ctx) == final_action, "reasoning-wrapped answer not parsed"
+        assert client.label(ctx + " (case fences)") == final_action, "fenced answer missed"
+        assert client.label(ctx + " (case null_content)") is None, "null content must fall back"
+    finally:
+        srv.shutdown()
+
+
 def main():
     if not os.path.exists(SIM):
         print(f"error: {SIM} not built", file=sys.stderr)
