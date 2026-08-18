@@ -11,7 +11,8 @@
 namespace eidolon {
 
 constexpr uint32_t kSnapshotMagic = 0x4549444C; // "EIDL"
-constexpr uint32_t kSnapshotVersion = 2;
+// v3: Phase 3 learning core (ValueNet/ThreatNet/policy/attention/neuromod/personality).
+constexpr uint32_t kSnapshotVersion = 3;
 
 class BinaryWriter {
 public:

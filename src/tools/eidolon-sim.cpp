@@ -193,10 +193,14 @@ int main(int argc, char** argv) {
 
   FILE* m = std::fopen(metricsPath.c_str(), "w");
   if (m) {
-    std::fprintf(m, "phase=1\n");
+    std::fprintf(m, "phase=3\n");
     std::fprintf(m, "seed=%llu\ndeterministic=%d\n",
                  static_cast<unsigned long long>(engine.masterSeed()),
                  engine.deterministic() ? 1 : 0);
+    const LearnerMetrics lm = engine.learn().metrics();
+    std::fprintf(m, "learnerInferences=%llu\nlearnerUpdates=%llu\n",
+                 static_cast<unsigned long long>(lm.inferences),
+                 static_cast<unsigned long long>(lm.updates));
     std::fprintf(m, "simTime=%lld\ndays=%.2f\n",
                  static_cast<long long>(engine.clock().now()), days);
     std::fprintf(m, "ticksFine=%llu\nticksCoarse=%llu\nticksSleep=%llu\n",

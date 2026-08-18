@@ -46,14 +46,18 @@ passes.
   is already UI-independent (libeidolon); browser-side compute lands in Phases 11–12
   (DESIGN §17), after the mind features stabilize.
 
-## Phase 3 — Learning core (the mind starts)
-- ValueNet (TD), ThreatNet (aversive + extinction), policy bandit with temperature
-- Attention model (top-k salience), novelty/curiosity, surprise-gated learning
-- Neuromodulator couplings (stress→threat learning, valence→encoding, PE→learning bursts)
-- Personality latent vector (16-d) updated by life statistics; drive weights evolve
-- `Learner` interface + metrics (inference/update counts)
-- Gate: seeded test shows repeated scenario → success rate rises; two identical seeds with
-  different experiences produce different latent vectors; metrics increment.
+## Phase 3 — Learning core (the mind starts) (done in this commit)
+- [x] ValueNet (TD), ThreatNet (aversive + extinction), policy bandit with temperature
+- [x] Attention model (top-k salience), novelty/curiosity, surprise-gated learning
+- [x] Neuromodulator couplings (stress→threat learning, valence→encoding, PE→learning bursts)
+- [x] Personality latent vector (16-d) updated by life statistics; drive weights evolve
+- [x] `Learner` interface + metrics (inference/update counts)
+- [x] Gate: seeded test shows repeated scenario → success rate rises (policy bandit); two
+      identical seeds with different experiences produce different latent vectors;
+      metrics increment. All 5 test seeds still survive 14 days.
+- Note: event bonuses in the intrinsic reward are gated on genuine need (no eating/drinking
+  self-reinforcement); chronic cold is pressure (energy drain), not an immediate threat, so
+  winter never saturates the ThreatNet.
 
 ## Phase 4 — Memory systems & sleep
 - Full episodic encoding (time, location, participants, action, outcome, state, prediction,

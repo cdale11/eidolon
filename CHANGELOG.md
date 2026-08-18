@@ -5,6 +5,52 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 
 ## [Unreleased]
 
+### Phase 3 — Learning core (the mind starts)
+- New `src/mind/` learning stack, all seeded and serialized inside the engine snapshot
+  (snapshot v3):
+  - `mlp` — tiny single-hidden-layer network (tanh hidden; linear/sigmoid/tanh output;
+    backprop) shared by the value and threat nets.
+  - `ValueNet` — TD(0) value estimator over a compact 27-feature state vector (perception,
+    drive-scaled body state, neuromodulators, threat feedback); the reward-prediction
+    error feeds everything else.
+  - `ThreatNet` — learned p(threat|s) with aversive sensitization and safe extinction;
+    stress and threat-sensitivity accelerate learning; the engine vetoes exploration when
+    threat is high.
+  - `Policy` — linear contextual bandit over 5 agentic actions (Forage/Drink/Rest/Wander/
+    Observe) with softmax temperature from impulsivity × uncertainty and surprise-gated
+    (PE) updates.
+  - `Attention` — learned top-k salience over perception channels; outcome-driven
+    upweighting; drive-state bias (hungry → food cues); stress narrows attention to k=2.
+  - `Neuromod` — arousal, valence, stress, curiosity, novelty, uncertainty,
+    prediction-error; couplings to attention, threat learning, exploration and episodic
+    encoding.
+  - `PersonalityLatent` (16-d) + `DriveWeights` — temperament priors from the seed, then
+    a daily drift toward life statistics (reward/threat/novelty/success EMAs); drives
+    shape the features the policy sees, so personality changes behaviour over weeks.
+  - `LearnSystem` — facade owning the feature layout, intrinsic reward (homeostatic
+    relief + pressure + novelty + need-gated event bonuses − pain/cold), TD + bandit +
+    threat + attention learning per tick, life-stats EMAs, daily drift, aggregated
+    learner metrics.
+- Engine integration (`src/sim/engine`): features built each tick around the decision;
+  learned policy decides with hardwired sleep/rest hysteresis + emergency safety valves;
+  ThreatNet veto; TD reward learning after every outcome; negative-valence / prediction
+  error boost episodic encoding; `rngLearn_` subsystem stream.
+- CLI metrics (`metrics.log`) now report `phase=3` plus `learnerInferences`/`learnerUpdates`.
+- Tests: `tests/test_learn.cpp` (14 tests — bandit success-rate rise on a repeated trial,
+  TD convergence, threat sensitization/extinction, stress-accelerated threat learning,
+  attention salience, personality divergence from identical priors, neuromodulator
+  couplings, engine determinism of the latent, latent divergence across experiences,
+  sustained survival with the learned policy). Python `test_cli.py` metrics test updated
+  to phase=3. All 5 test seeds still survive 14 sim-days.
+- Debugging notes: reward bonuses are gated on genuine need (a +0.8 "drank" bonus that
+  fired at zero thirst made the organism camp by water — self-reinforcing Drink ~99%);
+  `bodyTemp dev > 4` made all of winter aversive, saturating the ThreatNet and freezing
+  the organism into a rest loop — acute danger only (dev > 8, pain, rapid health loss,
+  critical drives) is now a threat, cold is just energy pressure; MLP backprop requires
+  hidden activations from the current forward pass (update methods now recompute them
+  internally instead of trusting stale caller buffers); personality drift tracks current
+  life statistics, not just early life.
+
 ### Phase 2 — Minimal end-to-end organism
 - World resources (`src/world`): berry bushes (density ~1/128 tiles, seeded regrowth
   capped), water drinking; `Perception` feature vector (sight radius 8, hearing 16,

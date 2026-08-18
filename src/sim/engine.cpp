@@ -1,6 +1,7 @@
 #include "sim/engine.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <string>
 
@@ -44,15 +45,20 @@ void Engine::init(uint64_t masterSeed, bool deterministic, int worldW, int world
   rngWeather_ = subsystemStream(masterSeed_, Subsystem::Weather);
   rngBody_ = subsystemStream(masterSeed_, Subsystem::Body);
   rngCognition_ = subsystemStream(masterSeed_, Subsystem::Cognition);
+  rngLearn_ = subsystemStream(masterSeed_, Subsystem::Learning);
   rngEvents_ = subsystemStream(masterSeed_, Subsystem::Events);
 
   world_.generate(worldW > 0 ? worldW : kDefaultWorldW,
                   worldH > 0 ? worldH : kDefaultWorldH, rngWorld_);
   body_.reset();
+  learn_.init(rngLearn_);
   recordEpisode(EventKind::Birth, 0, 0.5);
 }
 
 void Engine::recordEpisode(EventKind kind, uint8_t detail, double importance) noexcept {
+  // Negative valence strengthens episodic encoding (DESIGN §6 neuromodulator coupling).
+  const double v = learn_.neuromod().valence;
+  if (v < 0.0) importance *= (1.0 + 0.5 * -v);
   const Vec2i p = world_.organismPos();
   Episode e;
   e.t = clock_.now();
@@ -77,6 +83,9 @@ void Engine::stepClock(StepKind kind) noexcept {
 Action Engine::tick() noexcept {
   if (died_) return Action::Observe;
 
+  // State features at the START of this tick (decision + TD state s_t).
+  learn_.buildFeatures(world_.perceive(world_.organismPos(), clock_), body_, featsBefore_);
+
   const Action action = decide();
 
   // Step size: sleep is coarsest, rest is coarse, active is fine.
@@ -100,9 +109,26 @@ Action Engine::tick() noexcept {
                        : action == Action::Forage  ? Activity::Forage
                        : action == Action::Drink   ? Activity::Drink
                                                    : Activity::Move;
+  const Physiology before = body_;
   body_.update(dt, world_.weather().ambientTempC(clock_), act);
 
+  const uint64_t berriesBefore = stats_.berriesEaten;
+  const uint64_t drinksBefore = stats_.drinks;
   execute(action);
+  const double eaten = static_cast<double>(stats_.berriesEaten - berriesBefore);
+  const bool drank = stats_.drinks > drinksBefore;
+
+  // Learning step: features at the END of the tick (s_{t+1}), intrinsic reward, then
+  // TD/bandit/threat/attention/neuromodulator updates.
+  learn_.buildFeatures(world_.perceive(world_.organismPos(), clock_), body_, featsAfter_);
+  const float novelty = learn_.novelty(featsAfter_);
+  const float reward = learn_.computeReward(body_, before, novelty, eaten, drank);
+  const bool agentic = !body_.isSleeping();
+  const PolicyAction pa = actionToPolicy(action);
+  const bool aversive = aversiveTick(before);
+  const bool safe = safeTick(reward);
+  learn_.learnStep(featsBefore_, featsAfter_, pa, agentic, reward, novelty, aversive, safe);
+  learn_.updateDaily(clock_.now());
 
   // Near-death experiences (health critically low) are highly important memories.
   if (body_.health() < 20.0 && !died_) {
@@ -118,6 +144,43 @@ Action Engine::tick() noexcept {
     world_.killOrganism();
   }
   return action;
+}
+
+bool Engine::aversiveTick(const Physiology& before) const noexcept {
+  // Acute danger only: pain, rapid health loss, or near-lethal core temperature.
+  // Chronic cold is survival pressure (energy drain), not an immediate threat — it must
+  // not saturate the ThreatNet every winter tick.
+  if (body_.pain() > 25.0) return true;
+  if (before.health() - body_.health() > 5.0) return true;
+  if (std::fabs(body_.bodyTemp() - Physiology::kBodyTempC) > 8.0) return true;
+  if (body_.hunger() >= 90.0 || body_.thirst() >= 90.0) return true;
+  return false;
+}
+
+bool Engine::safeTick(float reward) const noexcept {
+  return reward >= 0.0f && body_.pain() < 5.0 &&
+         std::fabs(body_.bodyTemp() - Physiology::kBodyTempC) <= 2.0;
+}
+
+Action Engine::policyToAction(PolicyAction a) noexcept {
+  switch (a) {
+    case PolicyAction::Forage: return Action::Forage;
+    case PolicyAction::Drink: return Action::Drink;
+    case PolicyAction::Rest: return Action::Rest;
+    case PolicyAction::Wander: return Action::Wander;
+    case PolicyAction::Observe: return Action::Observe;
+  }
+  return Action::Observe;
+}
+
+PolicyAction Engine::actionToPolicy(Action a) noexcept {
+  switch (a) {
+    case Action::Forage: return PolicyAction::Forage;
+    case Action::Drink: return PolicyAction::Drink;
+    case Action::Rest: return PolicyAction::Rest;
+    case Action::Wander: return PolicyAction::Wander;
+    default: return PolicyAction::Observe;
+  }
 }
 
 Action Engine::decide() noexcept {
@@ -144,14 +207,19 @@ Action Engine::decide() noexcept {
     resting_ = true;
     return Action::Rest;
   }
-  // Drive priority: thirst (lethal fastest), hunger, fatigue/rest, then energy.
-  if (body_.thirst() > 55.0) return Action::Drink;
-  if (body_.hunger() > 50.0) return Action::Forage;
-  if (body_.fatigue() > 75.0) return Action::Rest;
-  if (body_.energy() < 30.0) return Action::Forage; // top up energy
-  // Curiosity: occasionally pause and observe instead of wandering blindly.
-  if (rngCognition_.chance(0.15)) return Action::Observe;
-  return Action::Wander;
+  // Emergency safety valves override the learned policy (deterministic survival).
+  if (body_.thirst() > 80.0) return Action::Drink;
+  if (body_.hunger() > 80.0) return Action::Forage;
+  if (body_.pain() > 40.0) return Action::Rest;
+  // Learned policy proposes an agentic action from the state features.
+  const PolicyAction chosen = learn_.chooseAction(featsBefore_, rngLearn_);
+  Action a = policyToAction(chosen);
+  // ThreatNet veto: in a threatening state, avoid exploration.
+  if (learn_.threatEstimate() > 0.65 &&
+      (chosen == PolicyAction::Wander || chosen == PolicyAction::Observe)) {
+    a = Action::Rest;
+  }
+  return a;
 }
 
 bool Engine::moveToward(Vec2i target) noexcept {
@@ -373,10 +441,12 @@ void Engine::serializeState(BinaryWriter& w) const {
   serializeRng(w, rngWeather_);
   serializeRng(w, rngBody_);
   serializeRng(w, rngCognition_);
+  serializeRng(w, rngLearn_);
   serializeRng(w, rngEvents_);
   world_.serialize(w);
   body_.serialize(w);
   memory_.serialize(w);
+  learn_.serialize(w);
   w.u64(stats_.ticksFine);
   w.u64(stats_.ticksCoarse);
   w.u64(stats_.ticksSleep);
@@ -411,11 +481,12 @@ bool Engine::deserializeState(BinaryReader& r, std::string& err) {
   prevMode_ = prevMode;
   if (!deserializeRng(r, rngWorld_) || !deserializeRng(r, rngWeather_) ||
       !deserializeRng(r, rngBody_) || !deserializeRng(r, rngCognition_) ||
-      !deserializeRng(r, rngEvents_)) {
+      !deserializeRng(r, rngLearn_) || !deserializeRng(r, rngEvents_)) {
     err = "snapshot rng corrupt";
     return false;
   }
-  if (!world_.deserialize(r) || !body_.deserialize(r) || !memory_.deserialize(r)) {
+  if (!world_.deserialize(r) || !body_.deserialize(r) || !memory_.deserialize(r) ||
+      !learn_.deserialize(r)) {
     err = "snapshot world/body/memory corrupt";
     return false;
   }

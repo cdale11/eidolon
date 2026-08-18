@@ -1,6 +1,7 @@
 // Simulation engine: orchestrates world → body → decision → action → log per tick with
-// adaptive step sizes. Phase 1 uses a heuristic decision policy; learning lands in
-// Phase 3. The tick path is allocation-light and noexcept.
+// adaptive step sizes. Phase 1 uses a heuristic decision policy; Phase 3 adds the learned
+// policy core (ValueNet/ThreatNet/policy bandit/attention + neuromodulators + personality
+// latent) behind the same decision loop. The tick path is allocation-light and noexcept.
 #pragma once
 
 #include <cstdint>
@@ -12,6 +13,7 @@
 #include "core/rng.hpp"
 #include "core/serialize.hpp"
 #include "mind/archive.hpp"
+#include "mind/learn.hpp"
 #include "mind/memory.hpp"
 #include "world/world.hpp"
 
@@ -87,6 +89,9 @@ public:
   // if the organism moved.
   bool moveToward(Vec2i target) noexcept;
 
+  // Learning-core access (tests + metrics).
+  const LearnSystem& learn() const { return learn_; }
+
 private:
   void stepClock(StepKind kind) noexcept;
   void logStatus(EventLog& log) noexcept;
@@ -94,6 +99,10 @@ private:
   void execute(Action a) noexcept;
   void checkEvents(EventLog* log) noexcept;
   void recordEpisode(EventKind kind, uint8_t detail, double importance) noexcept;
+  bool aversiveTick(const Physiology& before) const noexcept;
+  bool safeTick(float reward) const noexcept;
+  static Action policyToAction(PolicyAction a) noexcept;
+  static PolicyAction actionToPolicy(Action a) noexcept;
 
   void serializeState(BinaryWriter& w) const;
   bool deserializeState(BinaryReader& r, std::string& err);
@@ -102,6 +111,7 @@ private:
   World world_;
   Physiology body_;
   MemoryRing memory_;
+  LearnSystem learn_;
   EventQueue events_;
   Stats stats_;
   uint64_t masterSeed_ = 0;
@@ -112,8 +122,11 @@ private:
   int prevMode_ = 0; // last logged life mode: 0=active,1=rest,2=sleep
   bool resting_ = false; // hysteresis for rest mode (prevents boundary oscillation)
   Archive* archive_ = nullptr; // optional durable sink; never owned
+  // Feature buffers (decision + TD learning; fixed size, no heap churn).
+  float featsBefore_[LearnSystem::kFeatures] = {};
+  float featsAfter_[LearnSystem::kFeatures] = {};
   // Per-subsystem RNG streams (isolated so subsystem randomness never perturbs others).
-  Rng rngWorld_, rngWeather_, rngBody_, rngCognition_, rngEvents_;
+  Rng rngWorld_, rngWeather_, rngBody_, rngCognition_, rngLearn_, rngEvents_;
 };
 
 } // namespace eidolon

@@ -7,6 +7,14 @@ add_library(eidolon_core STATIC
   world/world.cpp
   body/physiology.cpp
   mind/memory.cpp
+  mind/mlp.cpp
+  mind/neuromod.cpp
+  mind/value_net.cpp
+  mind/threat_net.cpp
+  mind/policy.cpp
+  mind/attention.cpp
+  mind/personality.cpp
+  mind/learn.cpp
   sim/engine.cpp)
 target_include_directories(eidolon_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 

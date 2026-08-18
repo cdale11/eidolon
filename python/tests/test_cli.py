@@ -66,7 +66,8 @@ def test_metrics_written(tmp):
     assert r.returncode == 0, r.stderr
     with open(os.path.join(tmp, "m", "metrics.log")) as f:
         text = f.read()
-    for key in ("phase=1", "seed=", "deterministic=1", "simTime=", "ticksFine=", "worldHash=", "stopped=completed"):
+    for key in ("phase=3", "seed=", "deterministic=1", "simTime=", "ticksFine=", "worldHash=", "stopped=completed",
+                "learnerInferences=", "learnerUpdates="):
         assert key in text, f"missing {key!r} in metrics.log"
 
 
