@@ -15,7 +15,7 @@ Rules for any agent (AI or human) working in this repo. Read before touching any
    change: `git add <relevant files>` + `git commit -m "<concise message>"`. Use the repo's
    commit style (imperative, short summary line). Never commit secrets or large binaries
    (see `.gitignore`). Never commit unrelated files together. Never amend/push/force-push
-   without explicit user request.
+   without explicit user request. **Push after every commit** (`git push origin master`).
 3. **Use tools and skills.** Use the available skills, search tools, and task agents as
    needed. When a task matches the `customize-opencode` skill (opencode config only), load
    it. Prefer the read/edit/write tools over shell file surgery.
