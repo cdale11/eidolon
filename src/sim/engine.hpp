@@ -15,7 +15,14 @@
 
 namespace eidolon {
 
-enum class Action : uint8_t { Wander = 0, Rest = 1, Sleep = 2, Observe = 3 };
+enum class Action : uint8_t {
+  Wander = 0,
+  Rest = 1,
+  Sleep = 2,
+  Observe = 3,
+  Forage = 4,
+  Drink = 5,
+};
 
 class Engine {
 public:
@@ -27,6 +34,10 @@ public:
     uint64_t actionsRest = 0;
     uint64_t actionsSleep = 0;
     uint64_t actionsObserve = 0;
+    uint64_t actionsForage = 0;
+    uint64_t actionsDrink = 0;
+    uint64_t berriesEaten = 0;
+    uint64_t drinks = 0;
   };
 
   Engine() = default;
@@ -65,6 +76,11 @@ public:
 
   void setStatusInterval(int64_t seconds) { statusInterval_ = seconds; }
 
+  // Movement helpers (deterministic greedy best-step with random escape fallback).
+  // Try to move one tile toward `target` (see moveToward in engine.cpp). Returns true
+  // if the organism moved.
+  bool moveToward(Vec2i target) noexcept;
+
 private:
   void stepClock(StepKind kind) noexcept;
   void logStatus(EventLog& log) noexcept;
@@ -86,6 +102,7 @@ private:
   int64_t lastStatusAt_ = 0;
   int64_t statusInterval_ = 600; // sim-seconds between status lines
   int prevMode_ = 0; // last logged life mode: 0=active,1=rest,2=sleep
+  bool resting_ = false; // hysteresis for rest mode (prevents boundary oscillation)
   // Per-subsystem RNG streams (isolated so subsystem randomness never perturbs others).
   Rng rngWorld_, rngWeather_, rngBody_, rngCognition_, rngEvents_;
 };

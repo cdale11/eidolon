@@ -154,16 +154,149 @@ bool Weather::deserialize(BinaryReader& r) {
 void World::generate(int w, int h, Rng& r) {
   grid_.generate(w, h, r);
   pos_ = grid_.randomWalkable(r);
+
+  // Berry bushes: ~1 per 128 tiles, only on walkable non-desert land, never adjacent to
+  // the spawn so the organism must explore a little before its first meal.
+  bushes_.clear();
+  const int target = static_cast<int>(static_cast<uint64_t>(w) * h / 128);
+  int guard = target * 8 + 64;
+  while (static_cast<int>(bushes_.size()) < target && guard-- > 0) {
+    const Vec2i p = grid_.randomWalkable(r);
+    if (grid_.at(p.x, p.y) == Terrain::Desert) continue;
+    if (distCheb(p, pos_) <= 2) continue;
+    bool clash = false;
+    for (const Bush& b : bushes_) {
+      if (distCheb(b.pos, p) <= 1) {
+        clash = true;
+        break;
+      }
+    }
+    if (clash) continue;
+    Bush b;
+    b.pos = p;
+    b.berries = 4.0 + r.unit() * 6.0; // 4..10 berries
+    bushes_.push_back(b);
+  }
 }
 
 bool World::update(const SimClock& c, int64_t dt, Rng& r) {
-  (void)dt;
+  (void)c;
+  (void)r;
   const bool wasRaining = weather_.raining();
   const bool wasSnowing = weather_.snowing();
   const bool wasStorming = weather_.storming();
   weather_.update(c, r);
+
+  // Berry regrowth: +1 berry per bush per 1.5 sim-hours, capped at 10.
+  const double regrow = static_cast<double>(dt) / 5400.0;
+  for (Bush& b : bushes_) {
+    if (b.berries < 10.0) b.berries = std::min(10.0, b.berries + regrow);
+  }
+
   return weather_.raining() != wasRaining || weather_.snowing() != wasSnowing ||
          weather_.storming() != wasStorming;
+}
+
+bool World::adjacentToWater(Vec2i pos) const {
+  for (int dy = -1; dy <= 1; ++dy) {
+    for (int dx = -1; dx <= 1; ++dx) {
+      if (grid_.at(pos.x + dx, pos.y + dy) == Terrain::Water) return true;
+    }
+  }
+  return false;
+}
+
+const Bush* World::nearestBush(Vec2i pos, int radius) const {
+  const Bush* best = nullptr;
+  int bestDist = radius + 1;
+  for (const Bush& b : bushes_) {
+    if (b.berries < 1.0) continue; // less than one berry: not worth a visit
+    const int d = distCheb(b.pos, pos);
+    if (d <= radius && d < bestDist) {
+      best = &b;
+      bestDist = d;
+    }
+  }
+  return best;
+}
+
+double World::consumeBerries(Vec2i pos, double amount) {
+  for (Bush& b : bushes_) {
+    if (b.pos == pos && b.berries >= 1.0) {
+      const double eaten = std::min(amount, b.berries);
+      b.berries -= eaten;
+      return eaten;
+    }
+  }
+  return 0.0;
+}
+
+Perception World::perceive(Vec2i pos, const SimClock& c) const {
+  Perception p;
+  p[0] = c.hourOfDay() / 24.0;
+  const Weather& w = weather_;
+  p[1] = w.storming() ? 2.0 : (w.snowing() ? 3.0 : (w.raining() ? 1.0 : 0.0));
+  p[2] = (w.ambientTempC(c) + 5.0) / 30.0; // -5..25 C → 0..1
+  p[3] = static_cast<double>(static_cast<int>(grid_.at(pos.x, pos.y))) / 4.0;
+
+  const int sight = Perception::kSightRadius;
+  const Bush* bush = nearestBush(pos, sight);
+  if (bush) {
+    const int d = distCheb(bush->pos, pos);
+    p[4] = static_cast<double>(d) / static_cast<double>(sight);
+    p[5] = static_cast<double>(bush->pos.x > pos.x ? 1 : (bush->pos.x < pos.x ? -1 : 0));
+    p[6] = static_cast<double>(bush->pos.y > pos.y ? 1 : (bush->pos.y < pos.y ? -1 : 0));
+    p[7] = bush->berries / 10.0;
+  } else {
+    p[4] = 1.0; // no food in sight
+    p[5] = 0.0;
+    p[6] = 0.0;
+    p[7] = 0.0;
+  }
+
+  // Nearest water: scan a square ring outward up to sight radius.
+  int waterDist = sight + 1;
+  Vec2i waterDir{0, 0};
+  for (int y = pos.y - sight; y <= pos.y + sight; ++y) {
+    for (int x = pos.x - sight; x <= pos.x + sight; ++x) {
+      if (grid_.at(x, y) != Terrain::Water) continue;
+      const int d = distCheb({x, y}, pos);
+      if (d < waterDist) {
+        waterDist = d;
+        waterDir = {x > pos.x ? 1 : (x < pos.x ? -1 : 0),
+                    y > pos.y ? 1 : (y < pos.y ? -1 : 0)};
+      }
+    }
+  }
+  if (waterDist <= sight) {
+    p[8] = static_cast<double>(waterDist) / static_cast<double>(sight);
+    p[9] = static_cast<double>(waterDir.x);
+    p[10] = static_cast<double>(waterDir.y);
+  } else {
+    p[8] = 1.0;
+    p[9] = 0.0;
+    p[10] = 0.0;
+  }
+
+  int count = 0;
+  for (const Bush& b : bushes_) {
+    if (b.berries > 0.0 && distCheb(b.pos, pos) <= sight) ++count;
+  }
+  p[11] = static_cast<double>(std::min(count, 4)) / 4.0;
+  return p;
+}
+
+void Bush::serialize(BinaryWriter& w) const {
+  w.i64(pos.x);
+  w.i64(pos.y);
+  w.f64(berries);
+}
+
+bool Bush::deserialize(BinaryReader& r) {
+  int64_t x, y;
+  if (!r.i64(x) || !r.i64(y) || !r.f64(berries)) return false;
+  pos = {static_cast<int>(x), static_cast<int>(y)};
+  return true;
 }
 
 void World::serialize(BinaryWriter& w) const {
@@ -172,6 +305,8 @@ void World::serialize(BinaryWriter& w) const {
   w.i64(pos_.x);
   w.i64(pos_.y);
   w.u8(alive_ ? 1 : 0);
+  w.u64(static_cast<uint64_t>(bushes_.size()));
+  for (const Bush& b : bushes_) b.serialize(w);
 }
 
 bool World::deserialize(BinaryReader& r) {
@@ -181,6 +316,12 @@ bool World::deserialize(BinaryReader& r) {
   if (!r.i64(x) || !r.i64(y) || !r.u8(alive)) return false;
   pos_ = {static_cast<int>(x), static_cast<int>(y)};
   alive_ = alive != 0;
+  uint64_t n;
+  if (!r.u64(n) || n > (1u << 24)) return false;
+  bushes_.resize(static_cast<size_t>(n));
+  for (Bush& b : bushes_) {
+    if (!b.deserialize(r)) return false;
+  }
   return true;
 }
 

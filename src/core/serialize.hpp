@@ -11,7 +11,7 @@
 namespace eidolon {
 
 constexpr uint32_t kSnapshotMagic = 0x4549444C; // "EIDL"
-constexpr uint32_t kSnapshotVersion = 1;
+constexpr uint32_t kSnapshotVersion = 2;
 
 class BinaryWriter {
 public:

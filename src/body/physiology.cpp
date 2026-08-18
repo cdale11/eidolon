@@ -20,7 +20,10 @@ void Physiology::reset() {
 void Physiology::update(double dt, double ambientTempC, Activity act) {
   if (dt <= 0.0) return;
   const double asleep = sleeping_ ? 1.0 : 0.0;
-  const double activity = static_cast<double>(act) / 3.0; // 0..1
+  const double activity = act == Activity::Sleep ? 0.0
+                          : act == Activity::Rest ? 0.25
+                          : act == Activity::Observe ? 0.5
+                                                     : 1.0; // Move/Forage/Drink
 
   // Metabolism: energy burns with activity, much slower asleep. Without food/water the
   // organism can survive ~2-3 days on reserves + sleep recovery (Phase 2 adds foraging).

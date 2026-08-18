@@ -80,6 +80,8 @@ Action Engine::tick() noexcept {
   const Activity act = body_.isSleeping()          ? Activity::Sleep
                        : action == Action::Rest    ? Activity::Rest
                        : action == Action::Observe ? Activity::Observe
+                       : action == Action::Forage  ? Activity::Forage
+                       : action == Action::Drink   ? Activity::Drink
                                                    : Activity::Move;
   body_.update(dt, world_.weather().ambientTempC(clock_), act);
 
@@ -102,14 +104,61 @@ Action Engine::decide() noexcept {
   }
   if (body_.needsSleep()) {
     body_.setSleeping(true);
+    resting_ = false;
     return Action::Sleep;
   }
-  if (body_.fatigue() > 55.0 && body_.energy() < 30.0) {
+  // Rest mode with hysteresis: stay resting until fatigue recovers well below the
+  // trigger, so the organism doesn't oscillate around the fatigue boundary.
+  if (resting_) {
+    if (body_.fatigue() < 25.0) resting_ = false;
+    else return Action::Rest;
+  } else if (body_.fatigue() > 75.0) {
+    resting_ = true;
     return Action::Rest;
   }
+  // Drive priority: thirst (lethal fastest), hunger, fatigue/rest, then energy.
+  if (body_.thirst() > 55.0) return Action::Drink;
+  if (body_.hunger() > 50.0) return Action::Forage;
+  if (body_.fatigue() > 75.0) return Action::Rest;
+  if (body_.energy() < 30.0) return Action::Forage; // top up energy
   // Curiosity: occasionally pause and observe instead of wandering blindly.
   if (rngCognition_.chance(0.15)) return Action::Observe;
   return Action::Wander;
+}
+
+bool Engine::moveToward(Vec2i target) noexcept {
+  const Vec2i p = world_.organismPos();
+  if (p == target) return true;
+  // Greedy best-step: try all 8 neighbors, move to the walkable one that reduces the
+  // Chebyshev distance to the target most (ties broken by fixed offset order). This
+  // flanks water barriers instead of freezing against them.
+  static constexpr int kOffsets[8][2] = {
+      {-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}};
+  int bestX = -1, bestY = -1, bestScore = distCheb(p, target);
+  for (const auto& off : kOffsets) {
+    const Vec2i q{p.x + off[0], p.y + off[1]};
+    if (!world_.grid().inBounds(q.x, q.y) || !world_.grid().walkable(q.x, q.y)) continue;
+    const int score = distCheb(q, target);
+    if (score < bestScore) {
+      bestScore = score;
+      bestX = q.x;
+      bestY = q.y;
+    }
+  }
+  if (bestX >= 0) {
+    world_.setOrganismPos({bestX, bestY});
+    return true;
+  }
+  // Dead end (surrounded by water): random jitter to escape.
+  for (int attempt = 0; attempt < 4; ++attempt) {
+    const Vec2i q{p.x + rngCognition_.irange(-1, 1), p.y + rngCognition_.irange(-1, 1)};
+    if (world_.grid().inBounds(q.x, q.y) && world_.grid().walkable(q.x, q.y) &&
+        q != p) {
+      world_.setOrganismPos(q);
+      return true;
+    }
+  }
+  return false;
 }
 
 void Engine::execute(Action a) noexcept {
@@ -134,14 +183,88 @@ void Engine::execute(Action a) noexcept {
     case Action::Observe:
       ++stats_.actionsObserve;
       break;
+    case Action::Forage: {
+      ++stats_.actionsForage;
+      const Vec2i p = world_.organismPos();
+      const Bush* bush = world_.nearestBush(p, Perception::kSightRadius);
+      if (!bush) {
+        // No food in sight: wander to look for some.
+        const int dx = rngCognition_.irange(-1, 1);
+        const int dy = rngCognition_.irange(-1, 1);
+        const Vec2i q{p.x + dx, p.y + dy};
+        if (world_.grid().inBounds(q.x, q.y) && world_.grid().walkable(q.x, q.y)) {
+          world_.setOrganismPos(q);
+        }
+        break;
+      }
+      if (bush->pos == p) {
+        const double eaten = world_.consumeBerries(bush->pos, 4.0);
+        if (eaten > 0.0) {
+          body_.eat(eaten);
+          stats_.berriesEaten += static_cast<uint64_t>(eaten);
+          events_.push({clock_.now(), 2, static_cast<uint16_t>(eaten * 10.0)});
+        }
+      } else {
+        // Step onto the bush tile (it is walkable), then eat next tick.
+        moveToward(bush->pos);
+      }
+      break;
+    }
+    case Action::Drink: {
+      ++stats_.actionsDrink;
+      const Vec2i p = world_.organismPos();
+      if (world_.adjacentToWater(p)) {
+        body_.drink(8.0);
+        ++stats_.drinks;
+        events_.push({clock_.now(), 3 /* kind: drank */, 0});
+      } else {
+        // Walk toward the nearest water tile in sight (or wander).
+        int targetX = -1, targetY = -1, bestD = Perception::kSightRadius + 1;
+        for (int y = p.y - Perception::kSightRadius; y <= p.y + Perception::kSightRadius;
+             ++y) {
+          for (int x = p.x - Perception::kSightRadius;
+               x <= p.x + Perception::kSightRadius; ++x) {
+            if (world_.grid().at(x, y) != Terrain::Water) continue;
+            const int d = distCheb({x, y}, p);
+            if (d < bestD) {
+              bestD = d;
+              targetX = x;
+              targetY = y;
+            }
+          }
+        }
+        if (targetX >= 0) {
+          moveToward({targetX, targetY});
+        } else {
+          const int dx = rngCognition_.irange(-1, 1);
+          const int dy = rngCognition_.irange(-1, 1);
+          const Vec2i q{p.x + dx, p.y + dy};
+          if (world_.grid().inBounds(q.x, q.y) && world_.grid().walkable(q.x, q.y)) {
+            world_.setOrganismPos(q);
+          }
+        }
+      }
+      break;
+    }
   }
 }
 
 void Engine::checkEvents(EventLog* log) noexcept {
   EventQueue::Event e;
   while (events_.popDue(clock_.now(), e)) {
-    if (log && e.kind == 1) {
-      log->line(clock_.now(), "weather", "%s", world_.weather().describe());
+    if (!log) continue;
+    switch (e.kind) {
+      case 1:
+        log->line(clock_.now(), "weather", "%s", world_.weather().describe());
+        break;
+      case 2:
+        log->line(clock_.now(), "forage", "berries=%.1f", e.payload / 10.0);
+        break;
+      case 3:
+        log->line(clock_.now(), "drink", "water=8.0");
+        break;
+      default:
+        break;
     }
   }
 }
@@ -149,17 +272,18 @@ void Engine::checkEvents(EventLog* log) noexcept {
 void Engine::logStatus(EventLog& log) noexcept {
   const Physiology& b = body_;
   const Weather& w = world_.weather();
+  const Perception p = world_.perceive(world_.organismPos(), clock_);
   log.line(clock_.now(), "status",
            "day=%lld hour=%.1f pos=(%d,%d) terrain=%d temp=%.1fC weather=%s "
            "energy=%.1f hunger=%.1f thirst=%.1f fatigue=%.1f sleepP=%.1f "
-           "bodyTemp=%.1f health=%.1f pain=%.1f asleep=%d",
+           "bodyTemp=%.1f health=%.1f pain=%.1f asleep=%d food=%.1f water=%.1f",
            static_cast<long long>(clock_.day()), clock_.hourOfDay(),
            world_.organismPos().x, world_.organismPos().y,
            static_cast<int>(world_.grid().at(world_.organismPos().x,
                                              world_.organismPos().y)),
            w.ambientTempC(clock_), w.describe(), b.energy(), b.hunger(),
            b.thirst(), b.fatigue(), b.sleepPressure(), b.bodyTemp(), b.health(),
-           b.pain(), b.isSleeping() ? 1 : 0);
+           b.pain(), b.isSleeping() ? 1 : 0, p[4], p[8]);
 }
 
 void Engine::tickAndLog(EventLog& log) noexcept {
@@ -220,6 +344,11 @@ void Engine::serializeState(BinaryWriter& w) const {
   w.u64(stats_.actionsRest);
   w.u64(stats_.actionsSleep);
   w.u64(stats_.actionsObserve);
+  w.u64(stats_.actionsForage);
+  w.u64(stats_.actionsDrink);
+  w.u64(stats_.berriesEaten);
+  w.u64(stats_.drinks);
+  w.u8(resting_ ? 1 : 0);
 }
 
 bool Engine::deserializeState(BinaryReader& r, std::string& err) {
@@ -254,10 +383,18 @@ bool Engine::deserializeState(BinaryReader& r, std::string& err) {
   if (!r.u64(stats_.ticksFine) || !r.u64(stats_.ticksCoarse) ||
       !r.u64(stats_.ticksSleep) || !r.u64(stats_.actionsWander) ||
       !r.u64(stats_.actionsRest) || !r.u64(stats_.actionsSleep) ||
-      !r.u64(stats_.actionsObserve)) {
+      !r.u64(stats_.actionsObserve) || !r.u64(stats_.actionsForage) ||
+      !r.u64(stats_.actionsDrink) || !r.u64(stats_.berriesEaten) ||
+      !r.u64(stats_.drinks)) {
     err = "snapshot stats corrupt";
     return false;
   }
+  uint8_t resting;
+  if (!r.u8(resting) || resting > 1) {
+    err = "snapshot header corrupt";
+    return false;
+  }
+  resting_ = resting != 0;
   return r.done();
 }
 

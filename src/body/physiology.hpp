@@ -2,13 +2,21 @@
 // Phase 1 covers energy, hunger, thirst, fatigue, sleep pressure, temperature, health.
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 
 #include "core/serialize.hpp"
 
 namespace eidolon {
 
-enum class Activity : uint8_t { Sleep = 0, Rest = 1, Observe = 2, Move = 3 };
+enum class Activity : uint8_t {
+  Sleep = 0,
+  Rest = 1,
+  Observe = 2,
+  Move = 3,
+  Forage = 4,
+  Drink = 5,
+};
 
 class Physiology {
 public:
@@ -20,6 +28,15 @@ public:
 
   // Advance physiology by dt simulated seconds. `ambientTempC` drives thermoregulation.
   void update(double dt, double ambientTempC, Activity act);
+
+  // Consume food/water (units of energy / thirst reduction). Returns nothing; clamps.
+  void eat(double food) {
+    hunger_ = std::max(0.0, hunger_ - food * 0.9);
+    energy_ = std::min(kMax, energy_ + food * 2.2);
+  }
+  void drink(double water) {
+    thirst_ = std::max(0.0, thirst_ - water * 0.7);
+  }
 
   bool needsSleep() const {
     return sleepPressure() >= 55.0 || (energy() < 30.0 && fatigue() > 40.0);

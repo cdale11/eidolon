@@ -1,6 +1,6 @@
-// Minimal world for Phase 1: tile grid with terrain, seeded generation, day/night and
-// weather statistics (temperature, precipitation). Entities/flora/fauna arrive in later
-// phases; the spatial index stub keeps the API stable.
+// World for Phase 2: tile grid with terrain, seeded generation, day/night and weather
+// statistics, plus living resources: berry bushes (food) and drinkable water. Provides
+// perception (sight/hearing radii → compact feature vector) for the organism's drives.
 #pragma once
 
 #include <cstdint>
@@ -26,6 +26,13 @@ struct Vec2i {
   bool operator==(const Vec2i& o) const { return x == o.x && y == o.y; }
   bool operator!=(const Vec2i& o) const { return !(*this == o); }
 };
+
+// Chebyshev distance (grid steps including diagonals).
+inline int distCheb(Vec2i a, Vec2i b) {
+  const int dx = a.x > b.x ? a.x - b.x : b.x - a.x;
+  const int dy = a.y > b.y ? a.y - b.y : b.y - a.y;
+  return dx > dy ? dx : dy;
+}
 
 class Grid {
 public:
@@ -87,6 +94,33 @@ private:
   int64_t lastChange_ = -1800; // sim-time of last state change (cooldown gating)
 };
 
+// A berry bush: the organism's only food source in Phase 2. Berries regrow slowly.
+struct Bush {
+  Vec2i pos;
+  double berries = 0.0;
+
+  void serialize(BinaryWriter& w) const;
+  bool deserialize(BinaryReader& r);
+};
+
+// Perception snapshot for the organism (Phase 2: no attention — compact fixed vector).
+struct Perception {
+  static constexpr int kSightRadius = 8;
+  static constexpr int kHearingRadius = 16;
+  static constexpr int kFeatures = 12;
+
+  // Feature vector (normalized to ~[-1,1] / [0,1]); feature order is stable for learning.
+  // [0] hourOfDay/24  [1] weather code (0=clear,1=rain,2=storm,3=snow) [2] ambient temp
+  // normalized to [-1,1] (0°C→0, 25°C→1, -5°C→-0.2) [3] terrain code/4 [4] nearest bush
+  // distance normalized (0=adjacent, 1=sight edge or beyond) [5..6] bush direction (±1)
+  // [7] bush berry fullness [8] nearest water distance normalized [9..10] water direction
+  // [11] bushes within sight (clamped 0..4 /4)
+  double f[kFeatures] = {};
+
+  double& operator[](size_t i) { return f[i]; }
+  const double& operator[](size_t i) const { return f[i]; }
+};
+
 class World {
 public:
   World() = default;
@@ -104,6 +138,18 @@ public:
   bool organismAlive() const { return alive_; }
   void killOrganism() { alive_ = false; }
 
+  const std::vector<Bush>& bushes() const { return bushes_; }
+
+  // Perception.
+  Perception perceive(Vec2i pos, const SimClock& c) const;
+
+  // Returns true if `pos` is on a dry tile adjacent (incl. diagonal) to water.
+  bool adjacentToWater(Vec2i pos) const;
+  // Nearest bush with berries to `pos` within `radius` (or null). Foraging target.
+  const Bush* nearestBush(Vec2i pos, int radius) const;
+  // Consume up to `amount` berries from the bush at `pos`; returns berries eaten.
+  double consumeBerries(Vec2i pos, double amount);
+
   void serialize(BinaryWriter& w) const;
   bool deserialize(BinaryReader& r);
 
@@ -112,6 +158,7 @@ private:
   Weather weather_;
   Vec2i pos_ = {0, 0};
   bool alive_ = true;
+  std::vector<Bush> bushes_;
 };
 
 } // namespace eidolon
