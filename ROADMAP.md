@@ -70,14 +70,16 @@ passes.
   episodes; memory DB stays bounded over long runs; sleep occurs at sane intervals.
 
 ### Teacher pipeline (Phase 4 branch — started)
-- Experience dump: `eidolon-sim --dump-experiences FILE` writes one JSONL record per tick
+- [x] Experience dump: `eidolon-sim --dump-experiences FILE` writes one JSONL record per tick
   (27 features + interpretable body/weather/context) — done.
-- Policy prior: `--policy-prior FILE` seeds a fresh policy from a softmax-linear fit over
+- [x] Policy prior: `--policy-prior FILE` seeds a fresh policy from a softmax-linear fit over
   teacher labels (`.eprp`, magic "EPRP"); online learning continues on top — done.
-- Python tooling (conda env `eidolon`, CPU PyTorch): `python/teacher/` dataset loader,
+- [x] Python tooling (conda env `eidolon`, CPU PyTorch): `python/teacher/` dataset loader,
   OpenAI-compatible teacher client (local llama-server default; NVIDIA NIM via
   `EIDOLON_TEACHER_*` env), reward-guided offline fallback, `train_prior` CLI — done.
-- Next: LoRA distillation of the local 4B (GGUF adapter served by the existing Vulkan
+- [x] Rate limiter + progress UI (`--progress-port`, `--keep-server`, quality report, behavioural eval)
+- [x] Evolutionary prior search (`python/teacher/evolve_prior.py`) with deterministic parallel eval
+- Next (post-Phase-4): LoRA distillation of the local 4B (GGUF adapter served by the existing Vulkan
   `llama-server --lora`); NIM-credentialed batch labeling; multi-seed prior training runs;
   reward-tuning scenario suite.
 - Reference artifact: `data/priors/teacher_policy.eprp` (100 live-labeled records from
