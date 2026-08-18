@@ -1,0 +1,20 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "skills": {
+    "paths": [".opencode/skills"]
+  },
+  "mcp": {
+    "sqlite": {
+      "type": "local",
+      "command": ["/home/umang/miniconda3/envs/eidolon/bin/uvx", "mcp-server-sqlite"],
+      "enabled": true,
+      "environment": {}
+    },
+    "playwright": {
+      "type": "local",
+      "command": ["npx", "-y", "@playwright/mcp"],
+      "enabled": false,
+      "environment": {}
+    }
+  }
+}

@@ -52,6 +52,8 @@ Rules for any agent (AI or human) working in this repo. Read before touching any
 - **Conda env `eidolon`**: Python 3.12.13, activated by default in this shell. Current
   packages: pip/setuptools/wheel only. Packages needed for tooling (e.g. numpy, pyyaml,
   requests, torch-CPU) must be installed here and recorded in `python/requirements.txt`.
+  `uv`/`uvx` are installed here too and run the SQLite MCP server for opencode
+  (`.opencode/opencode.json`).
 
 ## 3. Build & test (the gate before every commit)
 
