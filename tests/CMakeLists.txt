@@ -5,6 +5,7 @@ add_executable(eidolon_tests
   test_clock.cpp
   test_world.cpp
   test_physiology.cpp
+  test_memory.cpp
   test_engine.cpp)
 target_link_libraries(eidolon_tests PRIVATE eidolon_core)
 target_include_directories(eidolon_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

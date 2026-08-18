@@ -5,6 +5,7 @@ add_library(eidolon_core STATIC
   core/clock.hpp
   world/world.cpp
   body/physiology.cpp
+  mind/memory.cpp
   sim/engine.cpp)
 target_include_directories(eidolon_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 

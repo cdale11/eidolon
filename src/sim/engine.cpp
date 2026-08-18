@@ -34,9 +34,11 @@ void Engine::init(uint64_t masterSeed, bool deterministic, int worldW, int world
   deterministic_ = deterministic;
   clock_.set(0);
   died_ = false;
+  resting_ = false;
   lastStatusAt_ = 0;
   statusInterval_ = 600;
   stats_ = Stats{};
+  memory_ = MemoryRing();
 
   rngWorld_ = subsystemStream(masterSeed_, Subsystem::World);
   rngWeather_ = subsystemStream(masterSeed_, Subsystem::Weather);
@@ -47,6 +49,19 @@ void Engine::init(uint64_t masterSeed, bool deterministic, int worldW, int world
   world_.generate(worldW > 0 ? worldW : kDefaultWorldW,
                   worldH > 0 ? worldH : kDefaultWorldH, rngWorld_);
   body_.reset();
+  recordEpisode(EventKind::Birth, 0, 0.5);
+}
+
+void Engine::recordEpisode(EventKind kind, uint8_t detail, double importance) noexcept {
+  const Vec2i p = world_.organismPos();
+  Episode e;
+  e.t = clock_.now();
+  e.x = static_cast<int16_t>(p.x);
+  e.y = static_cast<int16_t>(p.y);
+  e.kind = kind;
+  e.detail = detail;
+  e.importance = std::max(0.0, std::min(1.0, importance));
+  memory_.add(e);
 }
 
 void Engine::stepClock(StepKind kind) noexcept {
@@ -75,6 +90,7 @@ Action Engine::tick() noexcept {
       world_.update(clock_, static_cast<int64_t>(step), rngWeather_);
   if (weatherChanged) {
     events_.push({clock_.now(), 1 /* kind: weather */, 0});
+    recordEpisode(EventKind::Weather, 0, 0.05);
   }
 
   const Activity act = body_.isSleeping()          ? Activity::Sleep
@@ -86,6 +102,15 @@ Action Engine::tick() noexcept {
   body_.update(dt, world_.weather().ambientTempC(clock_), act);
 
   execute(action);
+
+  // Near-death experiences (health critically low) are highly important memories.
+  if (body_.health() < 20.0 && !died_) {
+    const Episode* last = memory_.last();
+    if (!last || last->kind != EventKind::NearDeath ||
+        clock_.now() - last->t >= 1800) {
+      recordEpisode(EventKind::NearDeath, static_cast<uint8_t>(body_.health()), 0.9);
+    }
+  }
 
   if (!body_.alive() && !died_) {
     died_ = true;
@@ -99,12 +124,14 @@ Action Engine::decide() noexcept {
     // Wake when rested enough.
     if (body_.sleepPressure() < 12.0 && body_.fatigue() < 15.0) {
       body_.setSleeping(false);
+      recordEpisode(EventKind::Wake, 0, 0.15);
     }
     return Action::Sleep;
   }
   if (body_.needsSleep()) {
     body_.setSleeping(true);
     resting_ = false;
+    recordEpisode(EventKind::Sleep, 0, 0.15);
     return Action::Sleep;
   }
   // Rest mode with hysteresis: stay resting until fatigue recovers well below the
@@ -203,6 +230,9 @@ void Engine::execute(Action a) noexcept {
           body_.eat(eaten);
           stats_.berriesEaten += static_cast<uint64_t>(eaten);
           events_.push({clock_.now(), 2, static_cast<uint16_t>(eaten * 10.0)});
+          recordEpisode(EventKind::Forage,
+                        static_cast<uint8_t>(std::min(15.0, eaten * 2.5)),
+                        0.25 + eaten / 12.0);
         }
       } else {
         // Step onto the bush tile (it is walkable), then eat next tick.
@@ -213,10 +243,11 @@ void Engine::execute(Action a) noexcept {
     case Action::Drink: {
       ++stats_.actionsDrink;
       const Vec2i p = world_.organismPos();
-      if (world_.adjacentToWater(p)) {
+if (world_.adjacentToWater(p)) {
         body_.drink(8.0);
         ++stats_.drinks;
-        events_.push({clock_.now(), 3 /* kind: drank */, 0});
+        events_.push({clock_.now(), 3, 0});
+        recordEpisode(EventKind::Drink, 0, 0.25);
       } else {
         // Walk toward the nearest water tile in sight (or wander).
         int targetX = -1, targetY = -1, bestD = Perception::kSightRadius + 1;
@@ -289,6 +320,7 @@ void Engine::logStatus(EventLog& log) noexcept {
 void Engine::tickAndLog(EventLog& log) noexcept {
   const Action action = tick();
   if (died_) {
+    recordEpisode(EventKind::Death, 0, 1.0);
     log.line(clock_.now(), "death",
              "energy=%.1f hunger=%.1f thirst=%.1f health=%.1f pos=(%d,%d)",
              body_.energy(), body_.hunger(), body_.thirst(), body_.health(),
@@ -337,6 +369,7 @@ void Engine::serializeState(BinaryWriter& w) const {
   serializeRng(w, rngEvents_);
   world_.serialize(w);
   body_.serialize(w);
+  memory_.serialize(w);
   w.u64(stats_.ticksFine);
   w.u64(stats_.ticksCoarse);
   w.u64(stats_.ticksSleep);
@@ -375,8 +408,8 @@ bool Engine::deserializeState(BinaryReader& r, std::string& err) {
     err = "snapshot rng corrupt";
     return false;
   }
-  if (!world_.deserialize(r) || !body_.deserialize(r)) {
-    err = "snapshot world/body corrupt";
+  if (!world_.deserialize(r) || !body_.deserialize(r) || !memory_.deserialize(r)) {
+    err = "snapshot world/body/memory corrupt";
     return false;
   }
   died_ = !world_.organismAlive();

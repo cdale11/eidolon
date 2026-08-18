@@ -11,6 +11,7 @@
 #include "core/log.hpp"
 #include "core/rng.hpp"
 #include "core/serialize.hpp"
+#include "mind/memory.hpp"
 #include "world/world.hpp"
 
 namespace eidolon {
@@ -63,6 +64,7 @@ public:
   const SimClock& clock() const { return clock_; }
   const World& world() const { return world_; }
   const Physiology& body() const { return body_; }
+  const MemoryRing& memory() const { return memory_; }
   const Stats& stats() const { return stats_; }
   uint64_t masterSeed() const { return masterSeed_; }
   bool deterministic() const { return deterministic_; }
@@ -87,6 +89,7 @@ private:
   Action decide() noexcept;
   void execute(Action a) noexcept;
   void checkEvents(EventLog* log) noexcept;
+  void recordEpisode(EventKind kind, uint8_t detail, double importance) noexcept;
 
   void serializeState(BinaryWriter& w) const;
   bool deserializeState(BinaryReader& r, std::string& err);
@@ -94,6 +97,7 @@ private:
   SimClock clock_;
   World world_;
   Physiology body_;
+  MemoryRing memory_;
   EventQueue events_;
   Stats stats_;
   uint64_t masterSeed_ = 0;
