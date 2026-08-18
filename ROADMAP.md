@@ -99,22 +99,47 @@ passes.
 
 ### Phase 5 branch — deterministic generative systems (DESIGN §22)
 Seedable, allocation-light generative content; no LLM, bit-exact replays preserved.
-- [ ] **Cellular automata**: CA-shaped terrain/biomes (thickets, clearings, water networks,
-      cave systems) over the seed noise map; live CA plant-ecology spread rule so vegetation
-      clumps organically and the organism learns to revisit profitable patches.
-- [ ] **L-systems**: procedural plant/bush/branch geometry and river/road/root networks;
-      foraging targets get spatial identity the memory system can reference.
-- [ ] **Procedural generation**: ruins/landmarks, named places, semantically tagged objects
-      (memory ground truth), extending the existing seedable world gen.
+- [ ] **Noise fields** (Perlin / simplex / value): foundation of world gen — elevation,
+      climate (temperature, humidity), biome boundaries, resource density (mineral veins,
+      fertile soil, water table). Multi-octave, cached per-coord.
+- [ ] **Voronoi / Delaunay**: biome / territory tessellation, settlement placement
+      (wildlife dens, the organism's shelter), Delaunay graph for landmark connectivity
+      the spatial memory indexes.
+- [ ] **Cellular automata**: CA-shaped terrain / biomes (thickets, clearings, water
+      networks, cave systems); live CA plant-ecology spread rule so vegetation clumps
+      organically and the organism learns to revisit profitable patches; fire spread
+      (wildfire hazard); disease spread across tiles / population.
+- [ ] **Reaction-diffusion**: terrain texture patterns (mineral veins, fertile-soil
+      gradients), wildlife coat patterns, biological pattern formation. Stable explicit
+      Euler with capped iterations.
+- [ ] **L-systems**: procedural plant / bush / branch geometry and river / road / root
+      networks; foraging targets get spatial identity the memory system can reference.
+- [ ] **Procedural generation**: ruins / landmarks, named places, semantically tagged
+      objects (memory ground truth), extending the existing seedable world gen.
+- [ ] **Agent-based models (ABM)** formalisation: the wildlife loop (sense → decide →
+      act) is the canonical ABM pattern with per-agent RNG streams (seed = world seed +
+      agent id).
+- [ ] **Flocking / Boids**: collective wildlife behaviour — bird flocks, prey herds,
+      wolf packs (separation / alignment / cohesion + obstacle avoidance). O(neighbours)
+      per-agent update, no full-grid scan.
+- [ ] **Markov models**: explicit chains for weather transitions, wildlife behavioural
+      states, the organism's sleep / wake / active state machine, and skill-stage
+      progression. Inspectable, testable, tunable.
+- [ ] **ODE systems**: already core (§5 Body physiology). Document the integrator
+      (symplectic / explicit Euler with fixed step, max-rate caps) and add unit tests
+      against analytic solutions for each drive.
 - [ ] **Evolutionary algorithms** (offline tooling): `python/teacher/evolve_prior.py` evolved
       policy-prior weights directly on held-out seeds (PoC done — seeds the population with
       the teacher artifacts, tournament + crossover + gaussian mutation, deterministic RNG,
-      beats the Drink-fixated NIM prior); next: wildlife behaviour parameters, recipe tuning.
-- [ ] **Grammars**: structured goal/event templates for episodic-memory compression,
-      recipe-discovery production rules, grounded utterance templates.
+      improves on the teacher priors on survival-weighted fitness; next: wildlife behaviour
+      parameters, recipe tuning).
+- [ ] **Grammars / formal grammars**: structured goal / event templates for episodic-memory
+      compression, recipe production rules, grounded utterance templates (used by Phase 10).
 - Gate: every generated object reproduces from its seed (determinism tests); content couples
-  to behaviour (perception/affordances/memory), never cosmetics; generated ecology measurably
-  changes foraging strategy over days.
+  to behaviour (perception / affordances / memory), never cosmetics; generated ecology
+  measurably changes foraging strategy over days; Markov wildlife produces testable state
+  transition sequences; Boids flocking is visible in the sim; ODE drives pass analytic
+  reference tests.
 
 ## Phase 6 — Skills, tools, crafting, construction
 - Skill models (Beta/Bernoulli competence), procedural store, habit formation
@@ -124,6 +149,21 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
 - Affordance discovery: tool used in unexpected ways → new procedures
 - Gate: organism builds a shelter that persists across save/load; discovers at least one
   novel tool use in a seeded run; skill competence improves with practice.
+
+### Phase 6 branch — generative crafting, construction & invention (DESIGN §22)
+- [ ] **Shape grammars**: construction geometry — shelter / wall / campfire / storage /
+      farm-plot forms generated from a shape grammar seeded by site context and available
+      materials; tools get anatomical structure (handle / blade / binding) from a shape
+      grammar. Turtle interpretation with depth cap; deterministic.
+- [ ] **Graph rewriting** (recipe / tech tree): the recipe graph is rewritten when new
+      crafting combinations are discovered or when an experiment succeeds; the organism's
+      "known recipes" set is a deterministic graph that grows under rewrite rules.
+- [ ] **Genetic programming** (offline tooling): evolve recipe trees (crafting / tool
+      invention) and behaviour trees (action sequences) validated against world physics;
+      tournament + subtree crossover / mutation; fitness = sim validation; depth cap.
+      Discovered procedures become recipes the organism can use at runtime.
+- Gate: a shape-grammar-built shelter persists across save / load; GP discovers at least
+  one novel recipe per seeded run; the recipe graph is inspectable and reproducible.
 
 ## Phase 7 — Planning & world model
 - WorldPredictor (one-step transition MLP) + confidence
@@ -142,6 +182,16 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
 - Gate: seeded test — user warnings that prove true raise trust and change behaviour; false
   warnings lower trust; long absence produces measurable attachment response.
 
+### Phase 8 branch — belief dynamics & social norms (DESIGN §22)
+- [ ] **Ising models** (social belief / norm dynamics): the organism's binary beliefs and
+      trust states as spins; evidence = fields; consistency = couplings. Produces coherent
+      worldviews, belief flips under strong evidence, cognitive dissonance when evidence
+      conflicts. Spin update rule is deterministic + bounded noise; convergence testable.
+- [ ] **Markov models**: explicit chains for the user model states (familiar / stranger /
+      trusted / feared) and the wildlife social states (friend / neutral / threat).
+- Gate: a belief flip on strong evidence is reproducible; belief clusters persist across
+  save / load; trust dynamics match a calibrated Ising simulation.
+
 ## Phase 9 — Self-model, concepts, metacognition
 - Self-model: body/abilities, autobiographical summary, preferences, beliefs, goals,
   reputation, future expectations — all experience-updated
@@ -152,12 +202,32 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
 - Gate: organism forms and names a concept it was never told about; self-model changes after
   significant events; it reports uncertainty honestly in conversation.
 
+### Phase 9 branch — concept ontology & belief coherence (DESIGN §22)
+- [ ] **Graph rewriting**: concept ontology as a typed graph grown by rewrite rules when
+      the organism forms associations; belief graph (§8) rewritten when evidence resolves
+      contradictions. Rewrite rules = deterministic productions applied under the sim seed.
+- [ ] **Ising models**: belief coherence — the organism's binary beliefs as spins, evidence
+      as fields, consistency as couplings. Produces stable belief networks, flips under
+      strong contradictory evidence, quantifiable cognitive dissonance.
+- Gate: the concept graph is inspectable and reproducible from the seed; belief coherence
+      score improves with experience; belief flips on strong evidence are reproducible.
+
 ## Phase 10 — Dreams v2, reflection, narrative language
 - Dreams influence associations measurably (tests)
 - Slow layer reflection with LLM (rate-limited): life review, summary of changes
 - "What happened while you were away" grounded in the actual event timeline
 - Gate: conversation asks about a real past event → accurate details; asks about an
   unrecorded event → honest uncertainty (no fabrication, tested).
+
+### Phase 10 branch — grounded language via formal grammars (DESIGN §22)
+- [ ] **Formal grammars**: structured goal / event templates for episodic-memory
+      compression ("thirsty → went to water → drank"), recipe production rules, and
+      grounded utterance templates for the language bridge (§14) — replaces some LLM
+      dependence with deterministic, state-seeded language. Production rules are a
+      deterministic rewrite system; choices driven by the sim seed and the organism's state.
+- Gate: the organism can answer "what did you do today?" with a generated sentence that
+  is factually grounded in its actual event log, without an LLM call; utterances are
+  reproducible from the seed and state.
 
 ## Phase 11 — Portable WASM client compute
 - Compile the same `ReplicaCore` to WebAssembly (Emscripten): WASM, WASM SIMD, and

@@ -734,25 +734,64 @@ bit-exact determinism contract (`--seed N --deterministic`), and all are bounded
 
 ### Where each technique fits
 
-| Technique | Where it fits in Eidolon | Determinism notes |
-|---|---|---|
-| **Cellular automata (CA)** | Terrain/biome shaping (§4): run a few CA steps over the seed noise map to form organic thickets, clearings, water networks, cave systems. Live "plant ecology": a lightweight per-tile spread rule for bush regrowth so vegetation forms clumps the organism learns to revisit. | CA update = pure function of (grid, rule, iterations); seedable, bounded iterations |
-| **L-systems** | Procedural structure generation: plant/bush/branch geometry, river/road/root networks, terrain detail (dense groves along a "trunk" line). Gives foraging targets spatial identity (a bush is not a pixel, it is a generated structure). | Turtle interpretation is a pure string→geometry function of the axiom + rules + seed |
-| **Procedural generation** | World layout, resource distribution, ruins/landmarks, named places, environmental objects with semantic tags (memory ground truth, §11). Extends the existing seedable world gen. | Any PRNG stream derived from the world seed |
-| **Evolutionary algorithms (EA)** | Offline tooling (conda `eidolon`): evolve the policy-prior weights directly (see `python/teacher/evolve_prior.py`), tune teacher/recipe hyperparameters, evolve wildlife behaviour parameters into artifacts. Never in the C++ hot path. | Fixed RNG seed + deterministic sims on held-out seeds ⇒ reproducible search; artifacts frozen |
-| **Grammars** | Structured goal/event generation (templates for "thirsty → went to water → drank"), episodic-memory compression, recipe-discovery production rules, grounded utterance templates for user-facing language. | Production rules are a deterministic rewrite system; choices driven by the sim seed |
+Techniques split between **runtime** (live C++ systems, allocation-light, called every
+tick or at well-defined moments) and **offline** (Python tooling in conda `eidolon`,
+bake frozen artifacts the C++ runtime only consumes). Every technique preserves the
+determinism contract (`--seed N --deterministic`) and the "no LLM in the hot path"
+invariant.
+
+#### World, environment & resources (§4)
+
+| Technique | Where it fits in Eidolon | Runtime / Offline | Determinism / invariant notes |
+|---|---|---|---|
+| **Noise fields** (Perlin / simplex / value noise) | Foundation of world gen: elevation, climate (temperature, humidity), biome boundaries, resource density (mineral veins, fertile soil, water table). Multi-octave noise gives smooth gradients the organism's perception and planning can use. | Runtime (init + per-tick cheap lookup, no grid scan) | Pure function of (world seed, coord); cached, bounded memory |
+| **Voronoi / Delaunay** | Region划分 for biomes / territories / settlement placement (wildlife dens, the organism's shelter). Delaunay graph = path/road/landmark connectivity the spatial memory can index. | Runtime (init) | Geometric tessellation is deterministic for a fixed seed |
+| **Cellular automata (CA)** | Terrain shaping (init: thickets, clearings, water networks, cave systems). Live plant ecology: per-tile spread/death rules so vegetation clumps and regrows organically — the organism learns to revisit patches. Fire spread (wildfire hazard). Disease spread across tiles or population. | Runtime (init steps; per-tick single-tile ring update, never full-grid in hot path) | CA step = pure function of (grid, rule, iter cap); seedable |
+| **Reaction-diffusion** | Terrain texture patterns (mineral veins, fertile-soil gradients), wildlife coat patterns (cosmetic), biological pattern formation. Gives organic resource patterns that noise alone can't produce. | Runtime (init, bounded steps) | Discretised PDE; stable under explicit Euler with capped iterations |
+| **Procedural generation** | Ruins / landmarks / named places / environmental objects with semantic tags (memory ground truth, §11). Extends existing seedable world gen. | Runtime (init) | Any PRNG stream derived from the world seed |
+| **L-systems** | Plant / bush / branch geometry, river / road / root networks, terrain detail (dense groves along a "trunk" line). Foraging targets get spatial identity the memory system can reference. | Runtime (init) | Turtle interpretation = pure (axiom, rules, depth cap, seed) |
+
+#### Body & physiology (§5)
+
+| Technique | Where it fits in Eidolon | Runtime / Offline | Determinism / invariant notes |
+|---|---|---|---|
+| **ODE systems** | Already core: body physiology (energy, hunger, thirst, fatigue, sleepPressure, body temperature, pain) evolves under coupled ODEs driven by actions, weather and foraging. The explicit ODE structure (phase, decay constants, integration step) is documented and unit-tested. | Runtime (every tick) | Integrator is symplectic / explicit Euler with fixed step; cap on max rate prevents explosion |
+
+#### Wildlife, ecology & collective behaviour (§4 wildlife)
+
+| Technique | Where it fits in Eidolon | Runtime / Offline | Determinism / invariant notes |
+|---|---|---|---|
+| **Agent-based models (ABM)** | The whole sim is already an ABM: the organism + wildlife are autonomous agents. Wildlife (prey, predators, birds) is the only other autonomous population (invariant: only one humanoid). Formalise the per-agent decision loop as the canonical ABM pattern (sense → decide → act). | Runtime | Per-agent RNG stream derived from (world seed, agent id); bit-exact |
+| **Flocking / Boids** | Collective wildlife behaviour: bird flocks, prey herds, wolf packs (separation / alignment / cohesion + obstacle avoidance). Produces emergent group dynamics the organism perceives as living groups, not independent points. | Runtime (per agent, O(neighbours) update) | Rules are a pure function of neighbour positions; deterministic given seeds |
+| **Markov models** | Explicit Markov chains for weather state transitions, wildlife behavioural states (forage / flee / rest / hunt), the organism's sleep / wake / active state machine, and skill-stage progression. Makes state transitions inspectable, testable, and tunable. | Runtime | Transition matrix is a constant of the sim; RNG chooses the next state from the row |
+| **Ising models** | Social belief / norm dynamics: the organism's binary beliefs and trust states as spins, evidence as fields, consistency as couplings. Produces coherent worldviews, belief flips under strong evidence, cognitive dissonance when evidence conflicts. | Runtime (slow layer / reflection cadence) | Spin update rule is deterministic + bounded noise; convergence testable |
+
+#### Mind, learning & cognition (§8–§9)
+
+| Technique | Where it fits in Eidolon | Runtime / Offline | Determinism / invariant notes |
+|---|---|---|---|
+| **Evolutionary algorithms (EA)** | Offline: evolve policy-prior weights (PoC: `python/teacher/evolve_prior.py`), tune wildlife behaviour parameters, tune recipe hyperparameters. Online micro-EA on tiny task-specific populations (e.g. hyperparameter search for the bandit temperature). | Offline (Python tooling); online only when trivially bounded | Fixed RNG seed + deterministic sims on held-out seeds ⇒ reproducible search; frozen artifacts |
+| **Genetic programming (GP)** | Offline: evolve recipe trees (crafting / tool invention) and behaviour trees (action sequences) validated against world physics. The organism "discovers" procedures through evolution, not memorisation. | Offline (Python tooling) | Tournament + subtree crossover/mutation; fitness = sim validation; depth cap |
+| **Graph rewriting** | Concept ontology (§9) as a typed graph grown by rewrite rules when the organism forms associations. Tech / recipe graph (§6) rewritten when new crafting combinations are discovered. Belief graph (§8) rewritten when evidence resolves contradictions. | Runtime (slow layer) and Offline (concept / recipe discovery) | Rewrite rules = deterministic productions applied under the sim seed |
+| **Formal grammars** | Structured goal / event templates for episodic-memory compression ("thirsty → went to water → drank"), recipe production rules, and grounded utterance templates for the language bridge (§14) — replaces some LLM dependence with deterministic, state-seeded language. | Runtime (slow layer) | Production rules are a deterministic rewrite system; choices driven by the sim seed and the organism's state |
+| **Shape grammars** | Construction geometry (§6): shelter / wall / campfire / storage / farm-plot forms generated from a shape grammar seeded by site context and available materials. Tools get anatomical structure (handle / blade / binding) from a shape grammar. | Runtime (when the organism builds) | Turtle interpretation with depth cap; deterministic for a fixed seed |
 
 ### Policy (guarding the invariants)
 
 1. **Generation is a pure function of the world/sim seed** and any explicitly passed
    parameters — never of wall-clock time or LLM output.
-2. **Bounded**: CA iterations, L-system depth, grammar depth, EA generations all have
-   hard caps; generation is amortised (world-gen at init, plant ecology at most a few
-   cells per tick via a ring/sweep, never a full-grid pass in the hot path).
-3. **Offline-first**: EA and heavier search run in Python tooling and bake frozen
-   artifacts (like `.eprp` priors); the C++ runtime only *consumes* artifacts.
+2. **Bounded**: CA iterations, L-system depth, grammar depth, ODE step, EA generations,
+   GP depth, Ising sweeps, Markov chain length all have hard caps; generation is
+   amortised (world-gen at init, plant ecology at most a few cells per tick via a
+   ring/sweep, never a full-grid pass in the hot path).
+3. **Offline-first** for heavy compute: EA, GP, graph-rewriting search, large Markov
+   parameter fits run in Python tooling and bake frozen artifacts (like `.eprp` priors);
+   the C++ runtime only *consumes* artifacts.
 4. **Content couples to behaviour** (§4: "the world is not decorative") — generated
-   structure must feed perception/affordances/memory, not just cosmetics.
+   structure must feed perception / affordances / memory, not just cosmetics.
+5. **No LLM call from a deterministic system**: grammar / shape / graph rewriting produce
+   *templates* that the LLM bridge may surface to the user, but the LLM never mutates the
+   underlying generated object.
 
 ---
 
