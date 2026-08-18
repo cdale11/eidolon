@@ -58,9 +58,10 @@ SYSTEM_PROMPT = (
     "only food and water its only drink. Its only actions are: Forage (search for and eat "
     "berries), Drink (find water and drink), Rest (recover energy, does not consume food "
     "or water), Wander (move to find food/water), Observe (look around, reduces "
-    "uncertainty). Pick the single wisest action for the CURRENT situation. Reason "
-    "briefly if you must, but end your answer with strict JSON on its own line: "
-    '{"action": "Forage"} where the value is exactly one of the five action names.'
+    "uncertainty). Pick the single wisest action for the CURRENT situation. "
+    "Answer with ONLY a single JSON object on the last line: {\"action\": \"Forage\"} "
+    "where the value is exactly one of the five action names. Do NOT explain, do NOT "
+    "write any other text, do NOT use markdown."
 )
 
 
@@ -130,7 +131,9 @@ class TeacherClient:
                 {"role": "user", "content": f"Situation: {context}. Which action is wisest?"},
             ],
             "temperature": 0.2,
-            "max_tokens": 1024,  # reasoning models burn tokens thinking; leave room for the answer
+            # reasoning models burn tokens thinking (reasoning_content), so give them room;
+            # plain chat models get a small cap so verbose models stop quickly.
+            "max_tokens": 1024 if self.enable_thinking else 128,
             "response_format": {"type": "json_object"},
         }
         if self.enable_thinking:
@@ -152,13 +155,15 @@ class TeacherClient:
 
 def label_experiences(exp: list[Any], client: TeacherClient | None = None,
                       fallback: str = "reward", report_every: int = 500,
-                      progress: Any = None, on_label=None) -> list[str]:
+                      progress: Any = None, on_label=None,
+                      counters: dict | None = None) -> list[str]:
     """Label each record; unavailable/absent teacher falls back to the offline heuristic.
 
     fallback: 'reward' = action with best mean observed reward; 'self' = the action the
     organism actually took. `progress`, if given, is a teacher.progress.ProgressState
     updated per record for the progress web UI. `on_label(t, label)`, if given, is called
-    per record as labels are produced (e.g. to stream the dataset to disk).
+    per record as labels are produced (e.g. to stream the dataset to disk). `counters`, if
+    given, is incremented in place: counters['fallback'].
     """
     from .dataset import reward_best_labels
 
@@ -180,6 +185,8 @@ def label_experiences(exp: list[Any], client: TeacherClient | None = None,
         if label is None:
             fallback_used += 1
             is_fallback = True
+            if counters is not None:
+                counters["fallback"] = counters.get("fallback", 0) + 1
             if fallback == "reward":
                 if reward_fallback is None:
                     reward_fallback = int(reward_best_labels(exp)[0])

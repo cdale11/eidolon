@@ -29,6 +29,7 @@ class ProgressState:
             "started": 0.0,
             "measured_rpm": 0,
             "rate_per_min": 0.0,
+            "results": {},  # filled after fitting: quality report + sim evaluation
         }
 
     def start(self, stage: str, total: int, model: str = "") -> None:
@@ -50,6 +51,11 @@ class ProgressState:
         with self._lock:
             self._s["stage"] = stage
             self._s["started"] = self._s["started"] or time.monotonic()
+
+    def set_results(self, results: dict) -> None:
+        with self._lock:
+            self._s["results"] = results
+            self._s["stage"] = "done"
 
     def tick(self, label: str | None = None, context: str = "",
              fallback: bool = False, failed: bool = False,

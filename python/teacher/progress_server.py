@@ -59,6 +59,8 @@ PAGE = """<!DOCTYPE html>
     <table id="labels"></table></div>
   <div class="card"><h2 style="font-size:15px;margin:0 0 8px;">Recent errors</h2>
     <div class="err" id="errors"><span class="muted">none</span></div></div>
+  <div class="card" id="rescard" hidden><h2 style="font-size:15px;margin:0 0 8px;">
+    Results</h2><div id="results"></div></div>
 </main>
 <script>
 async function poll() {
@@ -88,6 +90,59 @@ async function poll() {
   const errs = document.getElementById('errors');
   errs.textContent = s.errors.length ? s.errors.join('\\n') : 'none';
   errs.classList.toggle('muted', !s.errors.length);
+  const rc = document.getElementById('rescard');
+  const r = s.results || {};
+  if (Object.keys(r).length) {
+    rc.hidden = false;
+    const rows = [];
+    if (r.fit) {
+      rows.push(['train accuracy', r.fit.acc != null ? (r.fit.acc * 100).toFixed(1) + '%' : '—']);
+      rows.push(['validation accuracy', r.fit.val_acc != null ? (r.fit.val_acc * 100).toFixed(1) + '%' : '—']);
+      rows.push(['fit loss', r.fit.loss != null ? r.fit.loss.toFixed(4) : '—']);
+    }
+    rows.push(['records labeled', r.n]);
+    rows.push(['agree with organism actions', r.agree_self != null ? (r.agree_self * 100).toFixed(1) + '%' : '—']);
+    rows.push(['agree with reward heuristic', r.agree_reward_heuristic != null ? (r.agree_reward_heuristic * 100).toFixed(1) + '%' : '—']);
+    if (r.agree_other_teacher != null)
+      rows.push(['agree with 2nd teacher', (r.agree_other_teacher * 100).toFixed(1) + '%  (' + r.other_teacher_n + ' records)']);
+    rows.push(['fallback (no teacher)', r.fallback_count]);
+    if (r.artifact) rows.push(['artifact', r.artifact.path + '  (' + r.artifact.size_bytes + ' B)']);
+    let html = rows.map(([k, v]) => `<div class="row"><span class="k">${k}</span><span>${v}</span></div>`).join('');
+    const pls = r.per_label_state || {};
+    const keys = Object.keys(pls);
+    if (keys.length) {
+      html += '<h3 style="font-size:13px;margin:12px 0 4px;">Mean state per label</h3>' +
+        '<table><tr><td style="text-align:left;">label</td><td>thirst</td><td>hunger</td>' +
+        '<td>fatigue</td><td>bush dist</td><td>water dist</td></tr>' +
+        keys.map(k => { const p = pls[k]; return p.n
+          ? `<tr><td>${k} <span class="muted">(${p.n})</span></td><td>${p.thirst}</td>` +
+            `<td>${p.hunger}</td><td>${p.fatigue}</td><td>${p.bush_dist}</td>` +
+            `<td>${p.water_dist}</td></tr>` : ''; }).join('') +
+        '<tr><td style="text-align:left;"><b>overall</b></td>' +
+        `<td>${r.overall_means.thirst}</td><td>${r.overall_means.hunger}</td>` +
+        `<td>${r.overall_means.fatigue}</td><td>${r.overall_means.bush_dist}</td>` +
+        `<td>${r.overall_means.water_dist}</td></tr></table>`;
+    }
+    document.getElementById('results').innerHTML = html;
+    const se = r.sim_eval;
+    if (se && Object.keys(se).length) {
+      let shtml = '<h3 style="font-size:13px;margin:12px 0 4px;">Behavioural eval ' +
+        '(fresh deterministic seeds)</h3>' +
+        '<table><tr><td style="text-align:left;">config</td><td>ticks</td>' +
+        '<td>Forage</td><td>Drink</td><td>Rest</td><td>Wander</td><td>Observe</td>' +
+        '<td>survived</td><td>final thirst</td><td>final hunger</td></tr>';
+      for (const [name, a] of Object.entries(se)) {
+        const ac = a.actions || {};
+        shtml += `<tr><td>${name}</td><td>${a.ticks}</td><td>${ac.Forage || 0}</td>` +
+          `<td>${ac.Drink || 0}</td><td>${ac.Rest || 0}</td><td>${ac.Wander || 0}</td>` +
+          `<td>${ac.Observe || 0}</td><td>${a.survived}/${a.seeds}</td>` +
+          `<td>${a.final_thirst}</td><td>${a.final_hunger}</td></tr>`;
+      }
+      document.getElementById('results').innerHTML += shtml + '</table>';
+    }
+  } else {
+    rc.hidden = true;
+  }
 }
 setInterval(poll, 1500);
 poll();
@@ -118,7 +173,8 @@ class ProgressServer:
         return True
 
     def url(self) -> str:
-        return f"http://{self.host}:{self.port}"
+        host = "127.0.0.1" if self.host in ("0.0.0.0", "") else self.host
+        return f"http://{host}:{self.port}"
 
     def stop(self) -> None:
         if self._httpd:

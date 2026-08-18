@@ -49,7 +49,24 @@ def main(argv: list[str] | None = None) -> int:
                     help="teacher request rate limit (default 25, NVIDIA NIM free tier)")
     ap.add_argument("--progress-port", type=int, default=8090,
                     help="port for the dataset-generation progress web UI (0 = off)")
-    ap.add_argument("--progress-host", default="127.0.0.1")
+    ap.add_argument("--progress-host", default="0.0.0.0",
+                    help="bind address for the progress UI (0.0.0.0 = reachable on the LAN)")
+    ap.add_argument("--keep-server", action="store_true",
+                    help="keep the progress/results web UI running after the fit (until "
+                         "Ctrl-C) so the results can be inspected in the browser")
+    ap.add_argument("--compare-labels", default=None,
+                    help="optional second teacher's {t, label} JSONL to compute "
+                         "cross-teacher agreement on overlapping records")
+    ap.add_argument("--eval-seeds", default="",
+                    help="comma-separated held-out seeds for behavioural evaluation "
+                         "(fresh deterministic sims, this prior vs random init)")
+    ap.add_argument("--eval-days", type=int, default=1,
+                    help="days per behavioural-evaluation sim")
+    ap.add_argument("--eval-compare", default="",
+                    help="additional priors to compare against in the behavioural eval, "
+                         "as name=path comma list (e.g. local4b=data/priors/teacher_policy.eprp)")
+    ap.add_argument("--sim-bin", default=None,
+                    help="path to the eidolon-sim binary (default: ./build/bin/eidolon-sim)")
     ap.add_argument("--epochs", type=int, default=400)
     ap.add_argument("--lr", type=float, default=0.05)
     ap.add_argument("--val-frac", type=float, default=0.1,
@@ -75,6 +92,7 @@ def main(argv: list[str] | None = None) -> int:
     use_teacher = args.label_mode == "teacher"
     cached = all(e.teacher_label_index is not None or overlay.get(e.t) is not None
                  for e in exp) if use_teacher else False
+    fallback_count = 0
 
     # Progress web UI (watch labeling from the browser).
     progress = None
@@ -115,14 +133,18 @@ def main(argv: list[str] | None = None) -> int:
         label_writer = None
         if args.labels_out:
             lf = open(args.labels_out, "w")
-            label_writer = lambda t, lab: lf.write('{"t":%d,"label":"%s"}\n' % (t, lab))
+            label_writer = lambda t, lab: (lf.write('{"t":%d,"label":"%s"}\n' % (t, lab)),
+                                           lf.flush())[1]
+        counters: dict = {}
         try:
             labels_used = label_experiences(exp, client=client,
                                             fallback=("reward" if use_teacher else args.label_mode),
-                                            progress=progress, on_label=label_writer)
+                                            progress=progress, on_label=label_writer,
+                                            counters=counters)
         finally:
             if args.labels_out:
                 lf.close()
+        fallback_count = counters.get("fallback", 0)
         label_idx = [ACTION_NAMES.index(a) for a in labels_used]
         if args.labels_out:
             print(f"  labels written to {args.labels_out}")
@@ -134,11 +156,60 @@ def main(argv: list[str] | None = None) -> int:
     print(f"fitting softmax-linear prior ({X.shape[0]} x {X.shape[1]}) ...")
     res = fit_prior(X, y, epochs=args.epochs, lr=args.lr, val_frac=args.val_frac)
     write_prior(args.out, res["weights"], res["bias"])
-    if progress:
-        progress.stage("done")
     val = f"  val-acc={res['val_acc']:.3f}" if res["val_acc"] is not None else ""
     print(f"prior written to {args.out}")
     print(f"  train-acc={res['acc']:.3f}{val} loss={res['loss']:.4f}")
+
+    # Quality report (fit + data sanity) exposed through the progress web UI.
+    other = None
+    if args.compare_labels:
+        other = {}
+        with open(args.compare_labels) as f:
+            for line in f:
+                rec = __import__("json").loads(line)
+                other[int(rec["t"])] = rec["label"]
+    from .quality import quality_report
+
+    report = quality_report(
+        exp, label_idx, fallback_count=fallback_count,
+        fit_res={k: res[k] for k in ("acc", "val_acc", "loss")},
+        artifact=args.out, other_labels=other)
+
+    # Behavioural evaluation: fresh deterministic sims on held-out seeds, with and
+    # without the prior. Reported through the progress web UI as `sim_eval`.
+    if args.eval_seeds:
+        from .eval import sim_eval
+
+        seeds = [int(s) for s in args.eval_seeds.replace(" ", "").split(",") if s]
+        sim_bin = args.sim_bin or os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "build", "bin", "eidolon-sim")
+        if not os.path.exists(sim_bin):
+            print(f"  warning: sim binary {sim_bin} missing; skipping behavioural eval")
+        else:
+            print(f"evaluating prior on seeds {seeds} ({args.eval_days} day(s)) ...")
+            configs: dict = {"random init": None, "this prior": args.out}
+            for kv in args.eval_compare.replace(" ", "").split(","):
+                if "=" in kv:
+                    name, path = kv.split("=", 1)
+                    configs[name] = path
+            ev = sim_eval(sim_bin, configs, seeds, days=args.eval_days)
+            report["sim_eval"] = ev
+            for name, agg in ev.items():
+                print(f"  {name}: ticks={agg.get('ticks')} "
+                      f"actions={agg.get('actions')} "
+                      f"non-agentic(Wander/Observe)={agg.get('non_agentic_actions')} "
+                      f"survived={agg.get('survived')}/{len(seeds)}")
+
+    if progress:
+        progress.set_results(report)
+    if server and args.keep_server:
+        print(f"  results live at {server.url()}  (Ctrl-C to exit)")
+        try:
+            while True:
+                __import__("time").sleep(3600)
+        except KeyboardInterrupt:
+            pass
     if server:
         server.stop()
     return 0

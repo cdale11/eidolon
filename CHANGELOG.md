@@ -5,6 +5,32 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 
 ## [Unreleased]
 
+### Teacher pipeline: results web UI + data quality & behavioural evaluation
+- Progress UI now also reports **results** after the fit: train/val accuracy, label
+  distribution, agreement of the teacher labels with the organism's own actions and with
+  the reward heuristic, per-label mean body state ("drive sanity"), and cross-teacher
+  agreement vs a second teacher's labels on the same records (`--compare-labels`).
+- **Behavioural evaluation** of the fitted prior (`--eval-seeds`, `--eval-compare`,
+  `--eval-days`): runs fresh deterministic `eidolon-sim` runs on held-out seeds with and
+  without the prior and reports survival, per-action usage and final body state, all
+  surfaced in the results UI (`python/teacher/eval.py`).
+- `--keep-server` keeps the dashboard (bound to `0.0.0.0` by default, reachable on the
+  LAN) alive after the fit so results can be inspected in the browser.
+- Teacher prompt tightened to force a terse single-JSON answer; `max_tokens` is now 1024
+  only for reasoning models (128 otherwise) — verbose local models now label in ~3 s
+  instead of ~60 s.
+- Labels are streamed to `--labels-out` as they are produced (resumable dataset).
+
+### NIM (NVIDIA Nemotron) teacher evaluation
+- First live NIM dataset run: 50 records, Nemotron-3-120B with thinking, 25 RPM. Teacher
+  answered 49/50 (2% fallback), cross-teacher agreement vs local Qwen-4B on the same
+  records 44%. Label distribution Drink 31 / Forage 10 / Wander 6 / Rest 2 / Observe 1.
+- Behavioural eval (5 held-out seeds, 1 day): random init 73.1k non-agentic
+  (Wander+Observe) ticks; local-4B prior 3.9k, 5/5 survive; NIM prior 4.5k, 4/5 survive
+  (Drink-skewed prior collapses Forage). Verdict: NIM labels are sound but 50 records is
+  too small / too Drink-skewed — a larger balanced pass is needed to beat the existing
+  local-4B prior.
+
 ### Teacher pipeline: rate limiting + progress web UI
 - Teacher requests are rate-limited to 25 RPM by default (NVIDIA NIM free-tier limit;
   configurable via `--rpm` / `EIDOLON_TEACHER_RPM`). The limiter is a sliding-window
