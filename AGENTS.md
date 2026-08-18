@@ -49,6 +49,13 @@ Rules for any agent (AI or human) working in this repo. Read before touching any
     that ship gfx1103 kernels; don't rely on it.
 - **LLM**: local llama.cpp build at `~/llama.cpp` with built `llama-server` and GGUF models
   (`Qwen3-4B-Instruct-Q4_K_M.gguf` recommended default). The sim must run fully without it.
+  - **iGPU inference (default for the LLM)**: rebuild llama.cpp with the Vulkan backend
+    (`cmake -B build-vulkan -DGGML_VULKAN=ON -DGGML_CUDA=OFF`; Mesa `libvulkan_radeon.so`
+    + `glslc` present) and launch inference on the Radeon 740M:
+    `~/llama.cpp/build-vulkan/bin/llama-server -m ~/llama.cpp/Qwen3-4B-Instruct-Q4_K_M.gguf
+    --device Vulkan0 --threads 8 --ctx-size 2048 --port 8080` (RADV gives ~4 GiB shared
+    memory via GTT; ~100 tok/s prompt / ~13 tok/s generation). Note the model path lives in
+    `~/llama.cpp/` root, not `models/`.
 - **Conda env `eidolon`**: Python 3.12.13, activated by default in this shell. Current
   packages: pip/setuptools/wheel only. Packages needed for tooling (e.g. numpy, pyyaml,
   requests, torch-CPU) must be installed here and recorded in `python/requirements.txt`.
@@ -59,11 +66,16 @@ Rules for any agent (AI or human) working in this repo. Read before touching any
 
 ```bash
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Wall -Wextra"
-cmake --build build -j
+cmake --build build -j$(nproc)            # all CPU threads
 ./build/tests/eidolon_tests              # C++ unit tests
-python/tests/run_integration.sh          # Python integration drivers (conda eidolon)
+python/tests/run_integration.sh          # Python integration drivers, parallel on all cores (conda eidolon)
 ./build/bin/eidolon-sim --data data/runs/check --days 1   # autonomous smoke run
 ```
+
+Build with all CPU threads (`-j$(nproc)`, ninja auto-parallelizes); the integration suite
+runs each `test_*.py` file in parallel with a distinct `PORT_BASE`. The simulation core is
+deliberately single-threaded for bit-exact determinism (project invariant) — parallelize
+around it (tests, seeds, LLM threads), never the tick itself.
 
 Inspect `data/runs/check/events.log` for anomalous behaviour before committing. For
 behavioural changes: run a seeded replay (`--seed 42 --deterministic`) and diff against the

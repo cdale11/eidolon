@@ -30,17 +30,18 @@ passes.
 - Note: Phase 1 organisms have no food/water sources yet, so a long run ends in starvation
   death (≈21h) — this is expected; foraging/drinking land in Phase 2.
 
-## Phase 2 — Minimal end-to-end organism (first living milestone)
-- Perception: sight/hearing radii → compact feature vector (no attention yet)
-- Drives → simple action selection (survive, forage, drink, sleep)
-- Memory: hot ring of compact episodes (bounded), importance score
-- SQLite archive (WAL) + schema versioning
-- Web server (`cpp-httplib`) + minimal ChatGPT-like chat UI (sidebar, chat, input, send)
-- LLM bridge: `parse` (message → JSON semantics) + `respond` (snapshot → reply), llama.cpp
-  compatible endpoint, timeouts, fallback replies when offline
-- `eidolon-server` runs sim + UI; browser disconnect does not stop it
-- Gate: user can start a conversation; organism replies grounded in real state; killing the
-  LLM doesn't stop the sim; save/load preserves the conversation's individual.
+## Phase 2 — Minimal end-to-end organism (done in this commit)
+- [x] Perception: sight/hearing radii → compact feature vector (no attention yet)
+- [x] Drives → simple action selection (survive, forage, drink, sleep)
+- [x] Memory: hot ring of compact episodes (bounded), importance score
+- [x] SQLite archive (WAL) + schema versioning
+- [x] Web server (`cpp-httplib`) + minimal ChatGPT-like chat UI (sidebar, chat, input, send)
+- [x] LLM bridge: `parse` (message → JSON semantics) + `respond` (snapshot → reply), llama.cpp
+      compatible endpoint, timeouts, fallback replies when offline (verified live on the
+      Radeon 740M iGPU via llama.cpp's Vulkan backend)
+- [x] `eidolon-server` runs sim + UI; browser disconnect does not stop it
+- [x] Gate: user can start a conversation; organism replies grounded in real state; killing the
+      LLM doesn't stop the sim; save/load preserves the conversation's individual.
 - Note: Phase 2 runs the sim on the server (the guaranteed-continuity path). The engine core
   is already UI-independent (libeidolon); browser-side compute lands in Phases 11–12
   (DESIGN §17), after the mind features stabilize.

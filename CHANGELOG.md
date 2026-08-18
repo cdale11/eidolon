@@ -5,6 +5,34 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 
 ## [Unreleased]
 
+### Phase 2 — Minimal end-to-end organism
+- World resources (`src/world`): berry bushes (density ~1/128 tiles, seeded regrowth
+  capped), water drinking; `Perception` feature vector (sight radius 8, hearing 16,
+  12 features).
+- Drives → actions (`src/sim/engine`): forage (4 berries/meal) and drink drives with
+  need thresholds, obstacle-aware greedy movement (with random escape to avoid local
+  traps), rest-mode hysteresis; all 5 test seeds survive 14 days.
+- Memory (`src/mind/memory.cpp`): bounded episodic ring (256 capacity) with importance
+  scores, serialized in the snapshot; episodes for birth, weather, foraging, drinking,
+  sleep/wake, near-death (throttled) and death.
+- Persistence (`src/store/sqlite_archive.cpp`): SQLite (WAL) archive behind a portable
+  `Archive` interface — episodes, events, conversations, messages; versioned schema
+  (`user_version=1`). The engine core stays platform-independent.
+- Chat server (`src/server` + `src/tools/eidolon-server.cpp`): `eidolon-server` runs the
+  sim + serves a minimal ChatGPT-like UI (sidebar, chat, input) with `/api/status`,
+  `/api/send`, `/api/conversations`, `/api/messages`, `/api/snapshot`. Browser
+  disconnect does not stop the sim; autosave every 10 sim-minutes; SIGTERM/SIGINT
+  triggers a graceful final save.
+- LLM bridge (`src/llm/bridge.cpp` + `src/core/json.cpp`): OpenAI-compatible endpoint
+  (llama.cpp), message → structured semantics parse, snapshot → grounded reply, timeouts,
+  and deterministic offline fallback replies grounded in real state. Live replies were
+  verified through the local Qwen3-4B model on the Radeon 740M iGPU (Vulkan backend).
+- Tests: 4 new C++ unit-test files (memory, archive, json, bridge) and 6 new server
+  integration tests (UI+status, restart continuity, offline fallback, dead-LLM
+  resilience, archive written, sim without browser). Integration suite now runs test
+  files in parallel across all CPU cores.
+- Performance: 30-day headless sim ~0.2 s, event log bounded (6.8K lines vs 173K naive).
+
 ### Phase 1 — Core runtime skeleton
 - Added `eidolon-sim` CLI (`--data --days --seed --deterministic --world --status-interval`):
   builds, runs, and snapshots a deterministic day/night simulation.

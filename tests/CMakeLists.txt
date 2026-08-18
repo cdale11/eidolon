@@ -7,8 +7,10 @@ add_executable(eidolon_tests
   test_physiology.cpp
   test_memory.cpp
   test_archive.cpp
+  test_json.cpp
+  test_bridge.cpp
   test_engine.cpp)
-target_link_libraries(eidolon_tests PRIVATE eidolon_core eidolon_store)
+target_link_libraries(eidolon_tests PRIVATE eidolon_core eidolon_store eidolon_llm)
 target_include_directories(eidolon_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 enable_testing()
