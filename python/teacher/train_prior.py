@@ -36,6 +36,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--labels", default=None,
                     help="optional JSONL of cached teacher labels {t, label} to overlay "
                          "on the dump (label once, re-fit many times without the LLM)")
+    ap.add_argument("--labels-out", default=None,
+                    help="write the labels produced by this run as {t, label} JSONL "
+                         "(the generated dataset; reusable via --labels)")
     ap.add_argument("--teacher-base", default=None, help="OpenAI-compatible base URL")
     ap.add_argument("--teacher-model", default=None, help="model id/name")
     ap.add_argument("--teacher-thinking", action="store_true", default=None,
@@ -109,10 +112,20 @@ def main(argv: list[str] | None = None) -> int:
                                enable_thinking=args.teacher_thinking,
                                reasoning_budget=args.teacher_reasoning_budget,
                                rpm=args.rpm) if use_teacher else None
-        labels_used = label_experiences(exp, client=client,
-                                        fallback=("reward" if use_teacher else args.label_mode),
-                                        progress=progress)
+        label_writer = None
+        if args.labels_out:
+            lf = open(args.labels_out, "w")
+            label_writer = lambda t, lab: lf.write('{"t":%d,"label":"%s"}\n' % (t, lab))
+        try:
+            labels_used = label_experiences(exp, client=client,
+                                            fallback=("reward" if use_teacher else args.label_mode),
+                                            progress=progress, on_label=label_writer)
+        finally:
+            if args.labels_out:
+                lf.close()
         label_idx = [ACTION_NAMES.index(a) for a in labels_used]
+        if args.labels_out:
+            print(f"  labels written to {args.labels_out}")
         if progress:
             progress.stage("fitting")
 

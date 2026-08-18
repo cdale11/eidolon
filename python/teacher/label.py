@@ -152,12 +152,13 @@ class TeacherClient:
 
 def label_experiences(exp: list[Any], client: TeacherClient | None = None,
                       fallback: str = "reward", report_every: int = 500,
-                      progress: Any = None) -> list[str]:
+                      progress: Any = None, on_label=None) -> list[str]:
     """Label each record; unavailable/absent teacher falls back to the offline heuristic.
 
     fallback: 'reward' = action with best mean observed reward; 'self' = the action the
     organism actually took. `progress`, if given, is a teacher.progress.ProgressState
-    updated per record for the progress web UI.
+    updated per record for the progress web UI. `on_label(t, label)`, if given, is called
+    per record as labels are produced (e.g. to stream the dataset to disk).
     """
     from .dataset import reward_best_labels
 
@@ -186,6 +187,8 @@ def label_experiences(exp: list[Any], client: TeacherClient | None = None,
             else:
                 label = e.action
         labels.append(label)
+        if on_label is not None:
+            on_label(e.t, label)
         if progress is not None:
             progress.tick(label=label, context=e.interpretable_text(),
                           fallback=is_fallback, measured_rpm=measured_rpm)
