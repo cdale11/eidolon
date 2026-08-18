@@ -1,0 +1,24 @@
+# Build
+build/
+cmake-build-*/
+*.o
+*.a
+*.so
+
+# Runs, saves, logs (never commit)
+data/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Model files / large binaries
+*.gguf
+*.bin
+
+# Editor/OS
+.vscode/
+.idea/
+*.swp
+.DS_Store

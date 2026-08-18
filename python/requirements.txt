@@ -1,0 +1,6 @@
+# Offline tooling dependencies for conda env `eidolon`.
+# Install with:  conda activate eidolon && pip install -r python/requirements.txt
+# Policy: CPU-only PyTorch (iGPU ROCm is experimental on gfx1103 — see AGENTS.md §2).
+numpy
+pyyaml
+requests
