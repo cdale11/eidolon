@@ -17,7 +17,7 @@ N_FEATURES = 27
 class Experience:
     __slots__ = ("t", "agentic", "action", "reward", "novelty", "threat", "aversive",
                  "safe", "body", "wx", "bush_dist", "water_dist", "eaten", "drank",
-                 "feats", "action_index")
+                 "feats", "action_index", "teacher_label_index")
 
     def __init__(self, rec: dict[str, Any]):
         self.t: int = int(rec["t"])
@@ -42,6 +42,13 @@ class Experience:
         if self.action not in ACTION_INDEX:
             raise ValueError(f"record t={self.t}: unknown action '{self.action}'")
         self.action_index: int = ACTION_INDEX[self.action]
+        tl = rec.get("teacherLabel")
+        if tl is not None:
+            if tl not in ACTION_INDEX:
+                raise ValueError(f"record t={self.t}: unknown teacher label '{tl}'")
+            self.teacher_label_index: int | None = ACTION_INDEX[tl]
+        else:
+            self.teacher_label_index = None
 
     def interpretable_text(self) -> str:
         b = self.body

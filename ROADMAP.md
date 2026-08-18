@@ -80,6 +80,10 @@ passes.
 - Next: LoRA distillation of the local 4B (GGUF adapter served by the existing Vulkan
   `llama-server --lora`); NIM-credentialed batch labeling; multi-seed prior training runs;
   reward-tuning scenario suite.
+- Reference artifact: `data/priors/teacher_policy.eprp` (100 live-labeled records from
+  4 seeds × 1 day, Qwen3-4B via the local llama-server). Regenerate: dump across seeds →
+  sample stratified → label once → `python -m teacher.train_prior --label-mode teacher
+  --labels labels.jsonl` (see CHANGELOG for observed behaviour change).
 - Gate: a teacher-baked prior measurably improves day-1 survival/behaviour vs random init
   on held-out seeds, while late-life learning still diverges per-organism (no scripting).
 

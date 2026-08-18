@@ -9,8 +9,14 @@ import sys
 import time
 import urllib.request
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
 SERVER = os.environ.get("SERVER_BIN", "build/bin/eidolon-server")
 PORT_BASE = int(os.environ.get("PORT_BASE", "9000"))
+
+from teacher.dataset import load_experiences as load_teacher_experiences  # noqa: E402
+from teacher.dataset import feature_matrix as teacher_feature_matrix  # noqa: E402
+from teacher.dataset import reward_best_labels as teacher_reward_labels  # noqa: E402
 
 
 def start_server(data_dir, port, extra=None):
@@ -137,6 +143,35 @@ def test_archive_written_by_server(work):
         time.sleep(2)
         db_path = os.path.join(work, "memory.db")
         assert os.path.exists(db_path)
+    finally:
+        proc.kill()
+        proc.wait()
+
+
+def test_server_loads_policy_prior(work):
+    from teacher.fit_prior import fit_prior, write_prior
+
+    # fit a tiny prior from a quick sim dump so the server gets a real .eprp
+    dump_dir = os.path.join(work, "dump")
+    os.makedirs(dump_dir, exist_ok=True)
+    dump = os.path.join(dump_dir, "exp.jsonl")
+    sim = os.environ.get("SIM_BIN", "build/bin/eidolon-sim")
+    r = subprocess.run([sim, "--data", dump_dir, "--seed", "42", "--deterministic",
+                        "--days", "0.05", "--world", "64x64",
+                        "--dump-experiences", dump],
+                       capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stderr
+    exp = load_teacher_experiences(dump)
+    res = fit_prior(teacher_feature_matrix(exp), teacher_reward_labels(exp),
+                    epochs=40, val_frac=0.0)
+    prior = os.path.join(work, "prior.eprp")
+    write_prior(prior, res["weights"], res["bias"])
+
+    port = PORT_BASE + 6
+    proc = start_server(work, port, extra=["--policy-prior", prior])
+    try:
+        s = http(port, "/api/status")
+        assert s["alive"] is True
     finally:
         proc.kill()
         proc.wait()

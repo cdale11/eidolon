@@ -194,6 +194,14 @@ void Server::simLoop() {
     }
     if (!resumed) {
       engine_.init(opts_.seed, opts_.deterministic, opts_.worldW, opts_.worldH);
+      if (!opts_.policyPriorPath.empty() &&
+          !engine_.loadPolicyPrior(opts_.policyPriorPath)) {
+        std::fprintf(stderr, "warning: cannot load policy prior %s; using random init\n",
+                     opts_.policyPriorPath.c_str());
+      } else if (!opts_.policyPriorPath.empty()) {
+        std::fprintf(stderr, "policy prior loaded from %s (online learning continues)\n",
+                     opts_.policyPriorPath.c_str());
+      }
       std::fprintf(stderr, "fresh organism: seed=%llu world=%dx%d\n",
                    static_cast<unsigned long long>(engine_.masterSeed()),
                    opts_.worldW, opts_.worldH);

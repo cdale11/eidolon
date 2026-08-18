@@ -25,6 +25,7 @@ void printUsage(FILE* out, const char* prog) {
                "  --seed N          master seed for fresh organisms (default 42)\n"
                "  --deterministic   deterministic sim (requires --seed)\n"
                "  --world WxH       world grid size (default 128x128)\n"
+               "  --policy-prior FILE  seed fresh organisms with teacher-baked weights\n"
                "  --llm URL         OpenAI-compatible endpoint, e.g.\n"
                "                    http://127.0.0.1:8080/v1 (default: offline)\n"
                "  --llm-timeout MS  LLM call timeout in ms (default 10000)\n"
@@ -57,7 +58,8 @@ int main(int argc, char** argv) {
       }
       opts.worldW = w;
       opts.worldH = h;
-    } else if (a == "--llm") opts.llmEndpoint = need("URL");
+    } else if (a == "--policy-prior") opts.policyPriorPath = need("FILE");
+    else if (a == "--llm") opts.llmEndpoint = need("URL");
     else if (a == "--llm-timeout") opts.llmTimeoutMs = std::atoi(need("MS"));
     else if (a == "--help") {
       printUsage(stdout, argv[0]);

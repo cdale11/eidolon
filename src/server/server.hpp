@@ -27,6 +27,7 @@ public:
     uint64_t seed = 42;
     bool deterministic = false;
     int worldW = 128, worldH = 128;
+    std::string policyPriorPath; // optional teacher-baked policy prior for fresh organisms
     std::string llmEndpoint; // empty = offline
     int llmTimeoutMs = 10000;
   };

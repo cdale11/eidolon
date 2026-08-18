@@ -30,8 +30,11 @@ def main(argv: list[str] | None = None) -> int:
                     help="deterministic subsample fraction in (0,1)")
     ap.add_argument("--label-mode", choices=["teacher", "reward", "self"],
                     default="teacher",
-                    help="label source; 'teacher' uses the live endpoint if reachable, "
-                         "falling back to 'reward'")
+                    help="label source; 'teacher' uses cached 'teacherLabel' fields, else "
+                         "the live endpoint if reachable, falling back to 'reward'")
+    ap.add_argument("--labels", default=None,
+                    help="optional JSONL of cached teacher labels {t, label} to overlay "
+                         "on the dump (label once, re-fit many times without the LLM)")
     ap.add_argument("--teacher-base", default=None, help="OpenAI-compatible base URL")
     ap.add_argument("--teacher-model", default=None, help="model id/name")
     ap.add_argument("--epochs", type=int, default=400)
@@ -47,11 +50,29 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     print(f"  {len(exp)} records")
 
+    # Overlay cached teacher labels ({t, label} JSONL) if provided.
+    overlay: dict[int, str] = {}
+    if args.labels:
+        with open(args.labels) as f:
+            for line in f:
+                rec = __import__("json").loads(line)
+                overlay[int(rec["t"])] = rec["label"]
+        print(f"  {len(overlay)} cached teacher labels overlaid")
+
     use_teacher = args.label_mode == "teacher"
-    client = TeacherClient(args.teacher_base, args.teacher_model) if use_teacher else None
-    labels_used = label_experiences(exp, client=client,
-                                    fallback=("reward" if use_teacher else args.label_mode))
-    label_idx = [ACTION_NAMES.index(a) for a in labels_used]
+    cached = all(e.teacher_label_index is not None or overlay.get(e.t) is not None
+                 for e in exp) if use_teacher else False
+    if cached:
+        label_idx = [
+            (e.teacher_label_index if e.teacher_label_index is not None
+             else ACTION_NAMES.index(overlay[e.t])) for e in exp
+        ]
+        print(f"  using {len(exp)} cached teacher labels")
+    else:
+        client = TeacherClient(args.teacher_base, args.teacher_model) if use_teacher else None
+        labels_used = label_experiences(exp, client=client,
+                                        fallback=("reward" if use_teacher else args.label_mode))
+        label_idx = [ACTION_NAMES.index(a) for a in labels_used]
 
     X = feature_matrix(exp)
     y = __import__("numpy").asarray(label_idx, dtype="int64")

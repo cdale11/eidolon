@@ -9,10 +9,11 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 - `eidolon-sim --dump-experiences FILE`: one JSONL record per tick with the 27-feature
   state vector plus interpretable context (body drives, weather, nearest bush/water,
   eaten/drank, reward, novelty, threat, aversive/safe flags) for offline training.
-- `eidolon-sim --policy-prior FILE`: seed a fresh organism's policy from a teacher-baked
-  `.eprp` prior (magic "EPRP", version 1, 5×(27+1) float32 softmax-linear weights).
-  Online learning continues on top of the prior — it changes the initialization, never
-  scripts behaviour. Snapshot round-trip and bit-exact replay verified with a prior loaded.
+- `eidolon-sim --policy-prior FILE` / `eidolon-server --policy-prior FILE`: seed a fresh
+  organism's policy from a teacher-baked `.eprp` prior (magic "EPRP", version 1,
+  5×(27+1) float32 softmax-linear weights). Online learning continues on top of the
+  prior — it changes the initialization, never scripts behaviour. Snapshot round-trip and
+  bit-exact replay verified with a prior loaded.
 - `Policy::loadPrior` / `LearnSystem::loadPolicyPrior` / `Engine::loadPolicyPrior`: prior
   loading with header validation; the prior is serialized into the snapshot with the rest
   of learning state.
@@ -20,11 +21,17 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   `dataset.py` (validated JSONL loader), `label.py` (OpenAI-compatible teacher client —
   local llama-server by default, NVIDIA NIM via `EIDOLON_TEACHER_*`; reward-guided offline
   fallback so the pipeline runs fully without an LLM), `fit_prior.py` (softmax-linear fit
-  + `.eprp` read/write), `train_prior.py` (end-to-end CLI).
+  + `.eprp` read/write), `train_prior.py` (end-to-end CLI, cached-label overlay so a
+  labeled sample can be re-fit without re-calling the teacher).
+- First real artifact: `data/priors/teacher_policy.eprp`, fitted from 100 live-labeled
+  records (Qwen3-4B via the local llama-server) sampled across 4 seeds × 1 day. On 5
+  held-out seeds it eliminates pointless Wander/Observe ticks entirely (vs ~30k per run
+  with the random init) with all seeds surviving; train/val accuracy 0.84/0.70.
 - Tests: `policy_loads_prior_and_retrains_online` (prior dominates init, learning moves
   weights, snapshot round-trip, identical continuation) and `python/tests/test_teacher.py`
   (dump → dataset → fit → sim reload → deterministic replay with prior + online updates
-  running; stub OpenAI endpoint exercises the teacher client offline).
+  running; stub OpenAI endpoint exercises the teacher client offline);
+  `test_server.py` covers `--policy-prior` on the server.
 - `python/requirements.txt` now pins `torch` (CPU) alongside numpy/requests.
 
 ### Phase 3 — Learning core (the mind starts)
