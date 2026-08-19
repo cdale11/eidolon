@@ -42,6 +42,7 @@ add_library(eidolon_core STATIC
   mind/self_model.cpp
   mind/metacognition.cpp
   mind/concept_formation.cpp
+  mind/graph_rewriting.cpp
   sim/engine.cpp)
 target_include_directories(eidolon_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 

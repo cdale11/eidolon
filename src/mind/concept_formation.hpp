@@ -67,7 +67,7 @@ public:
   void merge_concepts(float cohesion_threshold = 0.8f, float separation_threshold = 0.3f);
   
   // Request LLM to name a concept (if not yet named)
-  std::string request_llm_name(const Concept& concept,
+  std::string request_llm_name(const Concept& c,
                                const std::function<std::string(const std::string&)>& llm_callback);
   
   // Get concept activation for current state
@@ -90,8 +90,8 @@ private:
   uint32_t find_best_concept(const std::vector<float>& features) const;
   float cosine_similarity(const std::vector<float>& a, const std::vector<float>& b) const;
   void update_concept_centroid(uint32_t concept_id);
-  float compute_concept_cohesion(const Concept& concept) const;
-  float compute_concept_separation(const Concept& concept) const;
+  float compute_concept_cohesion(const Concept& c) const;
+  float compute_concept_separation(const Concept& c) const;
   void maybe_create_new_concept(const std::vector<float>& features,
                                 const std::string& context,
                                 uint64_t tick,

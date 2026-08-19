@@ -70,14 +70,13 @@ ConceptFormation::ConceptFormation(uint64_t seed) : seed_(seed), rng_(seed) {}
 uint32_t ConceptFormation::process_experience(const std::vector<float>& features,
                                               const std::string& context,
                                               uint64_t tick,
-                                              class Rng& rng) {
+                                              class Rng& /*rng*/) {
   // Store experience
   ExperienceVector exp;
   exp.features = features;
   exp.tick = tick;
   exp.context = context;
   exp.concept_id = 0;
-  size_t exp_idx = experience_buffer_.size();
   experience_buffer_.push_back(exp);
   
   // Find best matching concept
@@ -108,7 +107,6 @@ const Concept* ConceptFormation::get_concept(uint32_t id) const {
 }
 
 void ConceptFormation::merge_concepts(float cohesion_threshold, float separation_threshold) {
-  bool merged = false;
   for (size_t i = 0; i < concepts_.size(); ++i) {
     for (size_t j = i + 1; j < concepts_.size(); ++j) {
       const Concept& a = concepts_[i];
@@ -136,16 +134,16 @@ void ConceptFormation::merge_concepts(float cohesion_threshold, float separation
   }
 }
 
-std::string ConceptFormation::request_llm_name(const Concept& concept,
+std::string ConceptFormation::request_llm_name(const Concept& c,
                                                const std::function<std::string(const std::string&)>& llm_callback) {
   // Build prompt describing the concept
   std::ostringstream oss;
   oss << "Name this concept based on its properties:\n";
-  oss << "Cohesion: " << concept.cohesion << "\n";
-  oss << "Separation: " << concept.separation << "\n";
-  oss << "Usage count: " << concept.usage_count << "\n";
-  oss << "Member experiences: " << concept.member_experiences.size() << "\n";
-  oss << "Centroid size: " << concept.centroid.size() << "\n";
+  oss << "Cohesion: " << c.cohesion << "\n";
+  oss << "Separation: " << c.separation << "\n";
+  oss << "Usage count: " << c.usage_count << "\n";
+  oss << "Member experiences: " << c.member_experiences.size() << "\n";
+  oss << "Centroid size: " << c.centroid.size() << "\n";
   oss << "Provide a short, descriptive name (1-3 words):\n";
   
   std::string name = llm_callback(oss.str());
@@ -248,15 +246,15 @@ void ConceptFormation::update_concept_centroid(uint32_t concept_id) {
   c.centroid = new_centroid;
 }
 
-float ConceptFormation::compute_concept_cohesion(const Concept& concept) const {
-  if (concept.member_experiences.size() < 2) return 1.0f;
+float ConceptFormation::compute_concept_cohesion(const Concept& c) const {
+  if (c.member_experiences.size() < 2) return 1.0f;
   
   float total_sim = 0.0f;
   int count = 0;
-  for (size_t i = 0; i < concept.member_experiences.size(); ++i) {
-    for (size_t j = i + 1; j < concept.member_experiences.size(); ++j) {
-      uint32_t ei = concept.member_experiences[i];
-      uint32_t ej = concept.member_experiences[j];
+  for (size_t i = 0; i < c.member_experiences.size(); ++i) {
+    for (size_t j = i + 1; j < c.member_experiences.size(); ++j) {
+      uint32_t ei = c.member_experiences[i];
+      uint32_t ej = c.member_experiences[j];
       if (ei < experience_buffer_.size() && ej < experience_buffer_.size()) {
         float sim = cosine_similarity(experience_buffer_[ei].features, experience_buffer_[ej].features);
         total_sim += sim;
@@ -267,22 +265,22 @@ float ConceptFormation::compute_concept_cohesion(const Concept& concept) const {
   return count > 0 ? total_sim / count : 1.0f;
 }
 
-float ConceptFormation::compute_concept_separation(const Concept& concept) const {
+float ConceptFormation::compute_concept_separation(const Concept& c) const {
   if (concepts_.size() <= 1) return 1.0f;
   
   float max_sim = 0.0f;
   for (const auto& other : concepts_) {
-    if (other.id == concept.id) continue;
-    float sim = cosine_similarity(concept.centroid, other.centroid);
+    if (other.id == c.id) continue;
+    float sim = cosine_similarity(c.centroid, other.centroid);
     max_sim = std::max(max_sim, sim);
   }
   return 1.0f - max_sim; // higher = more separate
 }
 
 void ConceptFormation::maybe_create_new_concept(const std::vector<float>& features,
-                                                const std::string& context,
-                                                uint64_t tick,
-                                                class Rng& rng) {
+                                                const std::string& /*context*/,
+                                                uint64_t /*tick*/,
+                                                class Rng& /*rng*/) {
   Concept c;
   c.id = next_concept_id_++;
   c.name = "Concept_" + std::to_string(c.id);
