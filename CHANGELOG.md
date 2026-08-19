@@ -100,6 +100,11 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   - Test executable `eidolon_wasm_test.js` links and runs in Node.js
   - Native builds and all tests remain unaffected
   - Platform-specific code (`getpid()`, SQLite, pthreads) cleanly excluded via `EIDOLON_WASM_BUILD` / `EIDOLON_NO_SQLITE` / `EIDOLON_NO_THREADS` defines
+- **WASM SIMD compilation** (`src/CMakeLists.wasm-simd.txt`): SIMD128 support for WebAssembly
+  - `-msimd128` flag enabled
+  - Static library `libeidolon_replica_core_simd.a` builds successfully (~1.1 MB)
+  - Test executable `eidolon_wasm_test_simd.js` links and runs in Node.js
+  - SIMD-optimized math operations available for neural networks, physics, etc.
 - Gate: same seeded scenario produces the same individual state on native and WASM (parity test pending); no heavy work on the main UI thread
 
 ### Tests & tooling

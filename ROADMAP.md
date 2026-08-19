@@ -270,10 +270,13 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
 ## Phase 11 — Portable WASM client compute (in progress)
 - [x] Compile the same `ReplicaCore` to WebAssembly (Emscripten): plain WASM build working
   - Emscripten toolchain configured (`cmake/Modules/Platform/Emscripten.cmake`)
-  - Static library `libeidolon_replica_core.a` builds successfully
+  - Static library `libeidolon_replica_core.a` builds successfully (~1.1 MB)
   - Test executable links and runs in Node.js
   - Native builds and tests unaffected
-- [ ] WASM SIMD build
+- [x] WASM SIMD build
+  - `-msimd128` flag enabled
+  - Static library `libeidolon_replica_core_simd.a` builds successfully (~1.1 MB)
+  - Test executable links and runs in Node.js
 - [ ] Multithreaded builds (Workers + SharedArrayBuffer)
 - [ ] Capability detection → `ComputeProfile` (SIMD, Workers, SAB, WebGPU, WebGL fallback,
       concurrency, memory limits); auto backend selection hierarchy (WebGPU → WASM SIMD+MT →
