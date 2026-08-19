@@ -105,6 +105,11 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   - Static library `libeidolon_replica_core_simd.a` builds successfully (~1.1 MB)
   - Test executable `eidolon_wasm_test_simd.js` links and runs in Node.js
   - SIMD-optimized math operations available for neural networks, physics, etc.
+- **WASM Multithreaded compilation** (`src/CMakeLists.wasm-mt.txt`): pthreads/SharedArrayBuffer support
+  - `-pthread` + `-sPROXY_TO_PTHREAD=0` + `-sPTHREAD_POOL_SIZE=4` enabled
+  - Static library `libeidolon_replica_core_mt.a` builds successfully (~1.1 MB)
+  - Test executable `eidolon_wasm_test_mt.js` links and runs in Node.js
+  - Note: ALLOW_MEMORY_GROWTH + pthreads may impact non-WASM performance
 - Gate: same seeded scenario produces the same individual state on native and WASM (parity test pending); no heavy work on the main UI thread
 
 ### Tests & tooling

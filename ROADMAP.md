@@ -277,7 +277,10 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
   - `-msimd128` flag enabled
   - Static library `libeidolon_replica_core_simd.a` builds successfully (~1.1 MB)
   - Test executable links and runs in Node.js
-- [ ] Multithreaded builds (Workers + SharedArrayBuffer)
+- [x] Multithreaded builds (Workers + SharedArrayBuffer)
+  - `-pthread` + `-sPROXY_TO_PTHREAD=0` + `-sPTHREAD_POOL_SIZE=4` enabled
+  - Static library `libeidolon_replica_core_mt.a` builds successfully (~1.1 MB)
+  - Test executable links and runs in Node.js (with pthreads warning about memory growth)
 - [ ] Capability detection → `ComputeProfile` (SIMD, Workers, SAB, WebGPU, WebGL fallback,
       concurrency, memory limits); auto backend selection hierarchy (WebGPU → WASM SIMD+MT →
       plain WASM → server fallback)

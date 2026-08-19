@@ -1,0 +1,120 @@
+# WASM Multithreaded build configuration for Eidolon ReplicaCore
+# This builds with pthreads/SharedArrayBuffer support for WebAssembly
+
+cmake_minimum_required(VERSION 3.20)
+project(eidolon_wasm_mt LANGUAGES CXX)
+
+# Use the emscripten toolchain
+if(NOT CMAKE_TOOLCHAIN_FILE)
+  message(FATAL_ERROR "Must use -DCMAKE_TOOLCHAIN_FILE=/tmp/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake")
+endif()
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Build configuration
+set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -O3 -DNDEBUG")
+
+# WASM Multithreaded-specific definitions
+add_compile_definitions(
+  EIDOLON_WASM_BUILD=1
+  EIDOLON_NO_SQLITE=1
+  EIDOLON_WASM_MT=1
+  EIDOLON_WASM_SIMD=1
+)
+
+# Portable ReplicaCore: core simulation without platform dependencies
+# This includes: RNG, clock, world, physiology, mind (learning, memory, planning, etc.)
+# Excludes: SQLite archive, LLM bridge, server code
+
+add_library(eidolon_replica_core_mt STATIC
+  core/rng.cpp
+  core/log.cpp
+  core/serialize.cpp
+  core/json.cpp
+  world/world.cpp
+  world/wildlife.cpp
+  world/cellular_automata.cpp
+  world/voronoi.cpp
+  world/reaction_diffusion.cpp
+  world/boids.cpp
+  world/markov.cpp
+  world/lsystem.cpp
+  world/procgen.cpp
+  world/grammar.cpp
+  body/physiology.cpp
+  body/ode_tests.cpp
+  body/skill.cpp
+  body/crafting.cpp
+  body/affordance.cpp
+  body/construction.cpp
+  mind/memory.cpp
+  mind/memory_system.cpp
+  mind/mlp.cpp
+  mind/neuromod.cpp
+  mind/value_net.cpp
+  mind/threat_net.cpp
+  mind/policy.cpp
+  mind/attention.cpp
+  mind/personality.cpp
+  mind/learn.cpp
+  mind/world_predictor.cpp
+  mind/goal_emergence.cpp
+  mind/llm_planner.cpp
+  mind/user_model.cpp
+  mind/wildlife_social.cpp
+  mind/attachment.cpp
+  mind/belief_ising.cpp
+  mind/markov.cpp
+  mind/self_model.cpp
+  mind/metacognition.cpp
+  mind/concept_formation.cpp
+  mind/graph_rewriting.cpp
+  mind/reflection.cpp
+  mind/grounded_language.cpp
+  sim/engine.cpp
+)
+
+target_include_directories(eidolon_replica_core_mt PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+# WASM MT-specific compile options
+target_compile_options(eidolon_replica_core_mt PRIVATE
+  -fno-exceptions
+  -fno-rtti
+  -std=c++17
+  -msimd128
+  -pthread
+  -sPROXY_TO_PTHREAD=0
+)
+
+# Test executable to verify WASM MT linking works
+add_executable(eidolon_wasm_test_mt
+  ../tools/eidolon-wasm-test.cpp
+)
+target_link_libraries(eidolon_wasm_test_mt PRIVATE eidolon_replica_core_mt)
+
+# WASM MT link options for executable
+target_link_options(eidolon_wasm_test_mt PRIVATE
+  -sWASM=1
+  -sALLOW_MEMORY_GROWTH=1
+  -sEXPORT_ES6=0
+  -sMODULARIZE=1
+  -sEXPORT_NAME=EidolonReplicaCoreMT
+  -sENVIRONMENT=web,worker,node
+  -sINITIAL_MEMORY=64MB
+  -sMAXIMUM_MEMORY=256MB
+  -sSTACK_SIZE=5MB
+  -sASSERTIONS=0
+  -sSAFE_HEAP=0
+  -msimd128
+  -pthread
+  -sPROXY_TO_PTHREAD=0
+  -sPTHREAD_POOL_SIZE=4
+)
+
+# Export compile commands for tooling
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
