@@ -112,9 +112,12 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
       (deterministic sweep-line), Delaunay dual graph, Poisson-disc sampling for site
       placement, territory assignment. Fully seeded, bit-exact replay.
 - [x] **Cellular automata**: infection/disease spread across tiles (Conway-style with Healthy/Infected/Recovered states, terrain-factor transmission, deterministic threshold rules). Integrated with health/infection dynamics: `World::infectionCA_` stepped each tick, swamp/deep-water are disease vectors, `Physiology` scales exposure/infection by nearby infected CA cells. Snapshot serialization included. (src/world/cellular_automata.hpp/.cpp)
-- [ ] **Reaction-diffusion**: terrain texture patterns (mineral veins, fertile-soil
+- [x] **Reaction-diffusion**: terrain texture patterns (mineral veins, fertile-soil
       gradients), wildlife coat patterns, biological pattern formation. Stable explicit
-      Euler with capped iterations.
+      Euler with capped iterations. `src/world/reaction_diffusion.hpp/.cpp`: Gray-Scott
+      model, parameters for mineral veins / fertile soil / coat patterns, deterministic
+      explicit Euler, snapshot serialization. `generateMineralVeins()`, `generateFertileSoil()`,
+      `generateCoatPattern()` utilities.
 - [ ] **L-systems**: procedural plant / bush / branch geometry and river / road / root
       networks; foraging targets get spatial identity the memory system can reference.
 - [ ] **Procedural generation**: ruins / landmarks, named places, semantically tagged
