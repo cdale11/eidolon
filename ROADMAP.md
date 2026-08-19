@@ -230,8 +230,8 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
       reputation, future expectations — all experience-updated (`src/mind/self_model.hpp/.cpp`)
 - [x] Metacognition: uncertainty, confidence, self-prediction, failed-prediction recognition →
       reflection triggers (`src/mind/metacognition.hpp/.cpp`)
-- [ ] Concept formation: incremental clustering in embedding space, expandable ontology,
-      LLM-assisted naming (rare)
+- [x] Concept formation: incremental clustering in embedding space, expandable ontology,
+      LLM-assisted naming (rare) (`src/mind/concept_formation.hpp/.cpp`)
 - Gate: organism forms and names a concept it was never told about; self-model changes after
       significant events; it reports uncertainty honestly in conversation.
 
