@@ -1,4 +1,4 @@
-// Small integer 2D vector + Chebyshev distance, shared by the world and wildlife.
+// Small integer/float 2D vectors + Chebyshev distance, shared by the world and wildlife.
 #ifndef EIDOLON_VEC2_HPP
 #define EIDOLON_VEC2_HPP
 
@@ -9,6 +9,11 @@ struct Vec2i {
   int y = 0;
   bool operator==(const Vec2i& o) const { return x == o.x && y == o.y; }
   bool operator!=(const Vec2i& o) const { return !(*this == o); }
+};
+
+struct Vec2f {
+  float x = 0.0f;
+  float y = 0.0f;
 };
 
 inline int distCheb(Vec2i a, Vec2i b) {

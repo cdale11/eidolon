@@ -106,9 +106,11 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
       climate (temperature, humidity), biome boundaries, resource density (mineral veins,
       fertile soil, water table). Multi-octave, cached per-coord. (simplex fbm biomes +
       gradient-descent river carving live in `src/world/`; deterministic per seed)
-- [ ] **Voronoi / Delaunay**: biome / territory tessellation, settlement placement
+- [x] **Voronoi / Delaunay**: biome/territory tessellation, settlement placement
       (wildlife dens, the organism's shelter), Delaunay graph for landmark connectivity
-      the spatial memory indexes.
+      the spatial memory indexes. `src/world/voronoi.hpp/.cpp`: Fortune's algorithm
+      (deterministic sweep-line), Delaunay dual graph, Poisson-disc sampling for site
+      placement, territory assignment. Fully seeded, bit-exact replay.
 - [x] **Cellular automata**: infection/disease spread across tiles (Conway-style with Healthy/Infected/Recovered states, terrain-factor transmission, deterministic threshold rules). Integrated with health/infection dynamics: `World::infectionCA_` stepped each tick, swamp/deep-water are disease vectors, `Physiology` scales exposure/infection by nearby infected CA cells. Snapshot serialization included. (src/world/cellular_automata.hpp/.cpp)
 - [ ] **Reaction-diffusion**: terrain texture patterns (mineral veins, fertile-soil
       gradients), wildlife coat patterns, biological pattern formation. Stable explicit
