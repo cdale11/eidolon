@@ -67,6 +67,7 @@ public:
 
   const Neuromod& neuromod() const { return neuromod_; }
   const PersonalityLatent& personality() const { return latent_; }
+  PersonalityLatent& personality() { return latent_; }
   const DriveWeights& driveWeights() const { return drives_; }
   const ValueNet& valueNet() const { return valueNet_; }
   const ThreatNet& threatNet() const { return threatNet_; }

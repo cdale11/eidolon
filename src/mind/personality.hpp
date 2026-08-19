@@ -55,6 +55,9 @@ public:
 
   float value(int dim) const { return v_[static_cast<size_t>(dim)]; }
   const float* data() const { return v_; }
+  float* data() { return v_; }
+  float& operator[](int dim) { return v_[static_cast<size_t>(dim)]; }
+  const float& operator[](int dim) const { return v_[static_cast<size_t>(dim)]; }
 
   void serialize(BinaryWriter& w) const;
   bool deserialize(BinaryReader& r);

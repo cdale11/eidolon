@@ -51,6 +51,12 @@ public:
   const LearnerMetrics& metrics() const override { return metrics_; }
   void serialize(BinaryWriter& w) const override;
   bool deserialize(BinaryReader& r) override;
+  
+  // Heredity support
+  const std::vector<float>& weights() const { return w_; }
+  std::vector<float>& weights() { return w_; }
+  std::vector<float> serializedWeights() const { return w_; }
+  size_t serializedWeightsSize() const { return w_.size(); }
 
 private:
   int nFeatures_ = 0;

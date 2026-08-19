@@ -118,6 +118,7 @@ bool stepTo(Vec2i q, bool allowFall = false) noexcept;
 
   // Learning-core access (tests + metrics).
   const LearnSystem& learn() const { return learn_; }
+  LearnSystem& learn() { return learn_; }
 
   // Seed the policy bandit with teacher-baked weights (a "wisdom prior") instead of the
   // random init. Only meaningful for a fresh organism; online learning continues on top.

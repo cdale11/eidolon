@@ -75,6 +75,7 @@ add_library(eidolon_replica_core_simd STATIC
   mind/reflection.cpp
   mind/grounded_language.cpp
   mind/compute_profile.cpp
+  mind/heredity.cpp
   sim/engine.cpp
 )
 
