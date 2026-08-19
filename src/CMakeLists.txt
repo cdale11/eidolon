@@ -6,6 +6,7 @@ add_library(eidolon_core STATIC
   core/clock.hpp
   world/world.cpp
   world/wildlife.cpp
+  world/cellular_automata.cpp
   body/physiology.cpp
   mind/memory.cpp
   mind/memory_system.cpp

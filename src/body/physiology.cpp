@@ -42,7 +42,8 @@ void Physiology::reset() {
   wounds_.clear();
 }
 
-void Physiology::update(double dt, double ambientTempC, Activity act, double hazardDose) {
+void Physiology::update(double dt, double ambientTempC, Activity act, double hazardDose,
+              int nearbyInfected) {
   if (dt <= 0.0) return;
   const double asleep = sleeping_ ? 1.0 : 0.0;
   const double activity = act == Activity::Sleep ? 0.0
@@ -95,6 +96,19 @@ void Physiology::update(double dt, double ambientTempC, Activity act, double haz
   if (thirst_ >= kMax) health_ -= 0.12 * dt;
 
   // Phase 5 hazards: exposure, immune dynamics, wound healing and infection.
+  // Nearby infected CA cells increase exposure (disease spread) and infection growth.
+  if (nearbyInfected > 0) {
+    const double spreadFactor = std::min(1.0, static_cast<double>(nearbyInfected) / 8.0);
+    exposure_ += spreadFactor * 0.001 * dt;
+    // Infected CA cells also boost existing wound infections slightly.
+    if (!wounds_.empty()) {
+      for (Wound& w : wounds_) {
+        if (w.infection > 0.0) {
+          w.infection = std::min(1.0, w.infection + spreadFactor * 0.0001 * dt);
+        }
+      }
+    }
+  }
   updateExposure(hazardDose, dt);
   const bool restingOrSleeping = act == Activity::Rest || act == Activity::Sleep;
   immunity_ += 0.00005 * dt;  // slow baseline recovery

@@ -13,6 +13,7 @@
 #include "core/vec2.hpp"
 #include "world/noise.hpp"
 #include "world/wildlife.hpp"
+#include "world/cellular_automata.hpp"
 
 namespace eidolon {
 
@@ -240,6 +241,10 @@ public:
   int preyCount(Vec2i pos, int radius) const;
   int predatorCount(Vec2i pos, int radius) const;
 
+  // Infection cellular automata accessor (Phase 5 branch).
+  CellularAutomata& infectionCA() { return infectionCA_; }
+  const CellularAutomata& infectionCA() const { return infectionCA_; }
+
   // Nearest walkable tile adjacent to a water/river tile (shore); {-1,-1} if none.
   Vec2i adjacentWalkable(Vec2i water) const;
 
@@ -253,6 +258,7 @@ private:
   SimplexNoise temperatureNoise_;
   SimplexNoise humidityNoise_;
   Wildlife wildlife_;
+  CellularAutomata infectionCA_;
   Vec2i pos_ = {0, 0};
   bool alive_ = true;
   std::vector<Plant> plants_;

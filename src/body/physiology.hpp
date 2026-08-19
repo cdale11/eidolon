@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "core/serialize.hpp"
+#include "world/cellular_automata.hpp"
 
 namespace eidolon {
 
@@ -44,8 +45,10 @@ public:
 
   // Advance physiology by dt simulated seconds. `ambientTempC` drives thermoregulation;
   // `hazardDose` is the 0..1 disease-vector exposure accumulated this tick (swamp tiles,
-  // deep-water proximity while wet). Wounds/infection/immunity evolve here.
-  void update(double dt, double ambientTempC, Activity act, double hazardDose = 0.0);
+  // deep-water proximity while wet). `nearbyInfected` (optional) is the count of infected
+  // CA cells in the organism's vicinity; infection dynamics scale with this.
+  void update(double dt, double ambientTempC, Activity act, double hazardDose = 0.0,
+              int nearbyInfected = 0);
 
   // Consume food/water (units of energy / thirst reduction). Returns nothing; clamps.
   void eat(double food) {

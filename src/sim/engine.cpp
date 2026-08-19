@@ -134,7 +134,10 @@ Action Engine::tick() noexcept {
                                                    : Activity::Move;
   const Physiology before = body_;
   const int infectedBefore = body_.infectedWounds();
-  body_.update(dt, world_.weather().ambientTempC(clock_), act, hazardDose());
+  // Infection spread from cellular automata (Phase 5 branch).
+  const int nearbyInfected = world_.infectionCA().infectedCountInRadius(
+      world_.organismPos().x, world_.organismPos().y, 4);
+  body_.update(dt, world_.weather().ambientTempC(clock_), act, hazardDose(), nearbyInfected);
   stats_.infections += static_cast<uint64_t>(std::max(0, body_.infectedWounds() - infectedBefore));
 
   const uint64_t berriesBefore = stats_.berriesEaten;

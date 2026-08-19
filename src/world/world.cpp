@@ -330,6 +330,7 @@ bool eidolon::WaterSource::deserialize(eidolon::BinaryReader& r) {
 
 void eidolon::World::generate(int w, int h, eidolon::Rng& r) {
   grid_.generate(w, h, r);
+  infectionCA_.resize(w, h);
   pos_ = grid_.randomWalkable(r);
 
   plants_.clear();
@@ -486,6 +487,21 @@ eidolon::WorldUpdate eidolon::World::update(const eidolon::SimClock& c, int64_t 
 
   // Wildlife advances on its own throttle (kInterval sim-seconds).
   wildlife_.update(*this, c.now(), dt, alive_, pos_, out);
+
+  // Phase 5 branch: cellular automata for infection/disease spread (DESIGN §22).
+  // Update CA with infection rate, immunity, and terrain factors (swamp/deep-water = higher).
+  static constexpr double kBaseInfectionRate = 0.15;
+  static constexpr double kImmunityFactor = 0.5;
+  std::vector<float> terrainFactor(grid_.width() * grid_.height(), 1.0f);
+  for (int y = 0; y < grid_.height(); ++y) {
+    for (int x = 0; x < grid_.width(); ++x) {
+      size_t idx = static_cast<size_t>(y) * grid_.width() + x;
+      if (grid_.deepWater(x, y) || grid_.at(x, y) == Terrain::Swamp) {
+        terrainFactor[idx] = 2.0f;
+      }
+    }
+  }
+  infectionCA_.step(kBaseInfectionRate, kImmunityFactor, terrainFactor.data());
 
   out.weatherChanged = weather_.raining() != wasRaining || weather_.snowing() != wasSnowing ||
                        weather_.storming() != wasStorming;
@@ -700,6 +716,7 @@ void eidolon::World::serialize(eidolon::BinaryWriter& w) const {
   w.u64(static_cast<uint64_t>(waterSources_.size()));
   for (const eidolon::WaterSource& ws : waterSources_) ws.serialize(w);
   wildlife_.serialize(w);
+  infectionCA_.serialize(w);
 }
 
 bool eidolon::World::deserialize(eidolon::BinaryReader& r) {
@@ -721,5 +738,6 @@ bool eidolon::World::deserialize(eidolon::BinaryReader& r) {
     if (!ws.deserialize(r)) return false;
   }
   if (!wildlife_.deserialize(r)) return false;
+  if (!infectionCA_.deserialize(r)) return false;
   return true;
 }
