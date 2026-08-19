@@ -31,6 +31,7 @@ add_library(eidolon_core STATIC
   mind/attention.cpp
   mind/personality.cpp
   mind/learn.cpp
+  mind/world_predictor.cpp
   sim/engine.cpp)
 target_include_directories(eidolon_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 

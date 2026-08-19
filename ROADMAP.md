@@ -197,10 +197,10 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
   one novel recipe per seeded run; the recipe graph is inspectable and reproducible.
 
 ## Phase 7 — Planning & world model
-- WorldPredictor (one-step transition MLP) + confidence
-- Forward/beam planning over primitives using learned models; replan on surprise
-- Goal emergence from drives + state + opportunities (goals not specified by us appear)
-- LLM-assisted high-level plan proposals (validated, executed by runtime only)
+- [x] WorldPredictor (one-step transition MLP) + confidence
+- [x] Forward/beam planning over primitives using learned models; replan on surprise
+- [ ] Goal emergence from drives + state + opportunities (goals not specified by us appear)
+- [ ] LLM-assisted high-level plan proposals (validated, executed by runtime only)
 - Gate: planner outperforms greedy policy in a resource-fetch benchmark; unexpected
   environmental change triggers replanning.
 
