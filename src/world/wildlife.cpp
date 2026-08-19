@@ -79,6 +79,11 @@ Rng agentStream(uint64_t wildlifeSeed, uint32_t id) {
 
 // Deterministic greedy single-tile step maximizing alignment with (dx, dy); random
 // escape when no useful tile exists. Skips water/river and out-of-bounds tiles.
+// A tile a wildlife agent can step onto: in bounds, walkable, and not a cliff.
+bool stepWalkable(const Grid& g, int fx, int fy, int nx, int ny) {
+  return g.inBounds(nx, ny) && g.walkable(nx, ny) && !g.cliffBetween(fx, fy, nx, ny);
+}
+
 bool stepToward(const Grid& g, Vec2i& pos, double dx, double dy, Rng& rng) {
   const int off[9][2] = {{0, 0}, {0, -1}, {0, 1}, {-1, 0}, {1, 0},
                          {-1, -1}, {1, 1}, {-1, 1}, {1, -1}};
@@ -88,7 +93,7 @@ bool stepToward(const Grid& g, Vec2i& pos, double dx, double dy, Rng& rng) {
       for (int tries = 0; tries < 4; ++tries) {
         const int nx = pos.x + rng.irange(-1, 1);
         const int ny = pos.y + rng.irange(-1, 1);
-        if (g.inBounds(nx, ny) && g.walkable(nx, ny)) {
+        if (stepWalkable(g, pos.x, pos.y, nx, ny)) {
           pos = {nx, ny};
           return true;
         }
@@ -101,7 +106,7 @@ bool stepToward(const Grid& g, Vec2i& pos, double dx, double dy, Rng& rng) {
   for (int i = 0; i < 9; ++i) {
     const int nx = pos.x + off[i][0];
     const int ny = pos.y + off[i][1];
-    if (!g.inBounds(nx, ny) || !g.walkable(nx, ny)) continue;
+    if (!stepWalkable(g, pos.x, pos.y, nx, ny)) continue;
     const double s = dx * static_cast<double>(off[i][0]) +
                      dy * static_cast<double>(off[i][1]);
     if (s > bestScore) {
@@ -113,7 +118,7 @@ bool stepToward(const Grid& g, Vec2i& pos, double dx, double dy, Rng& rng) {
     for (int tries = 0; tries < 4; ++tries) {
       const int nx = pos.x + rng.irange(-1, 1);
       const int ny = pos.y + rng.irange(-1, 1);
-      if (g.inBounds(nx, ny) && g.walkable(nx, ny)) {
+      if (stepWalkable(g, pos.x, pos.y, nx, ny)) {
         pos = {nx, ny};
         return true;
       }
@@ -298,6 +303,19 @@ void Wildlife::update(World& w, int64_t now, int64_t dt, bool organismAlive,
   step(w, now, organismAlive, organismPos, out);
 }
 
+namespace {
+// A wolf bite. Satiates the wolf (hunger drops well below the attack threshold) so it
+// disengages instead of camping a stationary target.
+void attackOrganism(WildlifeAgent& a, int64_t now, WorldUpdate& out) {
+  const double dmg = kAttackDamageMin + a.rng.unit() * kAttackDamageRange;
+  a.attackCooldownUntil = now + kAttackCooldown;
+  a.hunger = std::max(0.0, a.hunger - 45.0);
+  out.attacked = true;
+  out.attackDamage = std::max(out.attackDamage, dmg);
+  out.attackerSpecies = static_cast<uint8_t>(Species::Wolf);
+}
+} // namespace
+
 void Wildlife::step(World& w, int64_t now, bool organismAlive,
                     Vec2i organismPos, WorldUpdate& out) {
   const Grid& g = w.grid();
@@ -444,7 +462,15 @@ void Wildlife::step(World& w, int64_t now, bool organismAlive,
     const bool isWolf = a.species == Species::Wolf;
     const int speed = isWolf ? kWolfSpeed : kRabbitSpeed;
 
+    // A wolf attacks the moment it is within reach (including mid-charge), rather than
+    // only after finishing its steps - otherwise a 3-step charge would overshoot past a
+    // fleeing organism and rarely ever land a bite.
     for (int s = 0; s < speed; ++s) {
+      if (isWolf && organismAlive && a.hunger > kAttackHunger &&
+          distCheb(a.pos, organismPos) <= 1 && now >= a.attackCooldownUntil) {
+        attackOrganism(a, now, out);
+        break;
+      }
       stepToward(g, a.pos, targets_[ai].x, targets_[ai].y, a.rng);
     }
 
@@ -458,18 +484,6 @@ void Wildlife::step(World& w, int64_t now, bool organismAlive,
           a.energy = std::min(100.0, a.energy + 12.0);
           break;
         }
-      }
-      // Attack the organism only when properly hungry and adjacent. A successful attack
-      // satiates the wolf (hunger drops well below the attack threshold), so it
-      // disengages instead of camping a stationary target.
-      if (organismAlive && a.hunger > kAttackHunger &&
-          distCheb(a.pos, organismPos) <= 1 && now >= a.attackCooldownUntil) {
-        const double dmg = kAttackDamageMin + a.rng.unit() * kAttackDamageRange;
-        a.attackCooldownUntil = now + kAttackCooldown;
-        a.hunger = std::max(0.0, a.hunger - 45.0);
-        out.attacked = true;
-        out.attackDamage = std::max(out.attackDamage, dmg);
-        out.attackerSpecies = static_cast<uint8_t>(Species::Wolf);
       }
     } else {
       // Rabbits graze adjacent edible plants, but only when hungry and only a little

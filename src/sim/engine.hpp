@@ -46,6 +46,9 @@ public:
     uint64_t predatorAttacks = 0;
     uint64_t berriesEaten = 0;
     uint64_t drinks = 0;
+    uint64_t fallsTaken = 0;        // steep descents that caused damage
+    uint64_t woundsSustained = 0;   // predator/fall wounds created
+    uint64_t infections = 0;        // times a wound turned infected
   };
 
   Engine() = default;
@@ -76,7 +79,12 @@ public:
   int64_t scheduledTarget() const { return scheduledTarget_; }
   void setScheduledTarget(int64_t t) { scheduledTarget_ = t; }
   const World& world() const { return world_; }
+  World& world() { return world_; }
   const Physiology& body() const { return body_; }
+  // Reset physiology to a fresh healthy state (wounds/infection cleared). Keeps the
+  // world, learning and personality intact. Used by tests (e.g. re-exposing an
+  // experienced organism to predators) and by the harness for repeat trials.
+  void resetBody() { body_.reset(); }
   const MemoryRing& memory() const { return memorySys_.ring(); }
   MemorySystem& memorySys() { return memorySys_; }
   const MemorySystem& memorySys() const { return memorySys_; }
@@ -102,6 +110,11 @@ public:
   bool moveToward(Vec2i target) noexcept;
   // Try to move one tile away from `threat` (used by the Flee action).
   bool moveAwayFrom(Vec2i threat) noexcept;
+  // Move one tile to `q` if reachable: walkable, in bounds, and not a cliff (elevation
+// difference > kCliffStep). Steep descents (drop > kFallDamageDrop) are refused unless
+// `allowFall` (fleeing / trapped): normal movement routes around them, so falls happen
+// only when forced and stay a rare, survivable hazard. A taken fall deals damage.
+bool stepTo(Vec2i q, bool allowFall = false) noexcept;
 
   // Learning-core access (tests + metrics).
   const LearnSystem& learn() const { return learn_; }
@@ -132,6 +145,10 @@ private:
   static PolicyAction actionToPolicy(Action a) noexcept;
   void dumpExperience(PolicyAction pa, bool agentic, float reward, float novelty,
                       bool aversive, bool safe, double eaten, bool drank) noexcept;
+
+  // Phase 5 disease-vector exposure dose (0..1/tick) from the current tile: Swamp ground,
+  // deep-water proximity, or any water adjacency while raining/storming.
+  double hazardDose() const noexcept;
 
   void serializeState(BinaryWriter& w) const;
   bool deserializeState(BinaryReader& r, std::string& err);

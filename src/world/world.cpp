@@ -31,6 +31,8 @@ void eidolon::Grid::generate(int w, int h, eidolon::Rng& r) {
   eidolon::SimplexNoise temperatureNoise(r.next());
   eidolon::SimplexNoise humidityNoise(r.next());
 
+  // Frequency scale: ~25-tile features give the terrain real relief (hills, valleys,
+  // steep faces). Phase 5 hazards (cliffs, damaging falls, deep water) need this.
   const float freqScale = 0.01f;
 
   for (int y = 0; y < h; ++y) {

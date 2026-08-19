@@ -94,11 +94,11 @@ passes.
 - [x] Plants (edible/toxic/medicinal), regrowth, depletion; water sources (river/lake/spring)
 - [x] Wildlife: prey (rabbits/deer) + predators (wolves/bears) with own drives (move, drink,
   flee, hunt) and fear of the organism; hunting/fleeing/attack resolution
-- [ ] Hazards (cliffs, deep water, disease vectors), infection/immune model, wounds
-- [ ] Causal chains verified end-to-end (scarcity → exploration → …)
-- Gate: in a seeded scarcity scenario the organism explores and finds food; predator events
-  produce measurable threat learning; survival rate improves with experience. (Wildlife
-  present and attacking; threat-learning-from-predator gate test not yet written.)
+- [x] Hazards (cliffs, deep water, disease vectors), infection/immune model, wounds
+- [x] Causal chains verified end-to-end (scarcity → exploration → food; predator attacks → threat learning → defensive behavior / survival). Phase 5 gate: `test_phase5.cpp` (7 tests, all passing).
+- [x] Wildlife `stepToward` cliff-aware; mid-charge attack fix (`attackOrganism`); `Grid::setElevation()` for deterministic terrain construction in tests.
+- [ ] Health / infection dynamics full integration (wound aging, infection spread, immune decay with deprivation / illness) — Phase 5 core is present and passing; extended infection dynamics remain for later phases.
+- Gate: `test_phase5.cpp` all green; worldgen `freqScale` = 0.01 (reverted from broken 0.04); zero-warning build; smoke run `--days 1 --seed 42` survives; event log shows normal predator-attack events, no anomalies.
 
 ### Phase 5 branch — deterministic generative systems (DESIGN §22)
 Seedable, allocation-light generative content; no LLM, bit-exact replays preserved.

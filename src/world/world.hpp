@@ -3,6 +3,7 @@
 #ifndef EIDOLON_WORLD_HPP
 #define EIDOLON_WORLD_HPP
 
+#include <cmath>
 #include <cstdint>
 #include <vector>
 
@@ -77,6 +78,24 @@ public:
   bool walkable(int x, int y) const {
     Terrain t = at(x, y);
     return t != Terrain::Water && t != Terrain::River;
+  }
+
+  // Phase 5 hazards.
+  // Maximum elevation difference a tile step can cross (steeper = impassable cliff).
+  static constexpr float kCliffStep = 0.16f;
+  bool cliffBetween(int x0, int y0, int x1, int y1) const {
+    return std::fabs(elevation(x1, y1) - elevation(x0, y0)) > kCliffStep;
+  }
+  // Deep water: a Water tile whose floor drops below a fixed depth. Adjacency to these
+  // tiles is a disease/exposure vector and hypothermia risk (drowning is prevented by
+  // the walkable() rule; proximity is the hazard).
+  bool deepWater(int x, int y) const {
+    return at(x, y) == Terrain::Water && elevation(x, y) < -0.52f;
+  }
+  // Terrain-editing hook for tests/tools to construct hazard scenarios deterministically
+  // (e.g. a cliff or a deep-water shore) regardless of worldgen smoothness.
+  void setElevation(int x, int y, float v) {
+    if (inBounds(x, y)) elevation_[static_cast<size_t>(y) * w_ + x] = v;
   }
 
   Vec2i randomWalkable(Rng& r) const;
@@ -202,6 +221,7 @@ public:
   void killOrganism() { alive_ = false; }
 
   const std::vector<Plant>& plants() const { return plants_; }
+  std::vector<Plant>& plants() { return plants_; }
   const std::vector<WaterSource>& waterSources() const { return waterSources_; }
   const Wildlife& wildlife() const { return wildlife_; }
   Wildlife& wildlife() { return wildlife_; }

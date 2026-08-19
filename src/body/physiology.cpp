@@ -5,6 +5,28 @@
 
 namespace eidolon {
 
+namespace {
+constexpr int kMaxWounds = 8;
+constexpr double kInfectionThreshold = 0.5;   // total infection load for "sick"
+constexpr double kExposureThreshold = 0.6;    // chronic exposure needed to infect wounds
+constexpr double kMinimumInfectableAge = 600; // wounds younger than 10 min don't infect
+constexpr double kMinimumInfectableSeverity = 0.3;
+} // namespace
+
+void Wound::serialize(BinaryWriter& w) const {
+  w.f64(severity);
+  w.f64(infection);
+  w.i64(age);
+  w.u8(source);
+}
+
+bool Wound::deserialize(BinaryReader& r) {
+  if (!r.f64(severity) || !r.f64(infection) || !r.i64(age) || !r.u8(source)) return false;
+  severity = std::max(0.0, std::min(severity, 1.0));
+  infection = std::max(0.0, std::min(infection, 1.0));
+  return true;
+}
+
 void Physiology::reset() {
   energy_ = 70.0;
   hunger_ = 0.0;
@@ -15,9 +37,12 @@ void Physiology::reset() {
   health_ = 100.0;
   pain_ = 0.0;
   sleeping_ = false;
+  immunity_ = 0.5;
+  exposure_ = 0.0;
+  wounds_.clear();
 }
 
-void Physiology::update(double dt, double ambientTempC, Activity act) {
+void Physiology::update(double dt, double ambientTempC, Activity act, double hazardDose) {
   if (dt <= 0.0) return;
   const double asleep = sleeping_ ? 1.0 : 0.0;
   const double activity = act == Activity::Sleep ? 0.0
@@ -69,7 +94,92 @@ void Physiology::update(double dt, double ambientTempC, Activity act) {
   if (hunger_ >= kMax) health_ -= 0.05 * dt;
   if (thirst_ >= kMax) health_ -= 0.12 * dt;
 
+  // Phase 5 hazards: exposure, immune dynamics, wound healing and infection.
+  updateExposure(hazardDose, dt);
+  const bool restingOrSleeping = act == Activity::Rest || act == Activity::Sleep;
+  immunity_ += 0.00005 * dt;  // slow baseline recovery
+  if (energy_ > 70.0 && hunger_ < 30.0 && thirst_ < 40.0 && restingOrSleeping)
+    immunity_ += 0.00012 * dt;  // well-fed rest strengthens immunity
+  if (hunger_ >= 80.0 || thirst_ >= 80.0 || energy_ < 20.0 || sick())
+    immunity_ -= 0.0002 * dt;  // deprivation / active infection weakens it
+  immunity_ = std::max(0.1, std::min(immunity_, 1.0));
+
+  double infectionLoad = 0.0;
+  for (auto it = wounds_.begin(); it != wounds_.end();) {
+    Wound& w = *it;
+    w.age += static_cast<int64_t>(dt);
+    if (w.infection > 0.0) {
+      // The immune system fights the infection; clearing depends on immunity.
+      w.infection -= immunity_ * 0.00015 * dt;
+      infectionLoad += w.infection;
+      if (w.infection <= 0.0) w.infection = 0.0;
+    } else {
+      // Uninfected wounds heal; resting/sleeping doubles the rate.
+      const double heal = 0.00012 * dt * (restingOrSleeping ? 2.0 : 1.0);
+      w.severity -= heal;
+    }
+    if (w.severity <= 0.02) {
+      it = wounds_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+
+  // Sickness: a heavy infection drains energy and health and induces fever.
+  if (infectionLoad >= kInfectionThreshold) {
+    health_ -= 0.0004 * dt;
+    energy_ -= 0.0006 * dt;
+    bodyTemp_ += 0.0003 * (38.5 - bodyTemp_) * dt;  // mild fever toward 38.5C
+  }
+
+  // Acute pain slowly subsides (chronic wound pain remains via wounds_).
+  pain_ = std::max(0.0, pain_ - 0.0015 * dt);
+
   clamp();
+}
+
+void Physiology::addWound(double severity, uint8_t source) {
+  const double s = std::max(0.0, std::min(severity, 1.0));
+  if (s < 0.02) return;
+  // Bounded wound list: drop the oldest once full, keeping the most severe.
+  if (static_cast<int>(wounds_.size()) >= kMaxWounds) {
+    auto oldest = wounds_.begin();
+    for (auto it = wounds_.begin(); it != wounds_.end(); ++it) {
+      if (it->age > oldest->age) oldest = it;
+    }
+    if (oldest->severity >= s) return;  // new wound is less severe than the oldest
+    wounds_.erase(oldest);
+  }
+  wounds_.push_back(Wound{s, 0.0, 0, source});
+}
+
+void Physiology::updateExposure(double dose, double dt) {
+  if (dt <= 0.0) return;
+  // Disease-vector exposure accumulates in hazard zones, decays elsewhere.
+  exposure_ += dose * dt;
+  exposure_ -= 0.0003 * dt;
+  exposure_ = std::max(0.0, std::min(exposure_, 1.0));
+  // Chronic exposure to a severe, sufficiently old wound can seed an infection.
+  if (exposure_ >= kExposureThreshold) {
+    for (Wound& w : wounds_) {
+      if (w.infection <= 0.0 && w.age >= kMinimumInfectableAge &&
+          w.severity > kMinimumInfectableSeverity) {
+        w.infection = 0.2;
+      }
+    }
+  }
+}
+
+double Physiology::woundPain() const {
+  double p = 0.0;
+  for (const Wound& w : wounds_) p += w.severity * 4.0;
+  return std::min(p, 15.0);
+}
+
+double Physiology::totalInfection() const {
+  double t = 0.0;
+  for (const Wound& w : wounds_) t += w.infection;
+  return t;
 }
 
 void Physiology::clamp() noexcept {
@@ -93,6 +203,10 @@ void Physiology::serialize(BinaryWriter& w) const {
   w.f64(health_);
   w.f64(pain_);
   w.u8(sleeping_ ? 1 : 0);
+  w.f64(immunity_);
+  w.f64(exposure_);
+  w.u32(static_cast<uint32_t>(wounds_.size()));
+  for (const Wound& wo : wounds_) wo.serialize(w);
 }
 
 bool Physiology::deserialize(BinaryReader& r) {
@@ -104,6 +218,17 @@ bool Physiology::deserialize(BinaryReader& r) {
   uint8_t sleeping;
   if (!r.u8(sleeping)) return false;
   sleeping_ = sleeping != 0;
+  if (!r.f64(immunity_) || !r.f64(exposure_)) return false;
+  uint32_t n;
+  if (!r.u32(n)) return false;
+  if (n > static_cast<uint32_t>(kMaxWounds)) return false;
+  wounds_.clear();
+  wounds_.reserve(n);
+  for (uint32_t i = 0; i < n; ++i) {
+    Wound wo;
+    if (!wo.deserialize(r)) return false;
+    wounds_.push_back(wo);
+  }
   clamp();
   return true;
 }

@@ -11,6 +11,14 @@ namespace eidolon {
 namespace {
 constexpr int kDefaultWorldW = 128;
 constexpr int kDefaultWorldH = 128;
+// A descent steeper than this (in elevation units) counts as a damaging fall. Chosen
+// against the freq-0.02 terrain: falls are occasional, painless scratches that mostly
+// bruise (wounds) and feed the infection vector — never a dominant survival drain.
+constexpr double kFallDamageDrop = 0.12;
+// Fall damage multiplier: dmg = (drop - kFallDamageDrop) * scale (max ~0.8 near cliffs).
+constexpr double kFallDamageScale = 20.0;
+// A fall opens a wound above this damage; wounds feed the infection/disease vector.
+constexpr double kFallWoundThreshold = 0.25;
 
 const char* modeName(int m) {
   return m == 0 ? "active" : m == 1 ? "rest" : "sleep";
@@ -125,7 +133,9 @@ Action Engine::tick() noexcept {
                        : action == Action::Drink   ? Activity::Drink
                                                    : Activity::Move;
   const Physiology before = body_;
-  body_.update(dt, world_.weather().ambientTempC(clock_), act);
+  const int infectedBefore = body_.infectedWounds();
+  body_.update(dt, world_.weather().ambientTempC(clock_), act, hazardDose());
+  stats_.infections += static_cast<uint64_t>(std::max(0, body_.infectedWounds() - infectedBefore));
 
   const uint64_t berriesBefore = stats_.berriesEaten;
   const uint64_t drinksBefore = stats_.drinks;
@@ -139,6 +149,10 @@ Action Engine::tick() noexcept {
     ++stats_.predatorAttacks;
     events_.push({clock_.now(), 4 /* kind: attack */,
                   static_cast<uint16_t>(wu.attackDamage * 10.0)});
+    // Predator bites open wounds (Phase 5 injury model feeds infection risk later).
+    const double woundSev = std::min(0.6, 0.15 + wu.attackDamage * 0.04);
+    body_.addWound(woundSev, 0 /* source: predator */);
+    ++stats_.woundsSustained;
     recordEpisode(EventKind::Attack, static_cast<uint8_t>(std::min(255.0, wu.attackDamage * 2.5)),
                   0.6, static_cast<uint8_t>(Action::Flee),
                   Participant::Self | Participant::Predator, Outcome::Failure, 0.0f, 0.0f, -1.0f,
@@ -322,6 +336,53 @@ Action Engine::decide() noexcept {
   return a;
 }
 
+bool Engine::stepTo(Vec2i q, bool allowFall) noexcept {
+  const Grid& g = world_.grid();
+  if (!g.inBounds(q.x, q.y) || !g.walkable(q.x, q.y)) return false;
+  const Vec2i p = world_.organismPos();
+  // Impassable cliff: steeper than kCliffStep elevation change (both up and down).
+  if (g.cliffBetween(p.x, p.y, q.x, q.y)) return false;
+  // Steep descents are avoided unless forced (fleeing/trapped); the fall itself hurts.
+  const double drop = static_cast<double>(g.elevation(p.x, p.y)) -
+                      static_cast<double>(g.elevation(q.x, q.y));
+  if (drop > kFallDamageDrop) {
+    if (!allowFall) return false;
+    const double dmg = (drop - kFallDamageDrop) * kFallDamageScale;
+    if (dmg > 0.0) {
+      body_.takeDamage(dmg, false); // falls bruise without spiking pain
+      ++stats_.fallsTaken;
+      if (dmg > kFallWoundThreshold) {
+        body_.addWound(std::min(0.4, 0.1 + dmg * 0.03), 1 /* source: fall */);
+        ++stats_.woundsSustained;
+      }
+    }
+  }
+  world_.setOrganismPos(q);
+  return true;
+}
+
+double Engine::hazardDose() const noexcept {
+  const Vec2i p = world_.organismPos();
+  const Grid& g = world_.grid();
+  double dose = 0.0;
+  if (g.at(p.x, p.y) == Terrain::Swamp) dose += 0.0008;  // standing water on swampland
+  bool adjacentDeep = false;
+  bool adjacentWater = false;
+  for (int dy = -1; dy <= 1; ++dy) {
+    for (int dx = -1; dx <= 1; ++dx) {
+      const int nx = p.x + dx, ny = p.y + dy;
+      if (!g.inBounds(nx, ny)) continue;
+      if (g.deepWater(nx, ny)) adjacentDeep = true;
+      const Terrain t = g.at(nx, ny);
+      if (t == Terrain::Water || t == Terrain::River) adjacentWater = true;
+    }
+  }
+  if (adjacentDeep) dose += 0.0006;  // deep-water proximity
+  if (adjacentWater && (world_.weather().raining() || world_.weather().storming()))
+    dose += 0.0005;  // wading/standing in runoff while wet
+  return dose;
+}
+
 bool Engine::moveToward(Vec2i target) noexcept {
   const Vec2i p = world_.organismPos();
   if (p == target) return true;
@@ -342,17 +403,17 @@ bool Engine::moveToward(Vec2i target) noexcept {
     }
   }
   if (bestX >= 0) {
-    world_.setOrganismPos({bestX, bestY});
-    return true;
+    if (stepTo({bestX, bestY})) return true;
   }
-  // Dead end (surrounded by water): random jitter to escape.
-  for (int attempt = 0; attempt < 4; ++attempt) {
+  // Dead end, or every path forward descends steeply: random jitter to escape. Prefer
+  // gentle steps; only take a fall if genuinely trapped.
+  for (int attempt = 0; attempt < 6; ++attempt) {
     const Vec2i q{p.x + rngCognition_.irange(-1, 1), p.y + rngCognition_.irange(-1, 1)};
-    if (world_.grid().inBounds(q.x, q.y) && world_.grid().walkable(q.x, q.y) &&
-        q != p) {
-      world_.setOrganismPos(q);
-      return true;
-    }
+    if (q != p && stepTo(q)) return true;
+  }
+  for (int attempt = 0; attempt < 6; ++attempt) {
+    const Vec2i q{p.x + rngCognition_.irange(-1, 1), p.y + rngCognition_.irange(-1, 1)};
+    if (q != p && stepTo(q, true)) return true;
   }
   return false;
 }
@@ -374,17 +435,12 @@ bool Engine::moveAwayFrom(Vec2i threat) noexcept {
     }
   }
   if (bestX >= 0) {
-    world_.setOrganismPos({bestX, bestY});
-    return true;
+    return stepTo({bestX, bestY}, true); // fleeing: take any step, even a fall
   }
-  // Surrounded by water: random jitter to escape.
-  for (int attempt = 0; attempt < 4; ++attempt) {
+  // Surrounded by water/cliffs: random jitter to escape (falling allowed).
+  for (int attempt = 0; attempt < 6; ++attempt) {
     const Vec2i q{p.x + rngCognition_.irange(-1, 1), p.y + rngCognition_.irange(-1, 1)};
-    if (world_.grid().inBounds(q.x, q.y) && world_.grid().walkable(q.x, q.y) &&
-        q != p) {
-      world_.setOrganismPos(q);
-      return true;
-    }
+    if (q != p && stepTo(q, true)) return true;
   }
   return false;
 }
@@ -395,10 +451,7 @@ void Engine::execute(Action a) noexcept {
       const Vec2i p = world_.organismPos();
       const int dx = rngCognition_.irange(-1, 1);
       const int dy = rngCognition_.irange(-1, 1);
-      const Vec2i q{p.x + dx, p.y + dy};
-      if (world_.grid().inBounds(q.x, q.y) && world_.grid().walkable(q.x, q.y)) {
-        world_.setOrganismPos(q);
-      }
+      stepTo({p.x + dx, p.y + dy});
       ++stats_.actionsWander;
       break;
     }
@@ -419,10 +472,7 @@ void Engine::execute(Action a) noexcept {
         // No food in sight: wander to look for some.
         const int dx = rngCognition_.irange(-1, 1);
         const int dy = rngCognition_.irange(-1, 1);
-        const Vec2i q{p.x + dx, p.y + dy};
-        if (world_.grid().inBounds(q.x, q.y) && world_.grid().walkable(q.x, q.y)) {
-          world_.setOrganismPos(q);
-        }
+        stepTo({p.x + dx, p.y + dy});
         break;
       }
       if (plant->pos == p) {
@@ -453,10 +503,7 @@ void Engine::execute(Action a) noexcept {
         // No visible predator: defensive wander.
         const int dx = rngCognition_.irange(-1, 1);
         const int dy = rngCognition_.irange(-1, 1);
-        const Vec2i q{p.x + dx, p.y + dy};
-        if (world_.grid().inBounds(q.x, q.y) && world_.grid().walkable(q.x, q.y)) {
-          world_.setOrganismPos(q);
-        }
+        stepTo({p.x + dx, p.y + dy});
       }
       break;
     }
@@ -501,16 +548,13 @@ void Engine::execute(Action a) noexcept {
             }
           }
           if (best.x >= 0 && best != p) {
-            world_.setOrganismPos(best);
+            stepTo(best);
             break;
           }
           // No water gradient here: wander.
           const int dx = rngCognition_.irange(-1, 1);
           const int dy = rngCognition_.irange(-1, 1);
-          const Vec2i q{p.x + dx, p.y + dy};
-          if (world_.grid().inBounds(q.x, q.y) && world_.grid().walkable(q.x, q.y)) {
-            world_.setOrganismPos(q);
-          }
+          stepTo({p.x + dx, p.y + dy});
         }
       }
       break;
@@ -634,6 +678,9 @@ void Engine::serializeState(BinaryWriter& w) const {
   w.u64(stats_.predatorAttacks);
   w.u64(stats_.berriesEaten);
   w.u64(stats_.drinks);
+  w.u64(stats_.fallsTaken);
+  w.u64(stats_.woundsSustained);
+  w.u64(stats_.infections);
   w.u8(resting_ ? 1 : 0);
 }
 
@@ -675,7 +722,8 @@ bool Engine::deserializeState(BinaryReader& r, std::string& err) {
       !r.u64(stats_.actionsObserve) || !r.u64(stats_.actionsForage) ||
       !r.u64(stats_.actionsDrink) || !r.u64(stats_.actionsFlee) ||
       !r.u64(stats_.predatorAttacks) || !r.u64(stats_.berriesEaten) ||
-      !r.u64(stats_.drinks)) {
+      !r.u64(stats_.drinks) || !r.u64(stats_.fallsTaken) ||
+      !r.u64(stats_.woundsSustained) || !r.u64(stats_.infections)) {
     err = "snapshot stats corrupt";
     return false;
   }

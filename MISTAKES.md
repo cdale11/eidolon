@@ -72,3 +72,13 @@ version bumped to 6. Added `grid_serialize_roundtrip_full_fidelity` which elemen
 checks every tile/biome/elevation/temperature/humidity cell through a default-constructed
 round-trip. Audit every `bytes(data, size())` call when a vector element is wider than one
 byte, and make serialization round-trip tests compare raw element data, not a partial hash.
+
+### 2026-08-19 — Phase 5 worldgen freqScale 0.04/0.03/0.02 all broke survival (death spiral)
+Context: Phase 5 hazards (cliffs/falls) needed steep terrain, so `freqScale` was raised from 0.01 to 0.04.
+Mistake: At 0.04 (and 0.03/0.02), natural elevation deltas ≥ 0.12 appear everywhere. Every descent becomes a painful fall (`kFallDamageDrop=0.12`), which raises `pain_`, which triggers `Rest`, which lowers `energy_`, which reduces foraging/drinking, which raises `hunger_`/`thirst_` — a death spiral. Seed 42 died at 11.7 days at 0.02. The problem went unnoticed because the build/tests only check determinism, not long-run survival.
+Fix / rule: `freqScale` reverted to 0.01 (max adjacent delta ≈ 0.107, below `kFallDamageDrop`). Hazard tests now construct steep terrain manually via `Grid::setElevation()` (this also lets the cliff tests work deterministically at any freq). Any future change to `freqScale` must include a `--days 1 --seed 42` smoke-run survival check.
+
+### 2026-08-19 — Phase 5 gate test `expHits < naiveHits` asserts a non-existent mechanism
+Context: Designing the `phase5_gate_survival_improves_with_experience` gate test; wrote `CHECK(expHits < naiveHits)` (fewer predator hits = survival improvement).
+Mistake: A committed predator (wolf `speed=3`) always closes distance faster (`net +2`/tick) than a fleeing organism (`speed=1`). With `stepWalkable()` (cliff-aware), the wolf catches and bites regardless of whether the organism flees from 12 tiles (threat veto) or 3 tiles (emergency valve). Empirical runs at seed 2024 showed 3 hits for both branches; sometimes the experienced branch even got more hits (longer chase). The assertion is unsupported by the mechanics.
+Fix / rule: Redesign the survival gate to test what the mechanics actually deliver: a durable elevated `threatEstimate()` carrying into a later encounter, and a measurable defensive-behavior product — the trained organism keeps a strictly larger average distance from the predator (proactive flee at sight radius vs emergency-only). The gate now asserts `expAvgDist > naiveAvgDist` (verified empirically: ~2x distance) + `expAlive` + `threatEstimate() > 0.6f`. Never assert behavioral outcomes that the mechanics don't support.
