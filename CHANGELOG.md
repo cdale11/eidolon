@@ -70,6 +70,7 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 
 ### Phase 9 — Self-model, concepts, metacognition (current session)
 - **Self-model** (`src/mind/self_model.hpp/.cpp`): Capability assessment, autobiographical summary, preferences, reputation, future expectations. Metacognitive state (uncertainty, prediction confidence, reflection triggers). Experience-based updates from physiology and goals.
+- **Metacognition** (`src/mind/metacognition.hpp/.cpp`): Prediction tracking, error detection, surprise detection, reflection triggers, confidence/uncertainty dynamics. Prediction history with MSE tracking, reflection triggers on surprise, confidence/uncertainty dynamics.
 - All tests pass; snapshot version 11
 
 ### Tests & tooling

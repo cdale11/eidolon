@@ -228,8 +228,8 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
 ## Phase 9 — Self-model, concepts, metacognition
 - [x] Self-model: body/abilities, autobiographical summary, preferences, beliefs, goals,
       reputation, future expectations — all experience-updated (`src/mind/self_model.hpp/.cpp`)
-- [ ] Metacognition: uncertainty, confidence, self-prediction, failed-prediction recognition →
-      reflection triggers
+- [x] Metacognition: uncertainty, confidence, self-prediction, failed-prediction recognition →
+      reflection triggers (`src/mind/metacognition.hpp/.cpp`)
 - [ ] Concept formation: incremental clustering in embedding space, expandable ontology,
       LLM-assisted naming (rare)
 - Gate: organism forms and names a concept it was never told about; self-model changes after
