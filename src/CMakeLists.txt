@@ -38,6 +38,7 @@ add_library(eidolon_core STATIC
   mind/wildlife_social.cpp
   mind/attachment.cpp
   mind/belief_ising.cpp
+  mind/markov.cpp
   sim/engine.cpp)
 target_include_directories(eidolon_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 

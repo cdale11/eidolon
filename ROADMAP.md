@@ -218,8 +218,10 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
       trust states as spins; evidence = fields; consistency = couplings. Produces coherent
       worldviews, belief flips under strong evidence, cognitive dissonance when evidence
       conflicts. Spin update rule is deterministic + bounded noise; convergence testable.
-- [ ] **Markov models**: explicit chains for the user model states (familiar / stranger /
+- [x] **Markov models**: explicit chains for the user model states (familiar / stranger /
       trusted / feared) and the wildlife social states (friend / neutral / threat).
+      `src/mind/markov.hpp/.cpp`: template `MarkovChain<N>` with deterministic transitions,
+      steady-state computation, serialization. Predefined chains for user/wildlife states.
 - Gate: a belief flip on strong evidence is reproducible; belief clusters persist across
   save / load; trust dynamics match a calibrated Ising simulation.
 
