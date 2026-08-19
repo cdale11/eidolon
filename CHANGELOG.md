@@ -71,7 +71,9 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 ### Phase 9 — Self-model, concepts, metacognition (current session)
 - **Self-model** (`src/mind/self_model.hpp/.cpp`): Capability assessment, autobiographical summary, preferences, reputation, future expectations. Metacognitive state (uncertainty, prediction confidence, reflection triggers). Experience-based updates from physiology and goals.
 - **Metacognition** (`src/mind/metacognition.hpp/.cpp`): Prediction tracking, error detection, surprise detection, reflection triggers, confidence/uncertainty dynamics. Prediction history with MSE tracking, reflection triggers on surprise, confidence/uncertainty dynamics.
-- All tests pass; snapshot version 11
+- **Concept formation** (`src/mind/concept_formation.hpp/.cpp`): Incremental K-means clustering in embedding space, experience buffering, concept merging, LLM-assisted naming hooks, concept activation lookup.
+- **Graph rewriting** (`src/mind/graph_rewriting.hpp/.cpp`): Typed graph for concept ontology (Concept/Relation/Property/Event/Category nodes; IsA/HasProperty/Causes/PartOf/RelatedTo/Opposes/Enables edges), `RewriteRule` with pattern matching and replacement, incremental `match_pattern` / `apply_rules`, `sync_with_concepts` hook, full snapshot serialization.
+- All tests pass; snapshot version 12
 
 ### Tests & tooling
 - C++ unit suite runs in parallel: each test in its own process (`eidolon_tests --list`
