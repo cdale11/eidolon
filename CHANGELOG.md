@@ -5,6 +5,38 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 
 ## [Unreleased]
 
+### Phase 5 — Rich world & wildlife (world generation + ecology)
+- Noise-field world generation (simplex fbm): elevation, temperature, humidity per tile;
+  biomes (temperate plains/forest, boreal, tundra, desert, savannah, jungle, mountain,
+  swamp, water bodies, rivers) derived from the climate fields.
+- Rivers carved by gradient descent into low-elevation drainage paths; terrain smoothing
+  by majority vote; guaranteed water bodies.
+- Plants with types (edible/toxic/medicinal/wood), amount, regrowth, toxicity and
+  medicinal value; biome-weighted type distribution; a guaranteed starter edible plant
+  near spawn so the organism always has a first meal.
+- Water sources (river/lake/spring) placed on walkable shore tiles (never on water), each
+  with capacity, current level and flow rate; drinking consumes the source, which refills
+  over time.
+- Seasons (spring/summer/autumn/winter) drive weather probability and ambient
+  temperature; weather now tracks humidity and wind speed; snow/rain/storm gating
+  reshaped by season.
+- Perception extended to 20 features: season, terrain, nearest plant (distance/direction/
+  fullness), nearest water source, plant density, nearest toxic plant (distance/direction),
+  medicinal distance, elevation, humidity.
+- Engine drink/forage integrated with sources/plants (nearest-source adjacency drinking);
+  experience dump records nearest plant/water distances.
+- Grid snapshot now round-trips all climate arrays (tiles, biomes, elevation, temperature,
+  humidity) — fixes a post-restore out-of-bounds crash; snapshot version bumped to 4.
+- Snapshot now persists the run's scheduled target so a resumed run continues the ORIGINAL
+  day schedule — `--days 0.5` + `--days 0.5` is byte-identical to `--days 1.0` even when
+  coarse ticks overshoot the boundary (fixes `test_saveload_continuity`).
+
+### Tests & tooling
+- C++ unit suite runs in parallel: each test in its own process (`eidolon_tests --list`
+  / `--name <t>`) driven by `python/tests/run_unit.sh` with `xargs -P$(nproc)`; pid-unique
+  temp files for archive DBs, event logs and policy priors; ~5 s wall vs ~8 s serial.
+- New test hooks: harness `currentTestName()`, `test_main --list`/`--name` filters.
+
 ### Phase 4 — Memory systems & sleep
 - Full episodic encoding: Episode struct now carries participants, action, outcome,
   prediction, prediction error, emotional valence, social relevance, and relevance

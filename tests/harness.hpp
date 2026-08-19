@@ -22,6 +22,11 @@ inline int& failureCount() {
   return f;
 }
 
+inline const char*& currentTestName() {
+  static const char* n = "";
+  return n;
+}
+
 inline void recordFailure(const char* file, int line, const char* expr) {
   std::fprintf(stderr, "  CHECK failed %s:%d: %s\n", file, line, expr);
   ++failureCount();
@@ -34,6 +39,7 @@ struct Registrar {
 inline int runAll() {
   int failed = 0;
   for (const TestCase& tc : registry()) {
+    currentTestName() = tc.name;
     const int before = failureCount();
     tc.fn();
     if (failureCount() > before) {
@@ -43,6 +49,7 @@ inline int runAll() {
       std::printf("ok   %s\n", tc.name);
     }
   }
+  currentTestName() = "";
   return failed;
 }
 

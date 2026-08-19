@@ -38,3 +38,15 @@ behind.
 Fix / rule: `eval._run_one` parses the dump then `shutil.rmtree`s the run dir; `evolve_prior`
 deletes each individual's temp `.eprp` after evaluation. Peak usage is now ~1 run dir. Any
 new bulk simulation loop must clean per-iteration artifacts, and must know /tmp is tmpfs.
+
+### 2026-08-19 — Coarse-tick run target overshoot broke resume == uninterrupted
+Context: Phase 5 world change altered the tick cadence, and `test_saveload_continuity`
+failed: a `--days 0.5` then `--days 0.5` run was byte-different from `--days 1.0`.
+Mistake: The CLI computed the resume target as `clock.now() + days*86400`. The first stage
+overshoots its 0.5-day boundary by up to one coarse tick (1/10/30 s), so the second stage
+targeted 86421 instead of 86400 and logged one extra event. Baseline passed only because
+the old tick cadence happened to overshoot identically in both runs — a latent bug, not a
+test quirk.
+Fix / rule: Persist the run's scheduled target in the snapshot (engine field, version 4);
+the CLI advances that schedule instead of the overshot clock. Never derive a resume boundary
+from a clock that coarse ticks may have overshot.

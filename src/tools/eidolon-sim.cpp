@@ -187,7 +187,11 @@ int main(int argc, char** argv) {
   std::signal(SIGINT, handleSignal);
   std::signal(SIGTERM, handleSignal);
 
-  const int64_t target = engine.clock().now() + static_cast<int64_t>(days * 86400.0);
+  // Run target advances the PERSISTED schedule, not the (possibly overshot) current
+  // clock. Coarse ticks overshoot a day boundary by up to one step; computing the resume
+  // target from the clock would stretch later segments and break "resume == uninterrupted".
+  const int64_t target = engine.scheduledTarget() + static_cast<int64_t>(days * 86400.0);
+  engine.setScheduledTarget(target);
   int64_t nextProgress = ((engine.clock().now() / 3600) + 1) * 3600;
   std::string whyStopped = "completed";
 

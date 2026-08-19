@@ -58,10 +58,10 @@ TEST(world_serialize_roundtrip) {
   Rng ra(42), rb(42);
   a.generate(48, 48, ra);
   b.generate(48, 48, rb);
-  // Simulate some life so bushes have been consumed/regrown.
   SimClock c;
   a.update(c, 3600, ra);
-  a.consumeBerries(a.bushes()[0].pos, 3.0);
+  const Plant* p0 = a.nearestEdiblePlant(a.organismPos(), 8);
+  if (p0) a.consumePlant(p0->pos, 3.0);
   a.update(c, 7200, ra);
   std::vector<uint8_t> blob = packSnapshot(kSnapshotVersion,
                                            [&](BinaryWriter& w) { a.serialize(w); });
@@ -71,52 +71,53 @@ TEST(world_serialize_roundtrip) {
   CHECK(ok);
   CHECK_EQ(a.grid().hash(), b.grid().hash());
   CHECK(a.organismPos() == b.organismPos());
-  CHECK_EQ(a.bushes().size(), b.bushes().size());
-  for (size_t i = 0; i < a.bushes().size(); ++i) {
-    CHECK(a.bushes()[i].pos == b.bushes()[i].pos);
-    CHECK_EQ(a.bushes()[i].berries, b.bushes()[i].berries);
+  CHECK_EQ(a.plants().size(), b.plants().size());
+  for (size_t i = 0; i < a.plants().size(); ++i) {
+    CHECK(a.plants()[i].pos == b.plants()[i].pos);
+    CHECK_EQ(a.plants()[i].amount, b.plants()[i].amount);
   }
 }
 
-TEST(world_generation_places_bushes) {
+TEST(world_generation_places_plants) {
   World w;
   Rng r(123);
   w.generate(128, 128, r);
-  CHECK(w.bushes().size() >= 16); // ~64 expected at 1/256 density
-  for (const Bush& b : w.bushes()) {
-    CHECK(w.grid().walkable(b.pos.x, b.pos.y));
-    CHECK(w.grid().at(b.pos.x, b.pos.y) != Terrain::Desert);
-    CHECK(b.berries > 0.0 && b.berries <= 10.0);
+  CHECK(w.plants().size() >= 16); // ~164 expected at 1/100 density
+  for (const Plant& pl : w.plants()) {
+    CHECK(w.grid().walkable(pl.pos.x, pl.pos.y));
+    CHECK(w.grid().at(pl.pos.x, pl.pos.y) != Terrain::Desert);
+    CHECK(pl.amount > 0.0 && pl.amount <= pl.maxAmount);
+    CHECK(pl.type == PlantType::Edible || pl.type == PlantType::Toxic || pl.type == PlantType::Medicinal || pl.type == PlantType::Wood);
   }
 }
 
-TEST(world_berries_regrow_capped) {
+TEST(world_plants_regrow_capped) {
   World w;
   Rng r(5);
   w.generate(32, 32, r);
   SimClock c;
   w.update(c, 10 * 86400, r); // 10 days
-  for (const Bush& b : w.bushes()) CHECK_EQ(b.berries, 10.0);
+  for (const Plant& pl : w.plants()) CHECK_EQ(pl.amount, pl.maxAmount);
 }
 
 TEST(world_consume_and_regrow) {
   World w;
   Rng r(9);
   w.generate(32, 32, r);
-  const Bush& b0 = w.bushes()[0];
-  const double before = b0.berries;
-  const double eaten = w.consumeBerries(b0.pos, 5.0);
+  const Plant* p0 = w.nearestEdiblePlant(w.organismPos(), 8);
+  CHECK(p0 != nullptr);
+  const double before = p0->amount;
+  const double eaten = w.consumePlant(p0->pos, 5.0);
   CHECK(eaten > 0.0 && eaten <= 5.0);
   SimClock c;
   w.update(c, 5400, r); // 1.5 hours → +1 berry
-  CHECK_EQ(w.bushes()[0].berries, before - eaten + 1.0);
+  CHECK_EQ(w.plants()[0].amount, before - eaten + 1.0);
 }
 
 TEST(world_adjacent_to_water) {
   World w;
   Rng r(11);
   w.generate(64, 64, r);
-  // Find a water tile with a walkable neighbor and check adjacency from it.
   bool checked = false;
   for (int y = 1; y < 63 && !checked; ++y) {
     for (int x = 1; x < 63; ++x) {
@@ -128,19 +129,19 @@ TEST(world_adjacent_to_water) {
     }
   }
   CHECK(checked);
-  // Deep in walkable land, not adjacent.
   Vec2i p = w.organismPos();
   CHECK(!w.adjacentToWater(p));
 }
 
-TEST(world_nearest_bush_visibility) {
+TEST(world_nearest_plant_visibility) {
   World w;
   Rng r(13);
   w.generate(64, 64, r);
-  const Bush& b = w.bushes()[0];
-  const Bush* found = w.nearestBush(b.pos, 0);
-  CHECK(found != nullptr && found->pos == b.pos);
-  CHECK(w.nearestBush(b.pos, 0) != nullptr);
+  const Plant* pl = w.nearestEdiblePlant(w.organismPos(), 8);
+  CHECK(pl != nullptr);
+  const Plant* found = w.nearestEdiblePlant(pl->pos, 0);
+  CHECK(found != nullptr && found->pos == pl->pos);
+  CHECK(w.nearestEdiblePlant(pl->pos, 0) != nullptr);
 }
 
 TEST(perception_feature_vector_shape) {
@@ -150,16 +151,20 @@ TEST(perception_feature_vector_shape) {
   SimClock c;
   c.set(43200); // noon
   const Perception p = w.perceive(w.organismPos(), c);
-  CHECK_EQ(Perception::kFeatures, 12);
+  CHECK_EQ(Perception::kFeatures, 20);
   CHECK(p[0] >= 0.0 && p[0] <= 1.0); // hour
   CHECK(p[1] >= 0.0 && p[1] <= 3.0); // weather code
   CHECK(p[2] >= 0.0 && p[2] <= 1.0); // temp
-  CHECK(p[3] >= 0.0 && p[3] <= 1.0); // terrain
-  CHECK(p[4] >= 0.0 && p[4] <= 1.0); // food distance
-  CHECK(p[5] >= -1.0 && p[5] <= 1.0);
+  CHECK(p[3] >= 0.0 && p[3] <= 1.0); // season
+  CHECK(p[4] >= 0.0 && p[4] <= 1.0); // terrain
+  CHECK(p[5] >= 0.0 && p[5] <= 1.0); // food distance
   CHECK(p[6] >= -1.0 && p[6] <= 1.0);
-  CHECK(p[8] >= 0.0 && p[8] <= 1.0); // water distance
-  CHECK(p[11] >= 0.0 && p[11] <= 1.0);
+  CHECK(p[7] >= -1.0 && p[7] <= 1.0);
+  CHECK(p[8] >= 0.0 && p[8] <= 1.0); // food fullness
+  CHECK(p[9] >= 0.0 && p[9] <= 1.0); // water distance
+  CHECK(p[10] >= -1.0 && p[10] <= 1.0);
+  CHECK(p[11] >= -1.0 && p[11] <= 1.0);
+  CHECK(p[12] >= 0.0 && p[12] <= 1.0); // plants in sight
 }
 
 TEST(weather_temperature_bounded) {
@@ -176,7 +181,7 @@ TEST(weather_serdes_roundtrip) {
   Weather a, b;
   SimClock c;
   Rng r(3);
-  for (int i = 0; i < 100; ++i) a.update(c, r);
+  for (int i = 0; i < 100; ++i) a.update(c, 3600, r);
   std::vector<uint8_t> blob = packSnapshot(kSnapshotVersion,
                                            [&](BinaryWriter& w) { a.serialize(w); });
   std::string err;

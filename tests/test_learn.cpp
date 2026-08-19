@@ -1,5 +1,7 @@
 #include "harness.hpp"
 
+#include <unistd.h>
+
 #include <cmath>
 #include <cstdio>
 
@@ -225,7 +227,10 @@ TEST(policy_loads_prior_and_retrains_online) {
   // Teacher-baked prior: Drink strongly preferred when the thirst feature (index 13) is
   // high. Online learning must keep running on top of it, and the prior + learned state
   // must round-trip through the snapshot.
-  const char* path = "/tmp/eidolon_test_prior.eprp";
+  char pathbuf[128];
+  std::snprintf(pathbuf, sizeof(pathbuf), "/tmp/eidolon_test_prior_%d.eprp",
+                static_cast<int>(::getpid()));
+  const char* path = pathbuf;
   {
     std::FILE* f = std::fopen(path, "wb");
     CHECK(f != nullptr);

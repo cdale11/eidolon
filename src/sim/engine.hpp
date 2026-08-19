@@ -66,6 +66,11 @@ public:
   bool runDays(double days, EventLog& log, std::string& whyStopped);
 
   const SimClock& clock() const { return clock_; }
+  // Absolute sim-time target of the current run schedule. Persisted so a resumed run
+  // continues the ORIGINAL schedule (resume == uninterrupted) even when coarse ticks
+  // overshoot the requested boundary.
+  int64_t scheduledTarget() const { return scheduledTarget_; }
+  void setScheduledTarget(int64_t t) { scheduledTarget_ = t; }
   const World& world() const { return world_; }
   const Physiology& body() const { return body_; }
   const MemoryRing& memory() const { return memorySys_.ring(); }
@@ -136,6 +141,7 @@ private:
   bool deterministic_ = false;
   bool died_ = false;
   int64_t lastStatusAt_ = 0;
+  int64_t scheduledTarget_ = 0; // absolute end-time of the current run schedule
   int64_t statusInterval_ = 600; // sim-seconds between status lines
   int prevMode_ = 0; // last logged life mode: 0=active,1=rest,2=sleep
   bool resting_ = false; // hysteresis for rest mode (prevents boundary oscillation)

@@ -1,5 +1,7 @@
 #include "harness.hpp"
 
+#include <unistd.h>
+
 #include <cstdio>
 #include <cstring>
 
@@ -88,7 +90,9 @@ TEST(engine_runs_days_and_logs) {
   e.init(42, true, 64, 64);
   e.setStatusInterval(600);
   EventLog log;
-  std::string path = "/tmp/eidolon_test_events.log";
+  char buf[128];
+  std::snprintf(buf, sizeof(buf), "/tmp/eidolon_test_events_%d.log", static_cast<int>(::getpid()));
+  std::string path = buf;
   std::remove(path.c_str());
   CHECK(log.open(path));
   std::string why;

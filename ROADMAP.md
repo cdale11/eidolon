@@ -90,20 +90,21 @@ passes.
   on held-out seeds, while late-life learning still diverges per-organism (no scripting).
 
 ## Phase 5 — Rich world & wildlife
-- Seasons, weather events (rain/storm/heat/cold), temperature coupling
-- Plants (edible/toxic/medicinal), regrowth, depletion; water sources
-- Wildlife: prey (rabbits) + predators (dogs/wolves) with own drives and fear of the
+- [x] Seasons, weather events (rain/storm/heat/cold), temperature coupling
+- [x] Plants (edible/toxic/medicinal), regrowth, depletion; water sources (river/lake/spring)
+- [ ] Wildlife: prey (rabbits) + predators (dogs/wolves) with own drives and fear of the
   organism; hunting/fleeing/attack resolution
-- Hazards (cliffs, deep water, disease vectors), infection/immune model, wounds
-- Causal chains verified end-to-end (scarcity → exploration → …)
+- [ ] Hazards (cliffs, deep water, disease vectors), infection/immune model, wounds
+- [ ] Causal chains verified end-to-end (scarcity → exploration → …)
 - Gate: in a seeded scarcity scenario the organism explores and finds food; predator events
   produce measurable threat learning; survival rate improves with experience.
 
 ### Phase 5 branch — deterministic generative systems (DESIGN §22)
 Seedable, allocation-light generative content; no LLM, bit-exact replays preserved.
-- [ ] **Noise fields** (Perlin / simplex / value): foundation of world gen — elevation,
+- [x] **Noise fields** (Perlin / simplex / value): foundation of world gen — elevation,
       climate (temperature, humidity), biome boundaries, resource density (mineral veins,
-      fertile soil, water table). Multi-octave, cached per-coord.
+      fertile soil, water table). Multi-octave, cached per-coord. (simplex fbm biomes +
+      gradient-descent river carving live in `src/world/`; deterministic per seed)
 - [ ] **Voronoi / Delaunay**: biome / territory tessellation, settlement placement
       (wildlife dens, the organism's shelter), Delaunay graph for landmark connectivity
       the spatial memory indexes.

@@ -201,17 +201,14 @@ void Engine::dumpExperience(PolicyAction pa, bool agentic, float reward, float n
   static constexpr const char* kActionNames[] = {"Forage", "Drink", "Rest",
                                                  "Wander", "Observe"};
   int bushDist = -1;
-  if (const Bush* bush = world_.nearestBush(p, Perception::kSightRadius)) {
-    bushDist = distCheb(bush->pos, p);
+  const Plant* plant = world_.nearestEdiblePlant(p, Perception::kSightRadius);
+  if (plant) {
+    bushDist = distCheb(plant->pos, p);
   }
   int waterDist = -1;
-  for (int y = p.y - Perception::kSightRadius; y <= p.y + Perception::kSightRadius; ++y) {
-    for (int x = p.x - Perception::kSightRadius;
-         x <= p.x + Perception::kSightRadius; ++x) {
-      if (world_.grid().at(x, y) != Terrain::Water) continue;
-      const int d = distCheb({x, y}, p);
-      waterDist = (waterDist < 0 || d < waterDist) ? d : waterDist;
-    }
+  const WaterSource* water = world_.nearestWaterSource(p, Perception::kSightRadius);
+  if (water) {
+    waterDist = distCheb(water->pos, p);
   }
   std::FILE* f = experienceOut_;
   std::fprintf(f,
@@ -353,8 +350,8 @@ void Engine::execute(Action a) noexcept {
     case Action::Forage: {
       ++stats_.actionsForage;
       const Vec2i p = world_.organismPos();
-      const Bush* bush = world_.nearestBush(p, Perception::kSightRadius);
-      if (!bush) {
+      const Plant* plant = world_.nearestEdiblePlant(p, Perception::kSightRadius);
+      if (!plant) {
         // No food in sight: wander to look for some.
         const int dx = rngCognition_.irange(-1, 1);
         const int dy = rngCognition_.irange(-1, 1);
@@ -364,8 +361,8 @@ void Engine::execute(Action a) noexcept {
         }
         break;
       }
-      if (bush->pos == p) {
-        const double eaten = world_.consumeBerries(bush->pos, 4.0);
+      if (plant->pos == p) {
+        const double eaten = world_.consumePlant(plant->pos, 4.0);
         if (eaten > 0.0) {
           body_.eat(eaten);
           stats_.berriesEaten += static_cast<uint64_t>(eaten);
@@ -377,40 +374,31 @@ void Engine::execute(Action a) noexcept {
                         Relevance::Rewarding | Relevance::GoalRelated);
         }
       } else {
-        // Step onto the bush tile (it is walkable), then eat next tick.
-        moveToward(bush->pos);
+        // Step onto the plant tile (it is walkable), then eat next tick.
+        moveToward(plant->pos);
       }
       break;
     }
     case Action::Drink: {
       ++stats_.actionsDrink;
       const Vec2i p = world_.organismPos();
-if (world_.adjacentToWater(p)) {
-        body_.drink(8.0);
-        ++stats_.drinks;
-        events_.push({clock_.now(), 3, 0});
-        recordEpisode(EventKind::Drink, 0, 0.25, static_cast<uint8_t>(Action::Drink),
-                        Participant::Self, Outcome::Success, 0.0f, 0.0f, 0.2f, 0.0f,
-                        Relevance::Rewarding | Relevance::GoalRelated);
-      } else {
-        // Walk toward the nearest water tile in sight (or wander).
-        int targetX = -1, targetY = -1, bestD = Perception::kSightRadius + 1;
-        for (int y = p.y - Perception::kSightRadius; y <= p.y + Perception::kSightRadius;
-             ++y) {
-          for (int x = p.x - Perception::kSightRadius;
-               x <= p.x + Perception::kSightRadius; ++x) {
-            if (world_.grid().at(x, y) != Terrain::Water) continue;
-            const int d = distCheb({x, y}, p);
-            if (d < bestD) {
-              bestD = d;
-              targetX = x;
-              targetY = y;
-            }
-          }
+      if (world_.adjacentToWater(p)) {
+        double drank = world_.drinkFromSource(p, 8.0);
+        if (drank > 0.0) {
+          body_.drink(drank);
+          ++stats_.drinks;
+          events_.push({clock_.now(), 3, 0});
+          recordEpisode(EventKind::Drink, 0, 0.25, static_cast<uint8_t>(Action::Drink),
+                          Participant::Self, Outcome::Success, 0.0f, 0.0f, 0.2f, 0.0f,
+                          Relevance::Rewarding | Relevance::GoalRelated);
         }
-        if (targetX >= 0) {
-          moveToward({targetX, targetY});
+      } else {
+        // Walk toward the nearest water source in sight.
+        const WaterSource* water = world_.nearestWaterSource(p, Perception::kSightRadius);
+        if (water) {
+          moveToward(water->pos);
         } else {
+          // No water in sight: wander.
           const int dx = rngCognition_.irange(-1, 1);
           const int dy = rngCognition_.irange(-1, 1);
           const Vec2i q{p.x + dx, p.y + dy};
@@ -510,6 +498,7 @@ void Engine::serializeState(BinaryWriter& w) const {
   w.u8(deterministic_ ? 1 : 0);
   w.i64(clock_.now());
   w.i64(lastStatusAt_);
+  w.i64(scheduledTarget_);
   w.u8(static_cast<uint8_t>(prevMode_));
 
   serializeRng(w, rngWorld_);
@@ -539,8 +528,9 @@ void Engine::serializeState(BinaryWriter& w) const {
 bool Engine::deserializeState(BinaryReader& r, std::string& err) {
   uint64_t seed;
   uint8_t det;
-  int64_t now, lastStatus;
-  if (!r.u64(seed) || !r.u8(det) || !r.i64(now) || !r.i64(lastStatus)) {
+  int64_t now, lastStatus, scheduledTarget;
+  if (!r.u64(seed) || !r.u8(det) || !r.i64(now) || !r.i64(lastStatus) ||
+      !r.i64(scheduledTarget)) {
     err = "snapshot header corrupt";
     return false;
   }
@@ -553,6 +543,7 @@ bool Engine::deserializeState(BinaryReader& r, std::string& err) {
   deterministic_ = det != 0;
   clock_.set(now);
   lastStatusAt_ = lastStatus;
+  scheduledTarget_ = scheduledTarget;
   prevMode_ = prevMode;
   if (!deserializeRng(r, rngWorld_) || !deserializeRng(r, rngWeather_) ||
       !deserializeRng(r, rngBody_) || !deserializeRng(r, rngCognition_) ||

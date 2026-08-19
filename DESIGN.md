@@ -123,13 +123,19 @@ churn, no dynamic dispatch in the innermost loops.
 ## 4. World
 
 A **tile grid** (default 128×128; configurable) with spatial hashing for entity lookup.
+Phase 5 world gen is **noise-field based**: per-tile simplex fbm elevation, temperature and
+humidity fields produce the biome map; rivers carve by gradient descent into drainage paths;
+terrain is smoothed by majority vote. Every tile is deterministic from the master seed, and
+all climate arrays (tiles, biomes, elevation, temperature, humidity) round-trip through the
+versioned snapshot.
 
 | System | Contents |
 |---|---|
-| Terrain | plains, forest, hills, water/river, lake, desert, caves; walkability, food yield, cover |
-| Weather | day/night cycle, seasons (temp curves), rain, snow, storm, heatwave, cold snap; affects body and foraging |
-| Plants | edible plants, fruit trees, wood sources, medicinal herbs, toxic plants; regrowth, seasons |
-| Animals (wildlife) | small game (rabbits), predators (dogs/wolves), birds; autonomous agents with own drives (hunger, fear of organism), reproduction, migration |
+| Terrain | plains, forest, hills, water/river, lake, desert, swamp, tundra, mountain; walkability (water/river impassable), biome-tagged |
+| Weather | day/night cycle, seasons (spring/summer/autumn/winter) with temperature curves, rain, snow, storm; humidity + wind speed tracked; season-weighted state transitions |
+| Plants | edible/toxic/medicinal/wood plants with amount, regrowth rate, toxicity, medicinal value; biome-weighted distribution; a starter edible plant is guaranteed near spawn |
+| Water sources | river/lake/spring with capacity, current level, flow rate; placed on walkable shore tiles (never on water); refill over time |
+| Animals (wildlife) | small game (rabbits), predators (dogs/wolves), birds; autonomous agents with own drives (hunger, fear of organism), reproduction, migration — *not yet implemented (Phase 5)* |
 | Resources | water (river/lake/rain), stone, wood, clay, flint, plant fiber |
 | Food chain | plant → prey → predator; predation risk gives the organism genuine fear-relevant events |
 | Hazards | cliffs, deep water, storms, cold, predators, disease vectors, poisonous plants |

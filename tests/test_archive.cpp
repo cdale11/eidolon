@@ -1,6 +1,7 @@
 #include "harness.hpp"
 
 #include <sqlite3.h>
+#include <unistd.h>
 
 #include <cstdio>
 
@@ -12,7 +13,7 @@ namespace {
 std::string tmpDbPath() {
   static int n = 0;
   char buf[128];
-  std::snprintf(buf, sizeof(buf), "/tmp/eidolon_test_%d.db", n++);
+  std::snprintf(buf, sizeof(buf), "/tmp/eidolon_test_%d_%d.db", static_cast<int>(::getpid()), n++);
   std::remove(buf);
   std::remove((std::string(buf) + "-wal").c_str());
   std::remove((std::string(buf) + "-shm").c_str());
