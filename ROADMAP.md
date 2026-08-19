@@ -131,9 +131,14 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
       `ObjectTag` bitmask for semantic tagging (Edible, Medicinal, Tool, Weapon,
       Shelter, Water, Danger, Safe, Social, Resource, Landmark, Hidden, Quest).
       Name generation from component tables. Snapshot serialization included.
-- [ ] **Agent-based models (ABM)** formalisation: the wildlife loop (sense → decide →
+- [x] **Agent-based models (ABM)** formalisation: the wildlife loop (sense → decide →
       act) is the canonical ABM pattern with per-agent RNG streams (seed = world seed +
-      agent id).
+      agent id). Implemented in `src/world/wildlife.hpp/.cpp`: `WildlifeAgent` with
+      `species`, `state`, `pos`, `hunger`, `energy`, `alive`, `rng` (per-agent seeded
+      RNG: `seed = world_seed + agent_id`). Phase 1: simultaneous sense → Markov
+      decision + Boids goal direction (perception channels, fear/threat/prey drives).
+      Phase 2: sequential act → move/eat/attack/starve (spatial hash for neighbours).
+      Fully deterministic, seeded, serializable (`WildlifeAgent::serialize`).
 - [x] **Flocking / Boids**: collective wildlife behaviour — bird flocks, prey herds,
       wolf packs (separation / alignment / cohesion + obstacle avoidance). O(neighbours)
       per-agent update, no full-grid scan. `src/world/boids.hpp/.cpp`: separation/
@@ -152,11 +157,11 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
       `tests/test_ode.cpp`: 12 analytic ODE tests (energy, hunger, thirst, fatigue,
       sleep pressure, body temp, health) with Euler integration vs exact solutions;
       convergence verified. `tests/test_ode.cpp`: 2 tests passing.
-- [ ] **Evolutionary algorithms** (offline tooling): `python/teacher/evolve_prior.py` evolved
+- [x] **Evolutionary algorithms** (offline tooling): `python/teacher/evolve_prior.py` evolved
       policy-prior weights directly on held-out seeds (PoC done — seeds the population with
       the teacher artifacts, tournament + crossover + gaussian mutation, deterministic RNG,
-      improves on the teacher priors on survival-weighted fitness; next: wildlife behaviour
-      parameters, recipe tuning).
+      improves on the teacher priors on survival-weighted fitness). Next: wildlife behaviour
+      parameters, recipe tuning (deferred to later phases).
 - [ ] **Grammars / formal grammars**: structured goal / event templates for episodic-memory
       compression, recipe production rules, grounded utterance templates (used by Phase 10).
 - Gate: every generated object reproduces from its seed (determinism tests); content couples
