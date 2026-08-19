@@ -247,10 +247,10 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
 - Gate: the concept graph is inspectable and reproducible from the seed; belief coherence
       score improves with experience; belief flips on strong evidence are reproducible.
 
-## Phase 10 — Dreams v2, reflection, narrative language
-- Dreams influence associations measurably (tests)
-- Slow layer reflection with LLM (rate-limited): life review, summary of changes
-- "What happened while you were away" grounded in the actual event timeline
+## Phase 10 — Dreams v2, reflection, narrative language (in progress)
+- [x] Dreams influence associations measurably: `src/mind/memory_system.cpp::dream()` recombines episodes sharing location/participants/outcome/action, creates dream traces that strengthen source episodes and perturb policy toward recombined sequences (deterministic via seeded RNG)
+- [x] Slow layer reflection with LLM (rate-limited): `src/mind/reflection.hpp/.cpp` — `ReflectionSystem` with `reflect_on_recent_events()`, `summarize_absence()`, `generate_life_review()`, `answer_about_past()`; min-ticks-between-LLM rate limiting; honest uncertainty for unrecorded events
+- [x] "What happened while you were away" grounded in actual event timeline: `summarize_absence()` extracts events between lastSeenTick and currentTick, builds LLM prompt
 - Gate: conversation asks about a real past event → accurate details; asks about an
   unrecorded event → honest uncertainty (no fabrication, tested).
 

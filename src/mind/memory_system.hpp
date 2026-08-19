@@ -3,6 +3,7 @@
 #pragma once
 
 #include "mind/memory.hpp"
+#include "core/rng.hpp"
 
 namespace eidolon {
 
@@ -28,6 +29,7 @@ public:
 private:
   MemoryRing ring_;
   float decayRate_ = 0.9999f;
+  class Rng rng_;
 };
 
 } // namespace eidolon

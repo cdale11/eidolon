@@ -76,6 +76,16 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 - **Ising belief coherence** (`src/mind/belief_ising.hpp/.cpp`): Binary beliefs as spins (+1/-1/0), evidence as external fields, consistency as couplings. Glauber dynamics with seeded RNG, coherent clusters, energy computation, cognitive dissonance metric. Full serialization.
 - All tests pass; snapshot version 12
 
+### Phase 10 — Dreams v2, reflection, narrative language (in progress)
+- **Dreams v2** (`src/mind/memory_system.cpp`): Enhanced associative recombination during sleep. Episodes sharing location, participants, outcome, action, or kind are paired; dream traces strengthen source episodes and perturb policy toward recombined action sequences. Deterministic via seeded RNG.
+- **Reflection system** (`src/mind/reflection.hpp/.cpp`): Slow-layer reflection with rate-limited LLM calls. `ReflectionSystem` provides:
+  - `reflect_on_recent_events()`: recent experience reflection with narrative summary, key events, insights, changes
+  - `summarize_absence()`: "what happened while you were away" grounded in actual event timeline
+  - `generate_life_review()`: periodic deep life review with narrative arc, major events, drive/social patterns, lessons, self-assessment
+  - `answer_about_past()`: question answering with honest uncertainty for unrecorded events
+  - Rate limiting via `min_ticks_between_llm_` (default 1 day)
+- All tests pass; snapshot version 12
+
 ### Tests & tooling
 - C++ unit suite runs in parallel: each test in its own process (`eidolon_tests --list`
   / `--name <t>`) driven by `python/tests/run_unit.sh` with `xargs -P$(nproc)`; pid-unique
