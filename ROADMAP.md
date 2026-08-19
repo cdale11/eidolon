@@ -255,14 +255,17 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
   unrecorded event → honest uncertainty (no fabrication, tested).
 
 ### Phase 10 branch — grounded language via formal grammars (DESIGN §22)
-- [ ] **Formal grammars**: structured goal / event templates for episodic-memory
+- [x] **Formal grammars**: structured goal / event templates for episodic-memory
       compression ("thirsty → went to water → drank"), recipe production rules, and
       grounded utterance templates for the language bridge (§14) — replaces some LLM
       dependence with deterministic, state-seeded language. Production rules are a
       deterministic rewrite system; choices driven by the sim seed and the organism's state.
+      Implemented in:
+      - `src/world/grammar.hpp/.cpp`: CFG engine with deterministic/stochastic derivation, CYK parsing
+      - `src/mind/grounded_language.hpp/.cpp`: `GroundedLanguage` generates "what did you do today?", daily summaries, past-event QA, greetings, need statements, observations — all grounded in actual event log, honest uncertainty for unrecorded topics
 - Gate: the organism can answer "what did you do today?" with a generated sentence that
-  is factually grounded in its actual event log, without an LLM call; utterances are
-  reproducible from the seed and state.
+      is factually grounded in its actual event log, without an LLM call; utterances are
+      reproducible from the seed and state.
 
 ## Phase 11 — Portable WASM client compute
 - Compile the same `ReplicaCore` to WebAssembly (Emscripten): WASM, WASM SIMD, and

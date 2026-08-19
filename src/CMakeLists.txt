@@ -44,6 +44,7 @@ add_library(eidolon_core STATIC
   mind/concept_formation.cpp
   mind/graph_rewriting.cpp
   mind/reflection.cpp
+  mind/grounded_language.cpp
   sim/engine.cpp)
 target_include_directories(eidolon_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 

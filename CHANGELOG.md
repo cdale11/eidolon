@@ -83,7 +83,14 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   - `summarize_absence()`: "what happened while you were away" grounded in actual event timeline
   - `generate_life_review()`: periodic deep life review with narrative arc, major events, drive/social patterns, lessons, self-assessment
   - `answer_about_past()`: question answering with honest uncertainty for unrecorded events
-  - Rate limiting via `min_ticks_between_llm_` (default 1 day)
+- **Grounded language** (`src/mind/grounded_language.hpp/.cpp`): Formal grammar-based utterance generation grounded in actual event log. `GroundedLanguage` provides:
+  - `answer_what_did_you_do()`: generates daily activity summary from event log + memories
+  - `generate_daily_summary()`: structured daily summary with key events and drive patterns
+  - `answer_about_past()`: question answering with honest uncertainty for unrecorded topics
+  - `generate_greeting()`: state-aware greetings
+  - `generate_need_statement()`: need expressions based on recent behavior
+  - `generate_observation()`: world observations
+  - All utterances deterministically generated from seed + state; no LLM required
 - All tests pass; snapshot version 12
 
 ### Tests & tooling
