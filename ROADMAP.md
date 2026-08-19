@@ -97,7 +97,7 @@ passes.
 - [x] Hazards (cliffs, deep water, disease vectors), infection/immune model, wounds
 - [x] Causal chains verified end-to-end (scarcity → exploration → food; predator attacks → threat learning → defensive behavior / survival). Phase 5 gate: `test_phase5.cpp` (7 tests, all passing).
 - [x] Wildlife `stepToward` cliff-aware; mid-charge attack fix (`attackOrganism`); `Grid::setElevation()` for deterministic terrain construction in tests.
-- [ ] Health / infection dynamics full integration (wound aging, infection spread, immune decay with deprivation / illness) — Phase 5 core is present and passing; extended infection dynamics remain for later phases.
+- [x] Health / infection dynamics full integration: wound aging, infection spread via cellular automata (DESIGN §22), immune decay with deprivation/illness. CA updates each tick with terrain factors (swamp/deep-water as disease vectors); Physiology scales exposure/infection by nearby infected CA cells.
 - Gate: `test_phase5.cpp` all green; worldgen `freqScale` = 0.01 (reverted from broken 0.04); zero-warning build; smoke run `--days 1 --seed 42` survives; event log shows normal predator-attack events, no anomalies.
 
 ### Phase 5 branch — deterministic generative systems (DESIGN §22)
@@ -109,10 +109,7 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
 - [ ] **Voronoi / Delaunay**: biome / territory tessellation, settlement placement
       (wildlife dens, the organism's shelter), Delaunay graph for landmark connectivity
       the spatial memory indexes.
-- [ ] **Cellular automata**: CA-shaped terrain / biomes (thickets, clearings, water
-      networks, cave systems); live CA plant-ecology spread rule so vegetation clumps
-      organically and the organism learns to revisit profitable patches; fire spread
-      (wildfire hazard); disease spread across tiles / population.
+- [x] **Cellular automata**: infection/disease spread across tiles (Conway-style with Healthy/Infected/Recovered states, terrain-factor transmission, deterministic threshold rules). Integrated with health/infection dynamics: `World::infectionCA_` stepped each tick, swamp/deep-water are disease vectors, `Physiology` scales exposure/infection by nearby infected CA cells. Snapshot serialization included. (src/world/cellular_automata.hpp/.cpp)
 - [ ] **Reaction-diffusion**: terrain texture patterns (mineral veins, fertile-soil
       gradients), wildlife coat patterns, biological pattern formation. Stable explicit
       Euler with capped iterations.
