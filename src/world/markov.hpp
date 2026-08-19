@@ -7,6 +7,7 @@
 #include <unordered_map>
 
 #include "core/rng.hpp"
+#include "core/serialize.hpp"
 
 namespace eidolon {
 

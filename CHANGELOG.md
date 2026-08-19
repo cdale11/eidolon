@@ -93,6 +93,15 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   - All utterances deterministically generated from seed + state; no LLM required
 - All tests pass; snapshot version 12
 
+### Phase 11 — Portable WASM client compute (in progress)
+- **WASM compilation** (`cmake/Modules/Platform/Emscripten.cmake`, `src/CMakeLists.wasm.txt`): Eidolon ReplicaCore compiles to WebAssembly via Emscripten
+  - Emscripten toolchain configured and working
+  - Static library `libeidolon_replica_core.a` builds successfully (~1.1 MB)
+  - Test executable `eidolon_wasm_test.js` links and runs in Node.js
+  - Native builds and all tests remain unaffected
+  - Platform-specific code (`getpid()`, SQLite, pthreads) cleanly excluded via `EIDOLON_WASM_BUILD` / `EIDOLON_NO_SQLITE` / `EIDOLON_NO_THREADS` defines
+- Gate: same seeded scenario produces the same individual state on native and WASM (parity test pending); no heavy work on the main UI thread
+
 ### Tests & tooling
 - C++ unit suite runs in parallel: each test in its own process (`eidolon_tests --list`
   / `--name <t>`) driven by `python/tests/run_unit.sh` with `xargs -P$(nproc)`; pid-unique

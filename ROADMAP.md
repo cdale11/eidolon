@@ -267,26 +267,31 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
       is factually grounded in its actual event log, without an LLM call; utterances are
       reproducible from the seed and state.
 
-## Phase 11 — Portable WASM client compute
-- Compile the same `ReplicaCore` to WebAssembly (Emscripten): WASM, WASM SIMD, and
-  multithreaded builds (Workers + SharedArrayBuffer where browser security permits)
-- Capability detection → `ComputeProfile` (SIMD, Workers, SAB, WebGPU, WebGL fallback,
-  concurrency, memory limits); auto backend selection hierarchy (WebGPU → WASM SIMD+MT →
-  plain WASM → server fallback)
-- `ComputeScheduler`: priority queues (chat/responsiveness > active sim > background
-  consolidation); worker separation (world / physiology-cognition / neural-ML /
-  memory-consolidation); compact message passing, no big buffer transfers
-- Adaptive fidelity: constrained clients reduce sim frequency, model budget, world detail —
-  identity unchanged
-- Profiling from the beginning: per-backend sim steps/sec, simulated hours/sec, inferences/
-  sec, worker utilization, WASM memory, latency — diagnostics panel in the UI
-- **Genetic programming** (offline tooling): evolve recipe trees (crafting / tool
-  invention) and behaviour trees (action sequences) validated against world physics;
-  tournament + subtree crossover / mutation; fitness = sim validation; depth cap.
-  Discovered procedures become recipes the organism can use at runtime.
-  (`python/teacher/evolve_prior.py` provides the framework; extend to recipe/behavior trees).
+## Phase 11 — Portable WASM client compute (in progress)
+- [x] Compile the same `ReplicaCore` to WebAssembly (Emscripten): plain WASM build working
+  - Emscripten toolchain configured (`cmake/Modules/Platform/Emscripten.cmake`)
+  - Static library `libeidolon_replica_core.a` builds successfully
+  - Test executable links and runs in Node.js
+  - Native builds and tests unaffected
+- [ ] WASM SIMD build
+- [ ] Multithreaded builds (Workers + SharedArrayBuffer)
+- [ ] Capability detection → `ComputeProfile` (SIMD, Workers, SAB, WebGPU, WebGL fallback,
+      concurrency, memory limits); auto backend selection hierarchy (WebGPU → WASM SIMD+MT →
+      plain WASM → server fallback)
+- [ ] `ComputeScheduler`: priority queues (chat/responsiveness > active sim > background
+      consolidation); worker separation (world / physiology-cognition / neural-ML /
+      memory-consolidation); compact message passing, no big buffer transfers
+- [ ] Adaptive fidelity: constrained clients reduce sim frequency, model budget, world detail —
+      identity unchanged
+- [ ] Profiling from the beginning: per-backend sim steps/sec, simulated hours/sec, inferences/
+      sec, worker utilization, WASM memory, latency — diagnostics panel in the UI
+- [ ] **Genetic programming** (offline tooling): evolve recipe trees (crafting / tool
+      invention) and behaviour trees (action sequences) validated against world physics;
+      tournament + subtree crossover / mutation; fitness = sim validation; depth cap.
+      Discovered procedures become recipes the organism can use at runtime.
+      (`python/teacher/evolve_prior.py` provides the framework; extend to recipe/behavior trees).
 - Gate: same seeded scenario produces the same individual state on native and WASM
-  (parity test); no heavy work on the main UI thread; fidelity reduction works.
+      (parity test); no heavy work on the main UI thread; fidelity reduction works.
 
 ## Phase 12 — Synchronization, offline persistence & backend selection
 - Checkpoint/delta sync protocol (compact binary deltas: physiology, weight deltas,

@@ -18,7 +18,7 @@ constexpr uint32_t kSnapshotMagic = 0x4549444C; // "EIDL"
 // v7: Phase 5 hazards (wounds/infection/immunity/exposure in body + hazard stats).
 constexpr uint32_t kSnapshotVersion = 7;
 
-class BinaryWriter {
+struct BinaryWriter {
 public:
   void u8(uint8_t v) { buf_.push_back(v); }
   void u16(uint16_t v) { u8(static_cast<uint8_t>(v)); u8(static_cast<uint8_t>(v >> 8)); }
@@ -42,7 +42,7 @@ private:
   std::vector<uint8_t> buf_;
 };
 
-class BinaryReader {
+struct BinaryReader {
 public:
   BinaryReader(const uint8_t* p, size_t n) : p_(p), n_(n) {}
   BinaryReader(const std::vector<uint8_t>& v) : p_(v.data()), n_(v.size()) {}
