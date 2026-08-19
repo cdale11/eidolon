@@ -130,9 +130,13 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
       per-agent update, no full-grid scan. `src/world/boids.hpp/.cpp`: separation/
       alignment/cohesion + obstacle avoidance, spatial hash for O(neighbours), deterministic
       per-agent RNG, snapshot serialization. Ready for wildlife integration.
-- [ ] **Markov models**: explicit chains for weather transitions, wildlife behavioural
+- [x] **Markov models**: explicit chains for weather transitions, wildlife behavioural
       states, the organism's sleep / wake / active state machine, and skill-stage
-      progression. Inspectable, testable, tunable.
+      progression. Inspectable, testable, tunable. `src/world/markov.hpp/.cpp`:
+      template `MarkovChain<N>` with seeded RNG, normalized transitions, serialization.
+      Predefined chains: `WeatherState` (Clear/Rain/Storm/Snow), `WildlifeBehavior`
+      (Forage/Flee/Rest/Hunt/Wander), `SleepState` (Awake/Drowsy/Sleep/Wake),
+      `SkillStage` (Novice→Master). Fully seeded, deterministic, serializable.
 - [ ] **ODE systems**: already core (§5 Body physiology). Document the integrator
       (symplectic / explicit Euler with fixed step, max-rate caps) and add unit tests
       against analytic solutions for each drive.
