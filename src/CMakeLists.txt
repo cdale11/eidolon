@@ -9,6 +9,7 @@ add_library(eidolon_core STATIC
   world/cellular_automata.cpp
   world/voronoi.cpp
   world/reaction_diffusion.cpp
+  world/boids.cpp
   body/physiology.cpp
   mind/memory.cpp
   mind/memory_system.cpp

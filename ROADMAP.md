@@ -125,9 +125,11 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
 - [ ] **Agent-based models (ABM)** formalisation: the wildlife loop (sense → decide →
       act) is the canonical ABM pattern with per-agent RNG streams (seed = world seed +
       agent id).
-- [ ] **Flocking / Boids**: collective wildlife behaviour — bird flocks, prey herds,
+- [x] **Flocking / Boids**: collective wildlife behaviour — bird flocks, prey herds,
       wolf packs (separation / alignment / cohesion + obstacle avoidance). O(neighbours)
-      per-agent update, no full-grid scan.
+      per-agent update, no full-grid scan. `src/world/boids.hpp/.cpp`: separation/
+      alignment/cohesion + obstacle avoidance, spatial hash for O(neighbours), deterministic
+      per-agent RNG, snapshot serialization. Ready for wildlife integration.
 - [ ] **Markov models**: explicit chains for weather transitions, wildlife behavioural
       states, the organism's sleep / wake / active state machine, and skill-stage
       progression. Inspectable, testable, tunable.
