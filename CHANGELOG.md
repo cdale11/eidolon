@@ -110,6 +110,11 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   - Static library `libeidolon_replica_core_mt.a` builds successfully (~1.1 MB)
   - Test executable `eidolon_wasm_test_mt.js` links and runs in Node.js
   - Note: ALLOW_MEMORY_GROWTH + pthreads may impact non-WASM performance
+- **Capability detection & backend selection** (`src/mind/compute_profile.hpp/.cpp`): `ComputeProfile` with auto backend selection
+  - `ComputeProfileDetector::fromJsCapabilities()`: creates profile from JS-provided capabilities (SIMD, SAB, WebGPU, WebGL, concurrency, memory)
+  - `selectBackend()`: auto-selects best backend (WebGPU → WASM SIMD+MT → WASM SIMD → WASM plain → server fallback)
+  - `getBackendPriority()`, `isBackendViable()`, `estimatePerformance()`: priority ordering, viability checks, performance estimation
+  - Full serialization support for `ComputeProfile` and `BackendSelection`
 - Gate: same seeded scenario produces the same individual state on native and WASM (parity test pending); no heavy work on the main UI thread
 
 ### Tests & tooling

@@ -73,6 +73,7 @@ add_library(eidolon_replica_core STATIC
   mind/graph_rewriting.cpp
   mind/reflection.cpp
   mind/grounded_language.cpp
+  mind/compute_profile.cpp
   sim/engine.cpp
 )
 

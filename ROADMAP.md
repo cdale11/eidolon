@@ -280,10 +280,13 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
 - [x] Multithreaded builds (Workers + SharedArrayBuffer)
   - `-pthread` + `-sPROXY_TO_PTHREAD=0` + `-sPTHREAD_POOL_SIZE=4` enabled
   - Static library `libeidolon_replica_core_mt.a` builds successfully (~1.1 MB)
-  - Test executable links and runs in Node.js (with pthreads warning about memory growth)
-- [ ] Capability detection → `ComputeProfile` (SIMD, Workers, SAB, WebGPU, WebGL fallback,
+  - Test executable links and runs in Node.js
+- [x] Capability detection → `ComputeProfile` (SIMD, Workers, SAB, WebGPU, WebGL fallback,
       concurrency, memory limits); auto backend selection hierarchy (WebGPU → WASM SIMD+MT →
       plain WASM → server fallback)
+      Implemented in `src/mind/compute_profile.hpp/.cpp`: `ComputeProfileDetector::fromJsCapabilities()`,
+      `selectBackend()`, `getBackendPriority()`, `isBackendViable()`, `estimatePerformance()`,
+      with serialization support.
 - [ ] `ComputeScheduler`: priority queues (chat/responsiveness > active sim > background
       consolidation); worker separation (world / physiology-cognition / neural-ML /
       memory-consolidation); compact message passing, no big buffer transfers
