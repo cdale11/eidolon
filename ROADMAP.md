@@ -118,8 +118,11 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
       model, parameters for mineral veins / fertile soil / coat patterns, deterministic
       explicit Euler, snapshot serialization. `generateMineralVeins()`, `generateFertileSoil()`,
       `generateCoatPattern()` utilities.
-- [ ] **L-systems**: procedural plant / bush / branch geometry and river / road / root
+- [x] **L-systems**: procedural plant / bush / branch geometry and river / road / root
       networks; foraging targets get spatial identity the memory system can reference.
+      `src/world/lsystem.hpp/.cpp`: deterministic turtle interpretation with depth cap,
+      stochastic branch probabilities, network output for river/road graphs.
+      Predefined systems: fern, bush, tree, grass, river, road, root.
 - [ ] **Procedural generation**: ruins / landmarks, named places, semantically tagged
       objects (memory ground truth), extending the existing seedable world gen.
 - [ ] **Agent-based models (ABM)** formalisation: the wildlife loop (sense → decide →

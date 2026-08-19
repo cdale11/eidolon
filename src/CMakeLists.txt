@@ -11,6 +11,7 @@ add_library(eidolon_core STATIC
   world/reaction_diffusion.cpp
   world/boids.cpp
   world/markov.cpp
+  world/lsystem.cpp
   body/physiology.cpp
   body/ode_tests.cpp
   mind/memory.cpp
