@@ -174,11 +174,11 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
   reference tests.
 
 ## Phase 6 — Skills, tools, crafting, construction
-- Skill models (Beta/Bernoulli competence), procedural store, habit formation
-- Crafting with learned recipes (seeded basics: fire, sharp stone, spear, shelter)
-- Construction: persistent structures on grid (shelter, walls, campfire, storage, farm
-  plots), stored/retrieved in snapshot
-- Affordance discovery: tool used in unexpected ways → new procedures
+- [x] Skill models (Beta/Bernoulli competence), procedural store, habit formation (`src/body/skill.hpp/.cpp`)
+- [x] Crafting with learned recipes (seeded basics: fire, sharp stone, spear, shelter) (`src/body/crafting.hpp/.cpp`)
+- [x] Construction: persistent structures on grid (shelter, walls, campfire, storage, farm
+  plots), stored/retrieved in snapshot (`src/body/construction.hpp/.cpp`)
+- [ ] Affordance discovery: tool used in unexpected ways → new procedures
 - Gate: organism builds a shelter that persists across save/load; discovers at least one
   novel tool use in a seeded run; skill competence improves with practice.
 
