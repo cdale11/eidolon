@@ -12,7 +12,8 @@ add_executable(eidolon_tests
   test_engine.cpp
   test_learn.cpp
   test_wildlife.cpp
-  test_phase5.cpp)
+  test_phase5.cpp
+  test_ode.cpp)
 target_link_libraries(eidolon_tests PRIVATE eidolon_core eidolon_store eidolon_llm)
 target_include_directories(eidolon_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 

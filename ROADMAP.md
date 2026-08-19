@@ -137,9 +137,12 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
       Predefined chains: `WeatherState` (Clear/Rain/Storm/Snow), `WildlifeBehavior`
       (Forage/Flee/Rest/Hunt/Wander), `SleepState` (Awake/Drowsy/Sleep/Wake),
       `SkillStage` (Novice→Master). Fully seeded, deterministic, serializable.
-- [ ] **ODE systems**: already core (§5 Body physiology). Document the integrator
-      (symplectic / explicit Euler with fixed step, max-rate caps) and add unit tests
-      against analytic solutions for each drive.
+- [x] **ODE systems**: already core (§5 Body physiology). Documented the integrator
+      (explicit Euler with fixed step, max-rate caps) and added unit tests against
+      analytic solutions for each drive. `src/body/ode_tests.hpp/.cpp`,
+      `tests/test_ode.cpp`: 12 analytic ODE tests (energy, hunger, thirst, fatigue,
+      sleep pressure, body temp, health) with Euler integration vs exact solutions;
+      convergence verified. `tests/test_ode.cpp`: 2 tests passing.
 - [ ] **Evolutionary algorithms** (offline tooling): `python/teacher/evolve_prior.py` evolved
       policy-prior weights directly on held-out seeds (PoC done — seeds the population with
       the teacher artifacts, tournament + crossover + gaussian mutation, deterministic RNG,

@@ -12,6 +12,7 @@ add_library(eidolon_core STATIC
   world/boids.cpp
   world/markov.cpp
   body/physiology.cpp
+  body/ode_tests.cpp
   mind/memory.cpp
   mind/memory_system.cpp
   mind/mlp.cpp
