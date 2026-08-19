@@ -38,6 +38,13 @@ public:
     thirst_ = std::max(0.0, thirst_ - water * 0.7);
   }
 
+  // Take predator/environment damage: health loss + pain (both clamped). Feeds the
+  // threat system through the aversive tick in the engine.
+  void takeDamage(double dmg) {
+    health_ = std::max(0.0, health_ - dmg);
+    pain_ = std::min(kMax, pain_ + dmg);
+  }
+
   bool needsSleep() const {
     return sleepPressure() >= 55.0 || (energy() < 30.0 && fatigue() > 40.0);
   }

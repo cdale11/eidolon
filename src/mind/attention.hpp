@@ -15,7 +15,7 @@ namespace eidolon {
 
 class Attention : public Learner {
 public:
-  static constexpr int kChannels = 12; // Perception::kFeatures
+  static constexpr int kChannels = 28; // Perception::kFeatures
   static constexpr int kTopK = 8;      // DESIGN §7: k <= 8
   static constexpr int kStressK = 2;   // stress narrows attention
 

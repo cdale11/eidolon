@@ -7,21 +7,21 @@
 namespace eidolon {
 
 namespace {
-constexpr int kDriveHunger = 12;
-constexpr int kDriveThirst = 13;
-constexpr int kDriveRest = 14;
-constexpr int kDriveEnergy = 15;
-constexpr int kBodyHealth = 16;
-constexpr int kBodyPain = 17;
-constexpr int kBodySleep = 18;
-constexpr int kBodyTemp = 19;
-constexpr int kNmNovelty = 20;
-constexpr int kNmCuriosity = 21;
-constexpr int kNmStress = 22;
-constexpr int kNmArousal = 23;
-constexpr int kNmValence = 24;
-constexpr int kNmUncertainty = 25;
-constexpr int kThreat = 26;
+constexpr int kDriveHunger = 28;
+constexpr int kDriveThirst = 29;
+constexpr int kDriveRest = 30;
+constexpr int kDriveEnergy = 31;
+constexpr int kBodyHealth = 32;
+constexpr int kBodyPain = 33;
+constexpr int kBodySleep = 34;
+constexpr int kBodyTemp = 35;
+constexpr int kNmNovelty = 36;
+constexpr int kNmCuriosity = 37;
+constexpr int kNmStress = 38;
+constexpr int kNmArousal = 39;
+constexpr int kNmValence = 40;
+constexpr int kNmUncertainty = 41;
+constexpr int kThreat = 42;
 
 float clampf(float v, float lo, float hi) { return std::max(lo, std::min(hi, v)); }
 } // namespace
@@ -55,13 +55,14 @@ void LearnSystem::buildFeatures(const Perception& p, const Physiology& b, float*
   const float hb = 0.8f * drives_.hunger * static_cast<float>(b.hunger() / 100.0);
   const float tb = 0.8f * drives_.thirst * static_cast<float>(b.thirst() / 100.0);
   for (int i = 0; i < Attention::kChannels; ++i) biased[i] = static_cast<float>(p[i]);
-  biased[4] += hb; // bush distance
-  biased[5] += hb; // bush dx
-  biased[6] += hb; // bush dy
-  biased[7] += hb; // bush fullness
-  biased[8] += tb; // water distance
-  biased[9] += tb; // water dx
-  biased[10] += tb; // water dy
+  // Perception layout: [5..8]=food(bush) dist/dx/dy/fullness, [9..11]=water dist/dx/dy.
+  biased[5] += hb; // bush distance
+  biased[6] += hb; // bush dx
+  biased[7] += hb; // bush dy
+  biased[8] += hb; // bush fullness
+  biased[9] += tb; // water distance
+  biased[10] += tb; // water dx
+  biased[11] += tb; // water dy
   const int k = neuromod_.stress > 60.0f ? Attention::kStressK : Attention::kTopK;
   attention_.attend(biased, k, out);
 

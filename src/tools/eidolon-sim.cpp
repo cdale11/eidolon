@@ -239,11 +239,15 @@ int main(int argc, char** argv) {
                  static_cast<unsigned long long>(engine.stats().ticksFine),
                  static_cast<unsigned long long>(engine.stats().ticksCoarse),
                  static_cast<unsigned long long>(engine.stats().ticksSleep));
-    std::fprintf(m, "actionsWander=%llu\nactionsRest=%llu\nactionsSleep=%llu\nactionsObserve=%llu\n",
+    std::fprintf(m, "actionsWander=%llu\nactionsRest=%llu\nactionsSleep=%llu\nactionsObserve=%llu\nactionsForage=%llu\nactionsDrink=%llu\nactionsFlee=%llu\npredatorAttacks=%llu\n",
                  static_cast<unsigned long long>(engine.stats().actionsWander),
                  static_cast<unsigned long long>(engine.stats().actionsRest),
                  static_cast<unsigned long long>(engine.stats().actionsSleep),
-                 static_cast<unsigned long long>(engine.stats().actionsObserve));
+                 static_cast<unsigned long long>(engine.stats().actionsObserve),
+                 static_cast<unsigned long long>(engine.stats().actionsForage),
+                 static_cast<unsigned long long>(engine.stats().actionsDrink),
+                 static_cast<unsigned long long>(engine.stats().actionsFlee),
+                 static_cast<unsigned long long>(engine.stats().predatorAttacks));
     std::fprintf(m, "energy=%.1f\nhunger=%.1f\nthirst=%.1f\nfatigue=%.1f\nsleepP=%.1f\nbodyTemp=%.1f\nhealth=%.1f\n",
                  engine.body().energy(), engine.body().hunger(), engine.body().thirst(),
                  engine.body().fatigue(), engine.body().sleepPressure(),

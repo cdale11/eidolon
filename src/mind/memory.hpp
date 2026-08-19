@@ -19,6 +19,7 @@ enum class EventKind : uint8_t {
   Weather = 5,
   NearDeath = 6,
   Death = 7,
+  Attack = 8, // predator attack on the organism (Phase 5)
 };
 
 // Participants in the episode (bitmask for compact storage).

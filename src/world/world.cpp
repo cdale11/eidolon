@@ -459,12 +459,15 @@ void eidolon::World::generate(int w, int h, eidolon::Rng& r) {
       waterSources_.push_back(ws);
     }
   }
+
+  wildlife_.spawn(grid_, r, pos_);
 }
 
-bool eidolon::World::update(const eidolon::SimClock& c, int64_t dt, eidolon::Rng& r) {
-  bool wasRaining = weather_.raining();
-  bool wasSnowing = weather_.snowing();
-  bool wasStorming = weather_.storming();
+eidolon::WorldUpdate eidolon::World::update(const eidolon::SimClock& c, int64_t dt, eidolon::Rng& r) {
+  eidolon::WorldUpdate out;
+  const bool wasRaining = weather_.raining();
+  const bool wasSnowing = weather_.snowing();
+  const bool wasStorming = weather_.storming();
   weather_.update(c, dt, r);
 
   for (eidolon::Plant& pl : plants_) {
@@ -479,8 +482,12 @@ bool eidolon::World::update(const eidolon::SimClock& c, int64_t dt, eidolon::Rng
     }
   }
 
-  return weather_.raining() != wasRaining || weather_.snowing() != wasSnowing ||
-         weather_.storming() != wasStorming;
+  // Wildlife advances on its own throttle (kInterval sim-seconds).
+  wildlife_.update(*this, c.now(), dt, alive_, pos_, out);
+
+  out.weatherChanged = weather_.raining() != wasRaining || weather_.snowing() != wasSnowing ||
+                       weather_.storming() != wasStorming;
+  return out;
 }
 
 bool eidolon::World::adjacentToWater(eidolon::Vec2i pos) const {
@@ -534,8 +541,11 @@ double eidolon::World::consumePlant(eidolon::Vec2i pos, double amount) {
 }
 
 double eidolon::World::drinkFromSource(eidolon::Vec2i pos, double amount) {
+  // The organism may stand on any shore of a lake/river while the registered source sits
+  // on one particular shore tile, so search a generous radius (a water body is one
+  // source). Sources are consumed by the organism, wildlife, and natural flow.
   eidolon::WaterSource* best = nullptr;
-  int bestDist = 2;
+  int bestDist = 16;
   for (eidolon::WaterSource& ws : waterSources_) {
     if (ws.current < 1.0) continue;
     const int d = distCheb(ws.pos, pos);
@@ -559,6 +569,22 @@ eidolon::Vec2i eidolon::World::adjacentWalkable(eidolon::Vec2i water) const {
     if (grid_.inBounds(x, y) && grid_.walkable(x, y)) return {x, y};
   }
   return {-1, -1};
+}
+
+const eidolon::WildlifeAgent* eidolon::World::nearestPrey(eidolon::Vec2i pos, int radius) const {
+  return wildlife_.nearestPrey(pos, radius);
+}
+
+const eidolon::WildlifeAgent* eidolon::World::nearestPredator(eidolon::Vec2i pos, int radius) const {
+  return wildlife_.nearestPredator(pos, radius);
+}
+
+int eidolon::World::preyCount(eidolon::Vec2i pos, int radius) const {
+  return wildlife_.preyCount(pos, radius);
+}
+
+int eidolon::World::predatorCount(eidolon::Vec2i pos, int radius) const {
+  return wildlife_.predatorCount(pos, radius);
 }
 
 eidolon::Perception eidolon::World::perceive(eidolon::Vec2i pos, const eidolon::SimClock& c) const {
@@ -634,6 +660,30 @@ eidolon::Perception eidolon::World::perceive(eidolon::Vec2i pos, const eidolon::
   p[18] = 0.5f;
   p[19] = (grid_.humidity(pos.x, pos.y) + 1.0f) * 0.5f;
 
+  // Wildlife channels 20..27 (Phase 5): nearest prey/predator distance+dx+dy, counts.
+  const eidolon::WildlifeAgent* prey = nearestPrey(pos, sight);
+  if (prey) {
+    const int d = distCheb(prey->pos, pos);
+    p[20] = static_cast<double>(d) / static_cast<double>(sight);
+    p[21] = static_cast<double>(prey->pos.x > pos.x ? 1 : (prey->pos.x < pos.x ? -1 : 0));
+    p[22] = static_cast<double>(prey->pos.y > pos.y ? 1 : (prey->pos.y < pos.y ? -1 : 0));
+  } else {
+    p[20] = 1.0; p[21] = 0.0; p[22] = 0.0;
+  }
+
+  const eidolon::WildlifeAgent* predator = nearestPredator(pos, sight);
+  if (predator) {
+    const int d = distCheb(predator->pos, pos);
+    p[23] = static_cast<double>(d) / static_cast<double>(sight);
+    p[24] = static_cast<double>(predator->pos.x > pos.x ? 1 : (predator->pos.x < pos.x ? -1 : 0));
+    p[25] = static_cast<double>(predator->pos.y > pos.y ? 1 : (predator->pos.y < pos.y ? -1 : 0));
+  } else {
+    p[23] = 1.0; p[24] = 0.0; p[25] = 0.0;
+  }
+
+  p[26] = static_cast<double>(std::min(wildlife_.preyCount(pos, sight), 8)) / 8.0;
+  p[27] = static_cast<double>(std::min(wildlife_.predatorCount(pos, sight), 4)) / 4.0;
+
   return p;
 }
 
@@ -647,6 +697,7 @@ void eidolon::World::serialize(eidolon::BinaryWriter& w) const {
   for (const eidolon::Plant& pl : plants_) pl.serialize(w);
   w.u64(static_cast<uint64_t>(waterSources_.size()));
   for (const eidolon::WaterSource& ws : waterSources_) ws.serialize(w);
+  wildlife_.serialize(w);
 }
 
 bool eidolon::World::deserialize(eidolon::BinaryReader& r) {
@@ -667,5 +718,6 @@ bool eidolon::World::deserialize(eidolon::BinaryReader& r) {
   for (eidolon::WaterSource& ws : waterSources_) {
     if (!ws.deserialize(r)) return false;
   }
+  if (!wildlife_.deserialize(r)) return false;
   return true;
 }

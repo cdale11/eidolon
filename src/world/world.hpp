@@ -9,7 +9,9 @@
 #include "core/clock.hpp"
 #include "core/rng.hpp"
 #include "core/serialize.hpp"
+#include "core/vec2.hpp"
 #include "world/noise.hpp"
+#include "world/wildlife.hpp"
 
 namespace eidolon {
 
@@ -39,19 +41,6 @@ enum class Biome : uint8_t {
   WaterBody = 8,
   River = 9,
 };
-
-struct Vec2i {
-  int x = 0;
-  int y = 0;
-  bool operator==(const Vec2i& o) const { return x == o.x && y == o.y; }
-  bool operator!=(const Vec2i& o) const { return !(*this == o); }
-};
-
-inline int distCheb(Vec2i a, Vec2i b) {
-  const int dx = a.x > b.x ? a.x - b.x : b.x - a.x;
-  const int dy = a.y > b.y ? a.y - b.y : b.y - a.y;
-  return dx > dy ? dx : dy;
-}
 
 class Grid {
 public:
@@ -179,12 +168,21 @@ struct WaterSource {
 struct Perception {
   static constexpr int kSightRadius = 8;
   static constexpr int kHearingRadius = 16;
-  static constexpr int kFeatures = 20;
+  static constexpr int kFeatures = 28;
 
-  double f[20] = {};
+  double f[28] = {};
 
   double& operator[](size_t i) { return f[i]; }
   const double& operator[](size_t i) const { return f[i]; }
+};
+
+// Per-tick world updates. `weatherChanged` mirrors the old bool return; `attacked` is
+// set when a predator attacks the organism this tick (damage applied by the engine).
+struct WorldUpdate {
+  bool weatherChanged = false;
+  bool attacked = false;
+  double attackDamage = 0.0;
+  uint8_t attackerSpecies = 0;
 };
 
 class World {
@@ -192,7 +190,7 @@ public:
   World() = default;
 
   void generate(int w, int h, Rng& r);
-  bool update(const SimClock& c, int64_t dt, Rng& r);
+  WorldUpdate update(const SimClock& c, int64_t dt, Rng& r);
 
   const Grid& grid() const { return grid_; }
   Grid& grid() { return grid_; }
@@ -205,6 +203,8 @@ public:
 
   const std::vector<Plant>& plants() const { return plants_; }
   const std::vector<WaterSource>& waterSources() const { return waterSources_; }
+  const Wildlife& wildlife() const { return wildlife_; }
+  Wildlife& wildlife() { return wildlife_; }
 
   Perception perceive(Vec2i pos, const SimClock& c) const;
 
@@ -213,6 +213,12 @@ public:
   const WaterSource* nearestWaterSource(Vec2i pos, int radius) const;
   double consumePlant(Vec2i pos, double amount);
   double drinkFromSource(Vec2i pos, double amount);
+
+  // Wildlife queries (sight radius = Perception::kSightRadius).
+  const WildlifeAgent* nearestPrey(Vec2i pos, int radius) const;
+  const WildlifeAgent* nearestPredator(Vec2i pos, int radius) const;
+  int preyCount(Vec2i pos, int radius) const;
+  int predatorCount(Vec2i pos, int radius) const;
 
   // Nearest walkable tile adjacent to a water/river tile (shore); {-1,-1} if none.
   Vec2i adjacentWalkable(Vec2i water) const;
@@ -226,6 +232,7 @@ private:
   SimplexNoise elevationNoise_;
   SimplexNoise temperatureNoise_;
   SimplexNoise humidityNoise_;
+  Wildlife wildlife_;
   Vec2i pos_ = {0, 0};
   bool alive_ = true;
   std::vector<Plant> plants_;

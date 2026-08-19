@@ -224,7 +224,7 @@ TEST(engine_learned_policy_sustains_life) {
 }
 
 TEST(policy_loads_prior_and_retrains_online) {
-  // Teacher-baked prior: Drink strongly preferred when the thirst feature (index 13) is
+  // Teacher-baked prior: Drink strongly preferred when the thirst feature (index 29) is
   // high. Online learning must keep running on top of it, and the prior + learned state
   // must round-trip through the snapshot.
   char pathbuf[128];
@@ -235,15 +235,15 @@ TEST(policy_loads_prior_and_retrains_online) {
     std::FILE* f = std::fopen(path, "wb");
     CHECK(f != nullptr);
     std::fwrite("EPRP", 1, 4, f);
-    uint32_t v = 1, nf = 27, na = 5;
+    uint32_t v = 1, nf = 43, na = 6;
     std::fwrite(&v, 4, 1, f);
     std::fwrite(&nf, 4, 1, f);
     std::fwrite(&na, 4, 1, f);
-    float w[5 * 28] = {};
-    float* row = &w[static_cast<int>(PolicyAction::Drink) * 28];
-    row[13] = 5.0f;  // strong preference on the thirst feature
-    row[27] = -0.5f; // mild negative bias (avoid defaulting to Drink)
-    std::fwrite(w, sizeof(float), 5 * 28, f);
+    float w[6 * 44] = {};
+    float* row = &w[static_cast<int>(PolicyAction::Drink) * 44];
+    row[29] = 5.0f;  // strong preference on the thirst feature
+    row[43] = -0.5f; // mild negative bias (avoid defaulting to Drink)
+    std::fwrite(w, sizeof(float), 6 * 44, f);
     std::fclose(f);
   }
 
@@ -252,7 +252,7 @@ TEST(policy_loads_prior_and_retrains_online) {
   CHECK(e.loadPolicyPrior(path));
 
   float feats[LearnSystem::kFeatures] = {};
-  feats[13] = 0.8f; // thirsty
+  feats[29] = 0.8f; // thirsty
   const float sForage = e.learn().policy().score(PolicyAction::Forage, feats);
   const float sDrink = e.learn().policy().score(PolicyAction::Drink, feats);
   CHECK(sDrink > sForage + 1.0f); // the prior dominates the random init

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 
 namespace eidolon {
@@ -111,9 +112,8 @@ Action Engine::tick() noexcept {
 
   const double dt = static_cast<double>(step);
 
-  const bool weatherChanged =
-      world_.update(clock_, static_cast<int64_t>(step), rngWeather_);
-  if (weatherChanged) {
+  const WorldUpdate wu = world_.update(clock_, static_cast<int64_t>(step), rngWeather_);
+  if (wu.weatherChanged) {
     events_.push({clock_.now(), 1 /* kind: weather */, 0});
     recordEpisode(EventKind::Weather, 0, 0.05, 255, Participant::None, Outcome::Unknown, 0.0f, 0.0f, 0.0f, 0.0f, Relevance::None);
   }
@@ -130,6 +130,20 @@ Action Engine::tick() noexcept {
   const uint64_t berriesBefore = stats_.berriesEaten;
   const uint64_t drinksBefore = stats_.drinks;
   execute(action);
+
+  // Predator attacks resolved during the wildlife step land after the organism acts.
+  // Damage -> pain/health loss -> aversive tick -> ThreatNet sensitization, and the
+  // attack is encoded as an aversive, threatening Predator episode.
+  if (wu.attacked) {
+    body_.takeDamage(wu.attackDamage);
+    ++stats_.predatorAttacks;
+    events_.push({clock_.now(), 4 /* kind: attack */,
+                  static_cast<uint16_t>(wu.attackDamage * 10.0)});
+    recordEpisode(EventKind::Attack, static_cast<uint8_t>(std::min(255.0, wu.attackDamage * 2.5)),
+                  0.6, static_cast<uint8_t>(Action::Flee),
+                  Participant::Self | Participant::Predator, Outcome::Failure, 0.0f, 0.0f, -1.0f,
+                  0.3f, Relevance::Aversive | Relevance::Threatening);
+  }
 
   // Check for sleep-to-wake transition to trigger consolidation.
   const bool wasSleeping = before.isSleeping();
@@ -199,7 +213,7 @@ void Engine::dumpExperience(PolicyAction pa, bool agentic, float reward, float n
                             bool drank) noexcept {
   const Vec2i p = world_.organismPos();
   static constexpr const char* kActionNames[] = {"Forage", "Drink", "Rest",
-                                                 "Wander", "Observe"};
+                                                   "Wander", "Observe", "Flee"};
   int bushDist = -1;
   const Plant* plant = world_.nearestEdiblePlant(p, Perception::kSightRadius);
   if (plant) {
@@ -237,6 +251,7 @@ Action Engine::policyToAction(PolicyAction a) noexcept {
     case PolicyAction::Rest: return Action::Rest;
     case PolicyAction::Wander: return Action::Wander;
     case PolicyAction::Observe: return Action::Observe;
+    case PolicyAction::Flee: return Action::Flee;
   }
   return Action::Observe;
 }
@@ -247,20 +262,29 @@ PolicyAction Engine::actionToPolicy(Action a) noexcept {
     case Action::Drink: return PolicyAction::Drink;
     case Action::Rest: return PolicyAction::Rest;
     case Action::Wander: return PolicyAction::Wander;
+    case Action::Flee: return PolicyAction::Flee;
     default: return PolicyAction::Observe;
   }
 }
 
 Action Engine::decide() noexcept {
   if (body_.isSleeping()) {
-    // Wake when rested enough.
-    if (body_.sleepPressure() < 12.0 && body_.fatigue() < 15.0) {
+    // Survival overrides sleep: a predator at the door, or critical thirst/hunger.
+    if (world_.nearestPredator(world_.organismPos(), 2)) {
+      body_.setSleeping(false);
+      return Action::Flee;
+    }
+    if (body_.thirst() > 85.0 || body_.hunger() > 85.0) {
+      body_.setSleeping(false); // wake to drink/eat, then re-sleep
+    } else if (body_.sleepPressure() < 12.0 && body_.fatigue() < 15.0) {
       body_.setSleeping(false);
       recordEpisode(EventKind::Wake, 0, 0.15, 255, Participant::Self, Outcome::Success, 0.0f, 0.0f, 0.1f, 0.0f, Relevance::Rewarding);
+      return Action::Sleep;
     }
     return Action::Sleep;
   }
-  if (body_.needsSleep()) {
+  // Don't sleep while critically thirsty/hungry: the active branch will drink/eat.
+  if (body_.needsSleep() && body_.thirst() < 85.0 && body_.hunger() < 85.0) {
     body_.setSleeping(true);
     resting_ = false;
     recordEpisode(EventKind::Sleep, 0, 0.15, 255, Participant::Self, Outcome::Success, 0.0f, 0.0f, 0.0f, 0.0f, Relevance::None);
@@ -276,16 +300,24 @@ Action Engine::decide() noexcept {
     return Action::Rest;
   }
   // Emergency safety valves override the learned policy (deterministic survival).
+  // A predator within a few tiles outranks everything: flee first.
+  if (world_.nearestPredator(world_.organismPos(), 3)) return Action::Flee;
   if (body_.thirst() > 80.0) return Action::Drink;
   if (body_.hunger() > 80.0) return Action::Forage;
   if (body_.pain() > 40.0) return Action::Rest;
   // Learned policy proposes an agentic action from the state features.
   const PolicyAction chosen = learn_.chooseAction(featsBefore_, rngLearn_);
   Action a = policyToAction(chosen);
-  // ThreatNet veto: in a threatening state, avoid exploration.
+  // ThreatNet veto: in a threatening state, avoid exploration. If a predator is in
+  // sight, flee; otherwise retreat to rest.
   if (learn_.threatEstimate() > 0.65 &&
-      (chosen == PolicyAction::Wander || chosen == PolicyAction::Observe)) {
-    a = Action::Rest;
+      (chosen == PolicyAction::Wander || chosen == PolicyAction::Observe ||
+       chosen == PolicyAction::Rest)) {
+    if (world_.nearestPredator(world_.organismPos(), Perception::kSightRadius)) {
+      a = Action::Flee;
+    } else {
+      a = Action::Rest;
+    }
   }
   return a;
 }
@@ -314,6 +346,38 @@ bool Engine::moveToward(Vec2i target) noexcept {
     return true;
   }
   // Dead end (surrounded by water): random jitter to escape.
+  for (int attempt = 0; attempt < 4; ++attempt) {
+    const Vec2i q{p.x + rngCognition_.irange(-1, 1), p.y + rngCognition_.irange(-1, 1)};
+    if (world_.grid().inBounds(q.x, q.y) && world_.grid().walkable(q.x, q.y) &&
+        q != p) {
+      world_.setOrganismPos(q);
+      return true;
+    }
+  }
+  return false;
+}
+
+bool Engine::moveAwayFrom(Vec2i threat) noexcept {
+  const Vec2i p = world_.organismPos();
+  // Greedy best-step maximizing Chebyshev distance from the threat.
+  static constexpr int kOffsets[8][2] = {
+      {-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}};
+  int bestX = -1, bestY = -1, bestScore = distCheb(p, threat);
+  for (const auto& off : kOffsets) {
+    const Vec2i q{p.x + off[0], p.y + off[1]};
+    if (!world_.grid().inBounds(q.x, q.y) || !world_.grid().walkable(q.x, q.y)) continue;
+    const int score = distCheb(q, threat);
+    if (score > bestScore) {
+      bestScore = score;
+      bestX = q.x;
+      bestY = q.y;
+    }
+  }
+  if (bestX >= 0) {
+    world_.setOrganismPos({bestX, bestY});
+    return true;
+  }
+  // Surrounded by water: random jitter to escape.
   for (int attempt = 0; attempt < 4; ++attempt) {
     const Vec2i q{p.x + rngCognition_.irange(-1, 1), p.y + rngCognition_.irange(-1, 1)};
     if (world_.grid().inBounds(q.x, q.y) && world_.grid().walkable(q.x, q.y) &&
@@ -379,6 +443,23 @@ void Engine::execute(Action a) noexcept {
       }
       break;
     }
+    case Action::Flee: {
+      ++stats_.actionsFlee;
+      const Vec2i p = world_.organismPos();
+      const WildlifeAgent* predator = world_.nearestPredator(p, Perception::kSightRadius);
+      if (predator) {
+        moveAwayFrom(predator->pos);
+      } else {
+        // No visible predator: defensive wander.
+        const int dx = rngCognition_.irange(-1, 1);
+        const int dy = rngCognition_.irange(-1, 1);
+        const Vec2i q{p.x + dx, p.y + dy};
+        if (world_.grid().inBounds(q.x, q.y) && world_.grid().walkable(q.x, q.y)) {
+          world_.setOrganismPos(q);
+        }
+      }
+      break;
+    }
     case Action::Drink: {
       ++stats_.actionsDrink;
       const Vec2i p = world_.organismPos();
@@ -393,12 +474,37 @@ void Engine::execute(Action a) noexcept {
                           Relevance::Rewarding | Relevance::GoalRelated);
         }
       } else {
-        // Walk toward the nearest water source in sight.
-        const WaterSource* water = world_.nearestWaterSource(p, Perception::kSightRadius);
+        // Walk toward the nearest water source in hearing range.
+        const WaterSource* water = world_.nearestWaterSource(p, Perception::kHearingRadius);
         if (water) {
           moveToward(water->pos);
         } else {
-          // No water in sight: wander.
+          // No water in sight: walk up the local water gradient (toward a tile whose
+          // 8-neighborhood touches water) instead of wandering randomly into a desert.
+          static constexpr int kGradOff[9][2] = {
+              {0, 0}, {-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}};
+          Vec2i best = {-1, -1};
+          int bestScore = -1;
+          for (const auto& off : kGradOff) {
+            const Vec2i q{p.x + off[0], p.y + off[1]};
+            if (!world_.grid().inBounds(q.x, q.y) || !world_.grid().walkable(q.x, q.y)) continue;
+            int score = 0;
+            for (int dy = -1; dy <= 1; ++dy) {
+              for (int dx = -1; dx <= 1; ++dx) {
+                const Terrain t = world_.grid().at(q.x + dx, q.y + dy);
+                if (t == Terrain::Water || t == Terrain::River) ++score;
+              }
+            }
+            if (score > bestScore) {
+              bestScore = score;
+              best = q;
+            }
+          }
+          if (best.x >= 0 && best != p) {
+            world_.setOrganismPos(best);
+            break;
+          }
+          // No water gradient here: wander.
           const int dx = rngCognition_.irange(-1, 1);
           const int dy = rngCognition_.irange(-1, 1);
           const Vec2i q{p.x + dx, p.y + dy};
@@ -429,6 +535,10 @@ void Engine::checkEvents(EventLog* log) noexcept {
       case 3:
         type = "drink";
         std::snprintf(buf, sizeof(buf), "water=8.0");
+        break;
+      case 4:
+        type = "attack";
+        std::snprintf(buf, sizeof(buf), "damage=%.1f", e.payload / 10.0);
         break;
       default:
         break;
@@ -520,6 +630,8 @@ void Engine::serializeState(BinaryWriter& w) const {
   w.u64(stats_.actionsObserve);
   w.u64(stats_.actionsForage);
   w.u64(stats_.actionsDrink);
+  w.u64(stats_.actionsFlee);
+  w.u64(stats_.predatorAttacks);
   w.u64(stats_.berriesEaten);
   w.u64(stats_.drinks);
   w.u8(resting_ ? 1 : 0);
@@ -561,7 +673,8 @@ bool Engine::deserializeState(BinaryReader& r, std::string& err) {
       !r.u64(stats_.ticksSleep) || !r.u64(stats_.actionsWander) ||
       !r.u64(stats_.actionsRest) || !r.u64(stats_.actionsSleep) ||
       !r.u64(stats_.actionsObserve) || !r.u64(stats_.actionsForage) ||
-      !r.u64(stats_.actionsDrink) || !r.u64(stats_.berriesEaten) ||
+      !r.u64(stats_.actionsDrink) || !r.u64(stats_.actionsFlee) ||
+      !r.u64(stats_.predatorAttacks) || !r.u64(stats_.berriesEaten) ||
       !r.u64(stats_.drinks)) {
     err = "snapshot stats corrupt";
     return false;

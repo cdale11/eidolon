@@ -21,6 +21,7 @@ std::string episodeText(const Episode& e) {
     case EventKind::Weather: what = "weather change"; break;
     case EventKind::NearDeath: what = "critical health"; break;
     case EventKind::Death: what = "death"; break;
+    case EventKind::Attack: what = "attacked by a predator"; break;
   }
   char buf[128];
   std::snprintf(buf, sizeof(buf), "%s (t=%lld)", what, static_cast<long long>(e.t));

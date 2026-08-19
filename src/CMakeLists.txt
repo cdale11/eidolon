@@ -5,6 +5,7 @@ add_library(eidolon_core STATIC
   core/json.cpp
   core/clock.hpp
   world/world.cpp
+  world/wildlife.cpp
   body/physiology.cpp
   mind/memory.cpp
   mind/memory_system.cpp

@@ -372,19 +372,28 @@ std::string Server::statusJson() {
   std::lock_guard<std::mutex> lock(engineMu_);
   const auto& b = engine_.body();
   const auto& w = engine_.world().weather();
+  const Vec2i p = engine_.world().organismPos();
   char buf[512];
   std::snprintf(buf, sizeof(buf),
                 "{\"day\":%lld,\"hour\":%.1f,\"awake\":%s,\"alive\":%s,"
                 "\"energy\":%.1f,\"hunger\":%.1f,\"thirst\":%.1f,\"fatigue\":%.1f,"
                 "\"sleepP\":%.1f,\"health\":%.1f,\"bodyTemp\":%.1f,\"weather\":\"%s\","
-                "\"tempC\":%.1f,\"simTime\":%lld}",
+                "\"tempC\":%.1f,\"simTime\":%lld,"
+                "\"preyNear\":%d,\"predatorsNear\":%d,\"predatorDist\":%d}",
                 static_cast<long long>(engine_.clock().day()),
                 engine_.clock().hourOfDay(),
                 b.isSleeping() ? "false" : "true",
                 engine_.isAlive() ? "true" : "false", b.energy(), b.hunger(), b.thirst(),
                 b.fatigue(), b.sleepPressure(), b.health(), b.bodyTemp(),
                 w.describe(), w.ambientTempC(engine_.clock()),
-                static_cast<long long>(engine_.clock().now()));
+                static_cast<long long>(engine_.clock().now()),
+                engine_.world().preyCount(p, Perception::kSightRadius),
+                engine_.world().predatorCount(p, Perception::kSightRadius),
+                [&] {
+                  const WildlifeAgent* pr = engine_.world().nearestPredator(
+                      p, Perception::kSightRadius);
+                  return pr ? distCheb(pr->pos, p) : -1;
+                }());
   return buf;
 }
 

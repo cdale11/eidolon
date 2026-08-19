@@ -27,6 +27,7 @@ enum class Action : uint8_t {
   Observe = 3,
   Forage = 4,
   Drink = 5,
+  Flee = 6,
 };
 
 class Engine {
@@ -41,6 +42,8 @@ public:
     uint64_t actionsObserve = 0;
     uint64_t actionsForage = 0;
     uint64_t actionsDrink = 0;
+    uint64_t actionsFlee = 0;
+    uint64_t predatorAttacks = 0;
     uint64_t berriesEaten = 0;
     uint64_t drinks = 0;
   };
@@ -51,6 +54,7 @@ public:
 
   // Fresh organism. `masterSeed` drives every subsystem stream.
   void init(uint64_t masterSeed, bool deterministic, int worldW, int worldH);
+
   bool isAlive() const { return world_.organismAlive() && body_.alive(); }
 
   // Advance the simulation by one tick (step size chosen adaptively). noexcept hot path.
@@ -96,6 +100,8 @@ public:
   // Try to move one tile toward `target` (see moveToward in engine.cpp). Returns true
   // if the organism moved.
   bool moveToward(Vec2i target) noexcept;
+  // Try to move one tile away from `threat` (used by the Flee action).
+  bool moveAwayFrom(Vec2i threat) noexcept;
 
   // Learning-core access (tests + metrics).
   const LearnSystem& learn() const { return learn_; }

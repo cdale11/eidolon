@@ -25,12 +25,12 @@ namespace eidolon {
 class LearnSystem {
 public:
   // Feature layout (order is stable for learning + serialization):
-  //   0..11  attended perception channels (Perception::kFeatures)
-  //   12..19 body: hunger, thirst, fatigue, energy (drive-scaled), health, pain,
+  //   0..27  attended perception channels (Perception::kFeatures, incl. wildlife)
+  //   28..35 body: hunger, thirst, fatigue, energy (drive-scaled), health, pain,
   //           sleepPressure, bodyTemp deviation
-  //   20..25 neuromod: novelty, curiosity, stress, arousal, valence, uncertainty
-  //   26     last ThreatNet estimate (feedback channel)
-  static constexpr int kFeatures = 27;
+  //   36..41 neuromod: novelty, curiosity, stress, arousal, valence, uncertainty
+  //   42     last ThreatNet estimate (feedback channel)
+  static constexpr int kFeatures = 43;
 
   void init(Rng& r);
 
