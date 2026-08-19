@@ -92,12 +92,13 @@ passes.
 ## Phase 5 — Rich world & wildlife
 - [x] Seasons, weather events (rain/storm/heat/cold), temperature coupling
 - [x] Plants (edible/toxic/medicinal), regrowth, depletion; water sources (river/lake/spring)
-- [ ] Wildlife: prey (rabbits) + predators (dogs/wolves) with own drives and fear of the
-  organism; hunting/fleeing/attack resolution
+- [x] Wildlife: prey (rabbits/deer) + predators (wolves/bears) with own drives (move, drink,
+  flee, hunt) and fear of the organism; hunting/fleeing/attack resolution
 - [ ] Hazards (cliffs, deep water, disease vectors), infection/immune model, wounds
 - [ ] Causal chains verified end-to-end (scarcity → exploration → …)
 - Gate: in a seeded scarcity scenario the organism explores and finds food; predator events
-  produce measurable threat learning; survival rate improves with experience.
+  produce measurable threat learning; survival rate improves with experience. (Wildlife
+  present and attacking; threat-learning-from-predator gate test not yet written.)
 
 ### Phase 5 branch — deterministic generative systems (DESIGN §22)
 Seedable, allocation-light generative content; no LLM, bit-exact replays preserved.
