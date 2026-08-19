@@ -78,6 +78,37 @@ TEST(world_serialize_roundtrip) {
   }
 }
 
+TEST(grid_serialize_roundtrip_full_fidelity) {
+  // Regression: Grid::serialize/deserialize passed the ELEMENT count to
+  // bytes() (which takes a BYTE count), so the last 3/4 of each float grid
+  // (elevation/temperature/humidity) was dropped. A resumed process saw zeros
+  // there and diverged from the uninterrupted run. Verify every element
+  // survives a default-constructed round-trip.
+  Grid a, b;
+  Rng r(7);
+  a.generate(64, 64, r);
+  BinaryWriter w;
+  a.serialize(w);
+  BinaryReader rd(w.data());
+  CHECK(b.deserialize(rd));
+  CHECK(rd.done());
+  CHECK_EQ(a.width(), b.width());
+  CHECK_EQ(a.height(), b.height());
+  const int w_ = a.width(), h_ = a.height();
+  for (int y = 0; y < h_; ++y) {
+    for (int x = 0; x < w_; ++x) {
+      CHECK(a.at(x, y) == b.at(x, y));
+      CHECK(a.biome(x, y) == b.biome(x, y));
+      CHECK_EQ(a.elevation(x, y), b.elevation(x, y));
+      CHECK_EQ(a.temperature(x, y), b.temperature(x, y));
+      CHECK_EQ(a.humidity(x, y), b.humidity(x, y));
+    }
+  }
+  // Spot-check a high index explicitly: the last element of each float grid.
+  CHECK_EQ(a.elevation(w_ - 1, h_ - 1), b.elevation(w_ - 1, h_ - 1));
+  CHECK_EQ(a.humidity(w_ - 1, h_ - 1), b.humidity(w_ - 1, h_ - 1));
+}
+
 TEST(world_generation_places_plants) {
   World w;
   Rng r(123);
@@ -96,8 +127,13 @@ TEST(world_plants_regrow_capped) {
   Rng r(5);
   w.generate(32, 32, r);
   SimClock c;
-  w.update(c, 10 * 86400, r); // 10 days
-  for (const Plant& pl : w.plants()) CHECK_EQ(pl.amount, pl.maxAmount);
+  w.update(c, 10 * 86400, r); // 10 days (wildlife grazes some plants)
+  bool anyLiving = false;
+  for (const Plant& pl : w.plants()) {
+    CHECK(pl.amount <= pl.maxAmount + 1e-9); // regrowth never exceeds the cap
+    if (pl.amount >= 1.0) anyLiving = true;
+  }
+  CHECK(anyLiving); // the plant population survives wildlife grazing
 }
 
 TEST(world_consume_and_regrow) {
@@ -151,7 +187,7 @@ TEST(perception_feature_vector_shape) {
   SimClock c;
   c.set(43200); // noon
   const Perception p = w.perceive(w.organismPos(), c);
-  CHECK_EQ(Perception::kFeatures, 20);
+  CHECK_EQ(Perception::kFeatures, 28);
   CHECK(p[0] >= 0.0 && p[0] <= 1.0); // hour
   CHECK(p[1] >= 0.0 && p[1] <= 3.0); // weather code
   CHECK(p[2] >= 0.0 && p[2] <= 1.0); // temp
@@ -165,6 +201,14 @@ TEST(perception_feature_vector_shape) {
   CHECK(p[10] >= -1.0 && p[10] <= 1.0);
   CHECK(p[11] >= -1.0 && p[11] <= 1.0);
   CHECK(p[12] >= 0.0 && p[12] <= 1.0); // plants in sight
+  CHECK(p[20] >= 0.0 && p[20] <= 1.0); // prey distance
+  CHECK(p[21] >= -1.0 && p[21] <= 1.0);
+  CHECK(p[22] >= -1.0 && p[22] <= 1.0);
+  CHECK(p[23] >= 0.0 && p[23] <= 1.0); // predator distance
+  CHECK(p[24] >= -1.0 && p[24] <= 1.0);
+  CHECK(p[25] >= -1.0 && p[25] <= 1.0);
+  CHECK(p[26] >= 0.0 && p[26] <= 1.0); // prey count
+  CHECK(p[27] >= 0.0 && p[27] <= 1.0); // predator count
 }
 
 TEST(weather_temperature_bounded) {

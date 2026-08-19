@@ -178,9 +178,9 @@ void eidolon::Grid::serialize(eidolon::BinaryWriter& w) const {
   w.u64(static_cast<uint64_t>(tiles_.size()));
   w.bytes(tiles_.data(), tiles_.size());
   w.bytes(biomes_.data(), biomes_.size());
-  w.bytes(elevation_.data(), elevation_.size());
-  w.bytes(temperature_.data(), temperature_.size());
-  w.bytes(humidity_.data(), humidity_.size());
+  w.bytes(elevation_.data(), elevation_.size() * sizeof(float));
+  w.bytes(temperature_.data(), temperature_.size() * sizeof(float));
+  w.bytes(humidity_.data(), humidity_.size() * sizeof(float));
 }
 
 bool eidolon::Grid::deserialize(eidolon::BinaryReader& r) {
@@ -197,9 +197,9 @@ bool eidolon::Grid::deserialize(eidolon::BinaryReader& r) {
   humidity_.resize(static_cast<size_t>(n));
   if (!r.bytes(tiles_.data(), tiles_.size())) return false;
   if (!r.bytes(biomes_.data(), biomes_.size())) return false;
-  if (!r.bytes(elevation_.data(), elevation_.size())) return false;
-  if (!r.bytes(temperature_.data(), temperature_.size())) return false;
-  if (!r.bytes(humidity_.data(), humidity_.size())) return false;
+  if (!r.bytes(elevation_.data(), elevation_.size() * sizeof(float))) return false;
+  if (!r.bytes(temperature_.data(), temperature_.size() * sizeof(float))) return false;
+  if (!r.bytes(humidity_.data(), humidity_.size() * sizeof(float))) return false;
   return true;
 }
 

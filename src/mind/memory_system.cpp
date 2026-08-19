@@ -60,7 +60,7 @@ void MemorySystem::strengthen(size_t index, float amount) {
   }
 }
 
-void MemorySystem::consolidate(const LearnSystem& learn, Archive* archive) {
+void MemorySystem::consolidate(const LearnSystem&, Archive* archive) {
   // 1) Replay: iterate recent high-importance episodes
   // 2) Skill rehearsal: boost policy weights for successful action sequences
   // 3) Goal processing: extract goal-relevant episodes
@@ -80,7 +80,7 @@ void MemorySystem::consolidate(const LearnSystem& learn, Archive* archive) {
   }
 }
 
-void MemorySystem::dream(const LearnSystem& learn) {
+void MemorySystem::dream(const LearnSystem&) {
   // Dreams v1: associative recombination.
   // Randomly pair two recent episodes; if they share location, participants, or
   // outcome type, create a "dream trace" that slightly perturbs the policy

@@ -30,6 +30,18 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 - Snapshot now persists the run's scheduled target so a resumed run continues the ORIGINAL
   day schedule — `--days 0.5` + `--days 0.5` is byte-identical to `--days 1.0` even when
   coarse ticks overshoot the boundary (fixes `test_saveload_continuity`).
+- **Wildlife** (`src/world/wildlife.hpp`): seeded, deterministic ecosystem agents — prey
+  (rabbit/deer) and predators (wolf/bear) that move on terrain, drink, flee, and hunt; the
+  organism senses them (distance/direction/type in perception) and can **Flee** when a
+  predator attacks. Predator attacks deal damage; prey flee predators. New perception
+  channels raise the feature vector to 28 and the learned policy to 6 actions (incl.
+  Flee); teacher pipeline updated to the 6×44 prior layout.
+- Grid snapshot fidelity fix: `Grid::serialize`/`deserialize` passed the ELEMENT count to
+  `bytes()` (a BYTE-count API), so only the first 1024 floats of each 4096-float climate
+  array (elevation/temperature/humidity) were persisted and the tail read back as zeros
+  after a resume — a resumed organism perceived flat terrain and diverged from the
+  uninterrupted run within a tick. Full arrays now round-trip; snapshot version bumped to
+  6. `test_saveload_continuity` (CLI resume == uninterrupted run, byte-identical) passes.
 
 ### Tests & tooling
 - C++ unit suite runs in parallel: each test in its own process (`eidolon_tests --list`

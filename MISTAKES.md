@@ -50,3 +50,25 @@ test quirk.
 Fix / rule: Persist the run's scheduled target in the snapshot (engine field, version 4);
 the CLI advances that schedule instead of the overshot clock. Never derive a resume boundary
 from a clock that coarse ticks may have overshot.
+
+### 2026-08-19 — bytes() takes BYTE count, not element count — grid floats silently truncated
+Context: `test_saveload_continuity` failed again after the Phase 5 noise-field worldgen.
+In-process resume diverged from the uninterrupted run at the very first resumed tick, and
+the learn section (Neuromod) drifted within one tick. The resumed process perceived flat
+terrain (elevation/humidity = 0) while the fresh run saw real values.
+Mistake: `Grid::serialize`/`deserialize` called `w.bytes(elevation_.data(), elevation_.size())`
+where `size()` is the ELEMENT count. `bytes()` reads/writes BYTES, so only 4096 bytes
+(= 1024 of 4096 floats) of each climate array were persisted; the tail came back as zeros.
+The default-construct + loadFile resume path resized the empty vectors to 4096 zeroed
+floats, read back only the first 1024, and left the rest zero — while the init()+load path
+(and any process that generated the grid first) kept the real generated values, so it
+matched by luck. `Grid::hash()` hashed only tiles, so `world_serialize_roundtrip` passed
+despite the data loss. Root-causing cost hours of hash tracing (world serialize matched
+byte-for-byte while a raw elevation hash differed — because the truncation hid in the
+serialized bytes themselves).
+Fix / rule: `bytes()` is byte-count only; multiply element counts by `sizeof(T)` for
+non-uint8 vectors (tiles/biomes are 1-byte enums so were accidentally correct). Snapshot
+version bumped to 6. Added `grid_serialize_roundtrip_full_fidelity` which element-wise
+checks every tile/biome/elevation/temperature/humidity cell through a default-constructed
+round-trip. Audit every `bytes(data, size())` call when a vector element is wider than one
+byte, and make serialization round-trip tests compare raw element data, not a partial hash.
