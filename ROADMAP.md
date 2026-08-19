@@ -226,14 +226,14 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
   save / load; trust dynamics match a calibrated Ising simulation.
 
 ## Phase 9 — Self-model, concepts, metacognition
-- Self-model: body/abilities, autobiographical summary, preferences, beliefs, goals,
-  reputation, future expectations — all experience-updated
-- Metacognition: uncertainty, confidence, self-prediction, failed-prediction recognition →
-  reflection triggers
-- Concept formation: incremental clustering in embedding space, expandable ontology,
-  LLM-assisted naming (rare)
+- [x] Self-model: body/abilities, autobiographical summary, preferences, beliefs, goals,
+      reputation, future expectations — all experience-updated (`src/mind/self_model.hpp/.cpp`)
+- [ ] Metacognition: uncertainty, confidence, self-prediction, failed-prediction recognition →
+      reflection triggers
+- [ ] Concept formation: incremental clustering in embedding space, expandable ontology,
+      LLM-assisted naming (rare)
 - Gate: organism forms and names a concept it was never told about; self-model changes after
-  significant events; it reports uncertainty honestly in conversation.
+      significant events; it reports uncertainty honestly in conversation.
 
 ### Phase 9 branch — concept ontology & belief coherence (DESIGN §22)
 - [ ] **Graph rewriting**: concept ontology as a typed graph grown by rewrite rules when

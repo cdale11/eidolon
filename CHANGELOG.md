@@ -68,6 +68,10 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 - **Affordance discovery** (`src/body/affordance.hpp/.cpp`): Tool/material affordance registration, unexpected usage detection, procedure generation hooks.
 - All tests pass; snapshot version 10
 
+### Phase 9 — Self-model, concepts, metacognition (current session)
+- **Self-model** (`src/mind/self_model.hpp/.cpp`): Capability assessment, autobiographical summary, preferences, reputation, future expectations. Metacognitive state (uncertainty, prediction confidence, reflection triggers). Experience-based updates from physiology and goals.
+- All tests pass; snapshot version 11
+
 ### Tests & tooling
 - C++ unit suite runs in parallel: each test in its own process (`eidolon_tests --list`
   / `--name <t>`) driven by `python/tests/run_unit.sh` with `xargs -P$(nproc)`; pid-unique
