@@ -162,8 +162,11 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
       the teacher artifacts, tournament + crossover + gaussian mutation, deterministic RNG,
       improves on the teacher priors on survival-weighted fitness). Next: wildlife behaviour
       parameters, recipe tuning (deferred to later phases).
-- [ ] **Grammars / formal grammars**: structured goal / event templates for episodic-memory
+- [x] **Grammars / formal grammars**: structured goal / event templates for episodic-memory
       compression, recipe production rules, grounded utterance templates (used by Phase 10).
+      `src/world/grammar.hpp/.cpp`: CFG engine with deterministic/stochastic derivation,
+      CYK-style parsing, weighted productions. Predefined grammars: goal templates,
+      event templates, recipe production rules, grounded utterance templates.
 - Gate: every generated object reproduces from its seed (determinism tests); content couples
   to behaviour (perception / affordances / memory), never cosmetics; generated ecology
   measurably changes foraging strategy over days; Markov wildlife produces testable state

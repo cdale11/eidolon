@@ -13,6 +13,7 @@ add_library(eidolon_core STATIC
   world/markov.cpp
   world/lsystem.cpp
   world/procgen.cpp
+  world/grammar.cpp
   body/physiology.cpp
   body/ode_tests.cpp
   mind/memory.cpp
