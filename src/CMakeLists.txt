@@ -18,6 +18,8 @@ add_library(eidolon_core STATIC
   body/ode_tests.cpp
   body/skill.cpp
   body/crafting.cpp
+  body/affordance.cpp
+  body/affordance.cpp
   body/construction.cpp
   mind/memory.cpp
   mind/memory_system.cpp

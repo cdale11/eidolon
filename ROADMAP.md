@@ -178,22 +178,26 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
 - [x] Crafting with learned recipes (seeded basics: fire, sharp stone, spear, shelter) (`src/body/crafting.hpp/.cpp`)
 - [x] Construction: persistent structures on grid (shelter, walls, campfire, storage, farm
   plots), stored/retrieved in snapshot (`src/body/construction.hpp/.cpp`)
-- [ ] Affordance discovery: tool used in unexpected ways → new procedures
+- [x] Affordance discovery: tool used in unexpected ways → new procedures (`src/body/affordance.hpp/.cpp`: `AffordanceSystem` with tool/material affordance registration, discovery from unexpected usage, procedure generation hooks)
 - Gate: organism builds a shelter that persists across save/load; discovers at least one
   novel tool use in a seeded run; skill competence improves with practice.
 
 ### Phase 6 branch — generative crafting, construction & invention (DESIGN §22)
-- [ ] **Shape grammars**: construction geometry — shelter / wall / campfire / storage /
+- [x] **Shape grammars**: construction geometry — shelter / wall / campfire / storage /
       farm-plot forms generated from a shape grammar seeded by site context and available
       materials; tools get anatomical structure (handle / blade / binding) from a shape
-      grammar. Turtle interpretation with depth cap; deterministic.
-- [ ] **Graph rewriting** (recipe / tech tree): the recipe graph is rewritten when new
+      grammar. Turtle interpretation with depth cap; deterministic. Implemented as
+      L-systems in `src/world/lsystem.hpp/.cpp`.
+- [x] **Graph rewriting** (recipe / tech tree): the recipe graph is rewritten when new
       crafting combinations are discovered or when an experiment succeeds; the organism's
       "known recipes" set is a deterministic graph that grows under rewrite rules.
+      Implemented in `src/body/crafting.hpp/.cpp` with `CraftingSystem::experiment()` and
+      `AffordanceSystem::generateProcedureFromAffordance()`.
 - [ ] **Genetic programming** (offline tooling): evolve recipe trees (crafting / tool
       invention) and behaviour trees (action sequences) validated against world physics;
       tournament + subtree crossover / mutation; fitness = sim validation; depth cap.
-      Discovered procedures become recipes the organism can use at runtime.
+      Discovered procedures become recipes the organism can use at runtime. (Deferred to
+      Phase 11+; `python/teacher/evolve_prior.py` provides the evolutionary framework).
 - Gate: a shape-grammar-built shelter persists across save / load; GP discovers at least
   one novel recipe per seeded run; the recipe graph is inspectable and reproducible.
 
