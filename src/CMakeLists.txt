@@ -16,6 +16,8 @@ add_library(eidolon_core STATIC
   world/grammar.cpp
   body/physiology.cpp
   body/ode_tests.cpp
+  body/skill.cpp
+  body/crafting.cpp
   mind/memory.cpp
   mind/memory_system.cpp
   mind/mlp.cpp
