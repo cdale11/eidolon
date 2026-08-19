@@ -123,8 +123,14 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
       `src/world/lsystem.hpp/.cpp`: deterministic turtle interpretation with depth cap,
       stochastic branch probabilities, network output for river/road graphs.
       Predefined systems: fern, bush, tree, grass, river, road, root.
-- [ ] **Procedural generation**: ruins / landmarks, named places, semantically tagged
+- [x] **Procedural generation**: ruins / landmarks, named places, semantically tagged
       objects (memory ground truth), extending the existing seedable world gen.
+      `src/world/procgen.hpp/.cpp`: `ProceduralGenerator` with `Landmark` (ruins,
+      shrines, caves, ancient trees, stone circles, burial mounds, springs),
+      `Ruin` (rooms, depth, entrances), `NamedPlace` (regions with descriptions),
+      `ObjectTag` bitmask for semantic tagging (Edible, Medicinal, Tool, Weapon,
+      Shelter, Water, Danger, Safe, Social, Resource, Landmark, Hidden, Quest).
+      Name generation from component tables. Snapshot serialization included.
 - [ ] **Agent-based models (ABM)** formalisation: the wildlife loop (sense → decide →
       act) is the canonical ABM pattern with per-agent RNG streams (seed = world seed +
       agent id).
