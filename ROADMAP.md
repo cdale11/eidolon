@@ -193,11 +193,6 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
       "known recipes" set is a deterministic graph that grows under rewrite rules.
       Implemented in `src/body/crafting.hpp/.cpp` with `CraftingSystem::experiment()` and
       `AffordanceSystem::generateProcedureFromAffordance()`.
-- [ ] **Genetic programming** (offline tooling): evolve recipe trees (crafting / tool
-      invention) and behaviour trees (action sequences) validated against world physics;
-      tournament + subtree crossover / mutation; fitness = sim validation; depth cap.
-      Discovered procedures become recipes the organism can use at runtime. (Deferred to
-      Phase 11+; `python/teacher/evolve_prior.py` provides the evolutionary framework).
 - Gate: a shape-grammar-built shelter persists across save / load; GP discovers at least
   one novel recipe per seeded run; the recipe graph is inspectable and reproducible.
 
@@ -278,6 +273,11 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
   identity unchanged
 - Profiling from the beginning: per-backend sim steps/sec, simulated hours/sec, inferences/
   sec, worker utilization, WASM memory, latency — diagnostics panel in the UI
+- **Genetic programming** (offline tooling): evolve recipe trees (crafting / tool
+  invention) and behaviour trees (action sequences) validated against world physics;
+  tournament + subtree crossover / mutation; fitness = sim validation; depth cap.
+  Discovered procedures become recipes the organism can use at runtime.
+  (`python/teacher/evolve_prior.py` provides the framework; extend to recipe/behavior trees).
 - Gate: same seeded scenario produces the same individual state on native and WASM
   (parity test); no heavy work on the main UI thread; fidelity reduction works.
 
