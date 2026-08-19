@@ -115,6 +115,12 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   - `selectBackend()`: auto-selects best backend (WebGPU → WASM SIMD+MT → WASM SIMD → WASM plain → server fallback)
   - `getBackendPriority()`, `isBackendViable()`, `estimatePerformance()`: priority ordering, viability checks, performance estimation
   - Full serialization support for `ComputeProfile` and `BackendSelection`
+- **Heredity system** (`src/mind/heredity.hpp/.cpp`): Inheritance mechanism for organism death/restart
+  - `HeredityGenome`: saves policy weights + personality latent vector (16-d)
+  - `HeredityManager`: `extractGenome()` on death, `createOffspring()` with mutation, `applyHeredity()` to fresh engine
+  - `HeredityGenome` serialization for persistence across restarts
+  - Policy `weights()` accessor added; `PersonalityLatent` operator[] for mutation/blending
+  - Engine non-const `learn()` for heredity application
 - Gate: same seeded scenario produces the same individual state on native and WASM (parity test pending); no heavy work on the main UI thread
 
 ### Tests & tooling

@@ -287,6 +287,12 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
       Implemented in `src/mind/compute_profile.hpp/.cpp`: `ComputeProfileDetector::fromJsCapabilities()`,
       `selectBackend()`, `getBackendPriority()`, `isBackendViable()`, `estimatePerformance()`,
       with serialization support.
+- [x] Heredity system (inheritance mechanism for organism death/restart)
+  - `src/mind/heredity.hpp/.cpp`: `HeredityGenome` saves policy weights + personality latent
+  - `HeredityManager`: `extractGenome()` on death, `createOffspring()` with mutation, `applyHeredity()` to fresh engine
+  - `HeredityGenome` serialization for persistence across restarts
+  - Policy weights accessor added; PersonalityLatent operator[] for mutation/blending
+  - Engine non-const `learn()` for heredity application
 - [ ] `ComputeScheduler`: priority queues (chat/responsiveness > active sim > background
       consolidation); worker separation (world / physiology-cognition / neural-ML /
       memory-consolidation); compact message passing, no big buffer transfers
