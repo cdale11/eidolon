@@ -240,9 +240,10 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
       the organism forms associations; belief graph (§8) rewritten when evidence resolves
       contradictions. Rewrite rules = deterministic productions applied under the sim seed.
       Implemented in `src/mind/graph_rewriting.hpp/.cpp`: typed graph (Concept/Relation/Property/Event/Category nodes; IsA/HasProperty/Causes/PartOf/RelatedTo/Opposes/Enables edges), `RewriteRule` with pattern matching and replacement, incremental `match_pattern` / `apply_rules`, `sync_with_concepts` hook, full serialization.
-- [ ] **Ising models**: belief coherence — the organism's binary beliefs as spins, evidence
+- [x] **Ising models**: belief coherence — the organism's binary beliefs as spins, evidence
       as fields, consistency as couplings. Produces stable belief networks, flips under
       strong contradictory evidence, quantifiable cognitive dissonance.
+      Implemented in `src/mind/belief_ising.hpp/.cpp` (from Phase 8 branch): `BeliefIsingModel` with `BeliefSpin` states (+1/-1/0), external fields, couplings matrix, Glauber dynamics (`update()`), `compute_energy()`, `compute_dissonance()`, `get_coherent_clusters()`, full snapshot serialization.
 - Gate: the concept graph is inspectable and reproducible from the seed; belief coherence
       score improves with experience; belief flips on strong evidence are reproducible.
 

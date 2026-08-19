@@ -73,6 +73,7 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 - **Metacognition** (`src/mind/metacognition.hpp/.cpp`): Prediction tracking, error detection, surprise detection, reflection triggers, confidence/uncertainty dynamics. Prediction history with MSE tracking, reflection triggers on surprise, confidence/uncertainty dynamics.
 - **Concept formation** (`src/mind/concept_formation.hpp/.cpp`): Incremental K-means clustering in embedding space, experience buffering, concept merging, LLM-assisted naming hooks, concept activation lookup.
 - **Graph rewriting** (`src/mind/graph_rewriting.hpp/.cpp`): Typed graph for concept ontology (Concept/Relation/Property/Event/Category nodes; IsA/HasProperty/Causes/PartOf/RelatedTo/Opposes/Enables edges), `RewriteRule` with pattern matching and replacement, incremental `match_pattern` / `apply_rules`, `sync_with_concepts` hook, full snapshot serialization.
+- **Ising belief coherence** (`src/mind/belief_ising.hpp/.cpp`): Binary beliefs as spins (+1/-1/0), evidence as external fields, consistency as couplings. Glauber dynamics with seeded RNG, coherent clusters, energy computation, cognitive dissonance metric. Full serialization.
 - All tests pass; snapshot version 12
 
 ### Tests & tooling
