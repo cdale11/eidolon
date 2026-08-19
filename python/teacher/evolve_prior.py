@@ -1,6 +1,6 @@
 """Evolutionary search over the policy-prior weights (offline, deterministic).
 
-The policy prior is just 5x(27+1) float weights, so we can evolve it directly with a
+The policy prior is just 6x(43+1) float weights, so we can evolve it directly with a
 tiny, seedable population search instead of (or on top of) the teacher-label fit. This
 is the "evolutionary algorithms" augmentation for the Eidolon offline tooling: it is
 deterministic (fixed RNG seed, --deterministic sims on held-out seeds) and never runs

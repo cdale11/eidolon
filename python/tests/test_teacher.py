@@ -48,9 +48,9 @@ def test_dump_and_dataset(tmp):
     assert len(exp) > 1000, f"dump too small: {len(exp)}"
     names = {e.action for e in exp}
     assert names <= set(ACTION_NAMES), f"unexpected actions: {names}"
-    # interpretable context is non-empty and feats are 27 floats
+    # interpretable context is non-empty and feats are 43 floats
     assert exp[0].interpretable_text()
-    assert exp[0].feats.shape == (27,)
+    assert exp[0].feats.shape == (43,)
 
 
 def test_prior_fit_and_roundtrip(tmp):
@@ -65,9 +65,9 @@ def test_prior_fit_and_roundtrip(tmp):
     assert 0.0 <= res["acc"] <= 1.0
     prior = f"{tmp}/prior.eprp"
     write_prior(prior, res["weights"], res["bias"])
-    assert os.path.getsize(prior) == 4 + 12 + 5 * 28 * 4  # header + 5 rows of (27+1) f32
+    assert os.path.getsize(prior) == 4 + 12 + 6 * 44 * 4  # header + 6 rows of (43+1) f32
     W, b = read_prior(prior)
-    assert W.shape == (5, 27) and b.shape == (5,)
+    assert W.shape == (6, 43) and b.shape == (6,)
     assert (W == res["weights"]).all() and (b == res["bias"]).all()
 
 
