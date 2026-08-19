@@ -44,6 +44,30 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   6. `test_saveload_continuity` (CLI resume == uninterrupted run, byte-identical) passes.
 - **Phase 5 hazards & gate (current session)**: `Physiology` extended with wounds (severity/age/infection/source, max 8), infection dynamics (`exposure_`, `immunity_`, `updateExposure()`), and immune response (`sick()` drains health/energy with fever); `Grid` gains `kCliffStep`, `cliffBetween()`, `deepWater()` (-0.52), `setElevation()`; `Engine` gains `stepTo(q, allowFall=false)`, `hazardDose()`, fall/wound damage, `resetBody()`, stats (`fallsTaken`/`woundsSustained`/`infections`); wildlife `stepToward` made cliff-aware (`stepWalkable`); `attackOrganism` fixes mid-charge attack (wolf no longer overshoots and misses adjacent prey); snapshot version 7; `tests/test_phase5.cpp` (7 tests, all passing); `phase5_gate_threat_learning` passes (predator bites → ThreatNet sensitization); `phase5_gate_survival_improves_with_experience` redesigned to measure defensive-behavior distance (trained organism maintains ~2× average distance from predator via threat veto vs emergency-only flee) rather than an unsupported hit-reduction assertion; worldgen `freqScale` kept at 0.01 (reverted from broken 0.04/0.03/0.02 that caused a survival-death spiral through fall-pain rest-spiral). See `MISTAKES.md` for the frequency-scale and test-design lessons.
 
+### Phase 6 — Skills, tools, crafting, construction
+- **Skill models** (`src/body/skill.hpp/.cpp`): Beta/Bernoulli competence per skill type (16 skills), skill checks, habit formation
+- **Crafting system** (`src/body/crafting.hpp/.cpp`): Recipe-based crafting with ingredients, tools, skill requirements, experimentation/discovery, MaterialInventory, snapshot serialization
+- **Formal grammars** (`src/world/grammar.hpp/.cpp`): CFG engine with deterministic/stochastic derivation, predefined grammars (goals, events, recipes, utterances)
+- **Construction system** (`src/body/construction.hpp/.cpp`): StructureManager with 7 blueprints (campfire, lean-to, wall, storage, farm plot, shelter), placement/progress/repair/decay, snapshot serialization
+- **Affordance discovery** (`src/body/affordance.hpp/.cpp`): Tool/material affordance registration, unexpected usage detection, procedure generation hooks
+- All tests pass; snapshot version 8
+
+### Phase 7 — Planning & world model
+- **WorldPredictor** (`src/mind/world_predictor.hpp/.cpp`): Linear one-step transition model (43 features × 50 inputs → 43 outputs), predicts next features given current features + action, outputs confidence. Online training with SGD.
+- **Planner** (`src/mind/world_predictor.hpp/.cpp`): Greedy and beam search (configurable width/horizon) over action primitives using WorldPredictor. Replan-on-surprise (prediction error > threshold).
+- **GoalEmergence** (`src/mind/goal_emergence.hpp/.cpp`): Drive-based goal generation from physiology state + environmental opportunities. 8 goal types (Survive, FindFood, FindWater, Rest, FleeThreat, Explore, BuildShelter, CraftTool). Priority computed from drives + opportunity proximity. Snapshot serialization.
+- **LLM Planner** (`src/mind/llm_planner.hpp/.cpp`): LLM-assisted high-level plan proposals. `LLMPlanner` with prompt building, response parsing, validation hooks. `LLMPlanProposal` with steps, confidence, validation hooks. Ready for LLM integration (callback-based, no hot-path LLM calls).
+- Tests: 6 planning tests + 1 goal emergence test.
+- All tests pass; snapshot version 9
+
+### Phase 8 — Social cognition & learning from the user
+- **User model** (`src/mind/user_model.hpp/.cpp`): Familiarity, trust, affection, fear, respect, resentment, reciprocity, expectations. Interaction history, verifiable fact learning, attachment pressure from absence.
+- **Wildlife social** (`src/mind/wildlife_social.hpp/.cpp`): Per-agent social profiles (familiarity, fear, friendliness, threat). Per-species and per-individual tracking. Decay over time.
+- **Attachment** (`src/mind/attachment.hpp/.cpp`): Secure/anxious/avoidant/disorganized styles. Separation distress, reunion response, proximity seeking. Deterministic initialization from seed.
+- **Belief Ising model** (`src/mind/belief_ising.hpp/.cpp`): Binary beliefs as spins. Evidence = external fields, consistency = couplings. Glauber dynamics with seeded RNG. Coherent clusters, dissonance metric, snapshot serialization.
+- **Affordance discovery** (`src/body/affordance.hpp/.cpp`): Tool/material affordance registration, unexpected usage detection, procedure generation hooks.
+- All tests pass; snapshot version 10
+
 ### Tests & tooling
 - C++ unit suite runs in parallel: each test in its own process (`eidolon_tests --list`
   / `--name <t>`) driven by `python/tests/run_unit.sh` with `xargs -P$(nproc)`; pid-unique

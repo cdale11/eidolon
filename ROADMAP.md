@@ -205,16 +205,16 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
   environmental change triggers replanning.
 
 ## Phase 8 — Social cognition & learning from the user
-- User model: familiarity, trust, affection, fear, respect, resentment, reciprocity,
-  expectations (updated by consequences of interactions; may be wrong)
-- Wildlife social models (species + individual familiarity/fear)
-- Attachment: user absence → attachment pressure; reunion affects state
-- Learning from user: verifiable facts → beliefs with confidence; feedback shapes behaviour
+- [x] User model: familiarity, trust, affection, fear, respect, resentment, reciprocity,
+      expectations (updated by consequences of interactions; may be wrong)
+- [x] Wildlife social models (species + individual familiarity/fear)
+- [x] Attachment: user absence → attachment pressure; reunion affects state
+- [x] Learning from user: verifiable facts → beliefs with confidence; feedback shapes behaviour
 - Gate: seeded test — user warnings that prove true raise trust and change behaviour; false
   warnings lower trust; long absence produces measurable attachment response.
 
 ### Phase 8 branch — belief dynamics & social norms (DESIGN §22)
-- [ ] **Ising models** (social belief / norm dynamics): the organism's binary beliefs and
+- [x] **Ising models** (social belief / norm dynamics): the organism's binary beliefs and
       trust states as spins; evidence = fields; consistency = couplings. Produces coherent
       worldviews, belief flips under strong evidence, cognitive dissonance when evidence
       conflicts. Spin update rule is deterministic + bounded noise; convergence testable.
