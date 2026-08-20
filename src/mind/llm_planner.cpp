@@ -101,9 +101,11 @@ std::optional<LLMPlanProposal> LLMPlanner::parse_response(const std::string& res
     }
     if (line.find("CONFIDENCE:") != std::string::npos) {
       std::string conf_str = line.substr(line.find(":") + 1);
-      try {
-        proposal.confidence = std::stof(conf_str);
-      } catch (...) {
+      char* endptr = nullptr;
+      float val = std::strtof(conf_str.c_str(), &endptr);
+      if (endptr != conf_str.c_str() && *endptr == '\0') {
+        proposal.confidence = val;
+      } else {
         proposal.confidence = 0.0f;
       }
       in_plan = false;

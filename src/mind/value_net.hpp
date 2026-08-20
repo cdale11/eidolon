@@ -25,6 +25,8 @@ public:
 
   // Predict V(s). `hidden` is caller scratch (>= kHidden floats).
   float predict(const float* feats, float* hidden);
+  // Const overload (read-only inference; same output).
+  float predict(const float* feats, float* hidden) const;
 
   // TD update: rpe = r + gamma*V(s') - V(s) is supplied; semi-gradient step on V(s).
   // Returns the absolute TD error used as the reward-prediction-error.

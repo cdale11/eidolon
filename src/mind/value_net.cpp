@@ -18,6 +18,12 @@ float ValueNet::predict(const float* feats, float* hidden) {
   return out;
 }
 
+float ValueNet::predict(const float* feats, float* hidden) const {
+  float out = 0.0f;
+  net_.forward(feats, hidden, &out);
+  return out;
+}
+
 float ValueNet::update(const float* feats, float rpe, float lr) {
   // Forward once with the current weights so the hidden activations match the gradient
   // (the caller must not pass stale hidden activations from an older forward pass).
