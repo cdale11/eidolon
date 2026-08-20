@@ -93,6 +93,16 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   - All utterances deterministically generated from seed + state; no LLM required
 - All tests pass; snapshot version 12
 
+### Phase 12 — Synchronization, offline persistence & backend selection
+- `eidolon-sim --bench [--bench-ticks N] [--bench-json]`: hot-path benchmark + backend
+  selection. Reports tick latency (p50/p95/max/mean), sim/wall throughput, snapshot size
+  & save cost, RSS, learner inference/update counts, ticks by step class; derives a host
+  ComputeProfile from the measured throughput and emits the auto-selected backend
+  (ServerFallback / WasmPlain / WasmSimd / WasmSimdMt / WebGPU). Budget: fine tick p50
+  ≤ 2 ms (measured ~0.06 ms on the Ryzen 8300GE).
+- Backend-selection unit tests: capability→backend mapping and fidelity auto-leveling
+  for weak/SIMD/SIMD-MT/WebGPU profiles; ComputeProfile serialization round-trip.
+
 ### Phase 11 — Portable WASM client compute (in progress)
 - **WASM compilation** (`cmake/Modules/Platform/Emscripten.cmake`, `src/CMakeLists.wasm.txt`): Eidolon ReplicaCore compiles to WebAssembly via Emscripten
   - Emscripten toolchain configured and working

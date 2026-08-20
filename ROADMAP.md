@@ -332,6 +332,17 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
 - Gate: kill browser mid-run → server fallback continues life; reconnect → clean reconcile
   (no loss/duplication); benchmarks produce the selection decision automatically.
 
+### Phase 12 status
+- [x] Backend benchmark suite: `eidolon-sim --bench [--bench-ticks N] [--bench-json]` measures
+      hot-path tick latency (p50/p95/max), sim/wall throughput, snapshot size+cost, RSS,
+      learner counts, ticks-by-class; builds a host ComputeProfile from measured throughput
+      and reports the auto-selected backend (weak→ServerFallback, SIMD→WasmSimd,
+      SIMD+MT→WasmSimdMt, WebGPU→WebGPU). Budget gate: p50 ≤ 2 ms fine tick (measured ~0.06 ms).
+- [ ] Native vs WASM parity test (same seeded scenario → same individual state)
+- [ ] Binary snapshot download/upload endpoints (client-authoritative persistence path)
+- [ ] Checkpoint/delta sync protocol (compact binary deltas + compression)
+- [ ] Server accepts client ComputeProfile; auto-select fastest stable backend
+
 ## Phase 13 — Performance & long-run stability
 - Profiling: hot-path allocation audits, adaptive-clock tuning
 - Benchmarks: 30 sim-days headless target < ~10 min; fine tick p50 ≤ 2 ms; snapshot ≤ 100 ms

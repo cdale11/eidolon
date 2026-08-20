@@ -189,3 +189,50 @@ TEST(compute_scheduler_fidelity_levels) {
   CHECK_EQ(back.worldDetailScale, high.worldDetailScale);
   CHECK_EQ(back.llmReflectionEnabled, high.llmReflectionEnabled);
 }
+
+TEST(compute_backend_selection) {
+  ComputeProfileDetector detector;
+
+  // Weak client (no SIMD, no threads, little memory) -> server fallback, low fidelity.
+  ComputeProfile weak = ComputeProfileDetector::fromJsCapabilities(
+      false, false, 1, false, false, 8 * 1024 * 1024, "Mozilla/5.0 (Mobile)");
+  BackendSelection sel = detector.selectBackend(weak);
+  CHECK(sel.type == BackendType::ServerFallback);
+  CHECK(FidelityController::autoLevel(weak) == FidelityLevel::Low);
+
+  // SIMD128 client -> WASM SIMD backend, medium fidelity.
+  ComputeProfile simd = ComputeProfileDetector::fromJsCapabilities(
+      true, false, 1, false, false, 64 * 1024 * 1024, "Mozilla/5.0");
+  sel = detector.selectBackend(simd);
+  CHECK(sel.type == BackendType::WasmSimd);
+  CHECK(FidelityController::autoLevel(simd) == FidelityLevel::Medium);
+
+  // SIMD128 + SharedArrayBuffer + many cores -> WASM SIMD MT.
+  ComputeProfile mt = ComputeProfileDetector::fromJsCapabilities(
+      true, true, 8, false, false, 256 * 1024 * 1024, "Mozilla/5.0");
+  sel = detector.selectBackend(mt);
+  CHECK(sel.type == BackendType::WasmSimdMt);
+  CHECK(FidelityController::autoLevel(mt) == FidelityLevel::Medium);
+
+  // WebGPU + memory -> WebGPU backend, high fidelity.
+  ComputeProfile gpu = ComputeProfileDetector::fromJsCapabilities(
+      true, true, 8, true, true, 512 * 1024 * 1024, "Mozilla/5.0");
+  sel = detector.selectBackend(gpu);
+  CHECK(sel.type == BackendType::WebGPU);
+  CHECK(FidelityController::autoLevel(gpu) == FidelityLevel::High);
+
+  // Selection never picks a non-viable backend; fallback is always the last resort.
+  ComputeProfile none = ComputeProfileDetector::fromJsCapabilities(
+      false, false, 0, false, false, 0, "unknown");
+  CHECK(detector.isBackendViable(BackendType::ServerFallback, none));
+  CHECK(!detector.isBackendViable(BackendType::WebGPU, none));
+
+  // FromJs profile serialization round-trip.
+  BinaryWriter w;
+  mt.serialize(w);
+  ComputeProfile back;
+  BinaryReader r(w.data());
+  CHECK(back.deserialize(r));
+  CHECK_EQ(back.maxWorkers, mt.maxWorkers);
+  CHECK_EQ(back.hasWasmSimd128, mt.hasWasmSimd128);
+}
