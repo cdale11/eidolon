@@ -389,8 +389,8 @@ and "client does the maximum work" invariants apply to all of them.
   trust in the user's advice (ties into Phase 8 user model).
   - [x] Intent parsing → structured goal actions (18 types: GoTo, FollowMe, Explore, Forage, Drink, Rest, Sleep, Flee, Avoid, Build, Craft, Observe, Status, Greet, Thank, Stop, Wait, Cancel)
   - [x] Instruction validation against current state + safety (never inject prompt text)
-  - [ ] Trust modulation: successful instructions → trust+, harmful → trust-
-  - [ ] Repetition learning: repeated instructions become stronger habit weights
+  - [x] Trust modulation: successful instructions → trust+, harmful → trust- (implemented in InstructionLearningSystem + UserModel)
+  - [x] Repetition learning: repeated instructions → stronger habit weights (InstructionMemory with habit_strength)
   - [ ] Integration with GoalEmergence + Policy for execution
   - [ ] Trust integration with UserModel (Phase 8)
 - **Organism-driven self-improvement**: the organism proposes its own improvements — to

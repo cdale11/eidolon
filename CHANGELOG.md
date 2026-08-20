@@ -144,6 +144,14 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   - ValidationContext: checks organism state (energy, hunger, thirst, health, sleep state, nearby threats/resources)
   - Validation rules: energy thresholds, hunger/thirst requirements, sleep state, predator awareness
   - Returns ParsedInstruction with intent, confidence, target, params, valid flag, error message
+- **Trust modulation + repetition learning implemented** (`src/llm/instruction_learning.hpp/cpp`):
+  - InstructionLearningSystem: full pipeline from text → validation → trust modulation → habit tracking
+  - Trust modulation: successful instructions → trust+ (0.015), harmful → trust- (0.04), ignored → trust- (0.01)
+  - Repetition learning: InstructionMemory tracks instruction history, builds habit_strength (logarithmic, capped at 1.0)
+  - InstructionTrustModulator: static trust weights for success/failure/ignored/harmful outcomes
+  - InstructionMemory: tracks instruction history (first/last tick, count, avg_confidence, trust_at_first, success/fail counts, habit_strength)
+  - InstructionLearningSystem: full pipeline process_instruction → validate → record_execution → trust/habit updates
+  - Integration with UserModel: trust, familiarity, reciprocity updated via record_interaction
   - Ready for integration with GoalEmergence, Policy, UserModel
 
 ### Future Directions (partial) — Learning from the user's actual speech
