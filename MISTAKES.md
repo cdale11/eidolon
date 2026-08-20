@@ -97,3 +97,31 @@ Fix / rule: Policy priors are versioned artifacts tied to the exact feature/acti
 Context: Phase 12 parity test — same seeded scenario must produce identical digests on native (g++, libstdc++) and WASM (em++, libc++). All libm transcendentals replaced with deterministic `detmath`, `-ffp-contract=off` applied, yet digests diverged from tick 1.
 Mistake: `Attention::attend` used `std::sort` on 28 channels with equal saliences (`1.0f` at init). libstdc++ introsort and libc++ introsort produce different permutations of equal keys. The sorted order determines which channels get full weight (1.0) vs attenuated (0.25), so the feature vector differed → policy scores differed → learning updates diverged → full learn-state divergence (~0.1% diffs). Root-causing required bisecting to tick 1, diffing 270 KB snapshots, and decoding the serialization to find the first 9 float divergence in `neuromod_` — the sort was the only source of non-determinism in the tick path.
 Fix / rule: Add deterministic tie-break to every `std::sort` in the deterministic core: `return (a.key > b.key) || (a.key == b.key && a.index < b.index)`. Audit all `std::sort` call sites in `src/` for potential tie instability (world_predictor, goal_emergence, concept_formation, voronoi, attention). Never rely on STL sort stability for equal keys when cross-platform bit-exactness is required.
+
+### 2026-08-20 — NIM teacher labels (~6965 records, ~9.3h of API calls) lost: stored only in /tmp (tmpfs)
+Context: Phase 11 teacher-baked policy prior retrain using NVIDIA NIM (nvidia/nemotron-3-super-120b-a12b)
+to label an experience dataset. Run: `EIDOLON_TEACHER_BASE='https://integrate.api.nvidia.com/v1'
+EIDOLON_TEACHER_MODEL='nvidia/nemotron-3-super-120b-a12b' ... python -m teacher.train_prior
+--dump /tmp/opencode/nim_run/sample.jsonl --labels-out /tmp/opencode/nim_run/labels.jsonl
+--out ../data/priors/teacher_policy_nim.eprp --teacher-thinking --teacher-reasoning-budget 2048
+--rpm 25 --progress-port 8090`. Reached 6965/9000 labels (77.4%) at ~12.5/min in ~9.3h before a
+power cut. The progress web UI (port 8090) showed it on track to finish in ~2.7 min.
+Mistake: ALL expensive artifacts (the 6965 NIM labels AND the experience dumps AND the local Qwen
+labels) were written exclusively to `/tmp/opencode/nim_run/`. `/tmp` on this box is a **tmpfs**
+(RAM-backed, `mount | grep /tmp` → `tmpfs on /tmp type tmpfs`, size 3.5 GB). A power cut wipes tmpfs
+instantly — there is no fsync durability in RAM. The power loss destroyed ~9.3h of NIM API labeling
+that cannot be recovered (the labels were never copied to disk, never committed, never mirrored).
+The experience dumps ARE recoverable (deterministic `eidolon-sim --dump-experiences --seed N
+--deterministic` regenerates them bit-for-bit in minutes), but the NIM teacher *labels* are not —
+they cost ~6h of wall-clock API time at the 25 RPM free tier to remake. A prior MISTAKES entry
+(2026-08-19) already flagged /tmp as tmpfs for bulk sim loops, yet the labeling run repeated the
+trap because `--labels-out` defaulted to a /tmp path and nothing enforced persistence.
+Fix / rule: (1) Teacher labeling runs must write `--labels-out` and `--out` to a PERSISTENT path
+under `data/priors/` (e.g. `data/priors/labels_nim.jsonl`, `data/priors/teacher_policy_nim.eprp`),
+never `/tmp`. (2) Always pass `--labels-out` on live (expensive) teacher runs and `cp`/mirror the
+labels file to a second persistent location periodically during long runs (or flush+vdsync is not
+enough on tmpfs). (3) Keep a persistent copy of the input dump too (`data/priors/sample.jsonl`) so a
+re-fit needs no regen. (4) Before any multi-hour LLM/teacher run, verify the output path is on a real
+disk filesystem (`df -h <path>` — tmpfs shows `tmpfs`), and `nohup`/`setsid` the process so a shell
+disconnect can't SIGTERM it. (5) Power on this box is not guaranteed — treat >1h compute as
+non-recoverable unless its artifacts land on real disk before the run continues.
