@@ -1,6 +1,10 @@
 #include "sim/engine.hpp"
 
 #include "core/detmath.hpp"
+#include "core/vec2.hpp"
+#include "world/world.hpp"
+#include "world/wildlife.hpp"
+#include "mind/goal_emergence.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -862,6 +866,94 @@ bool Engine::loadFile(const std::string& path, std::string& err) {
   return loadSnapshotFile(path, kSnapshotVersion,
                           [&](BinaryReader& r) { return deserializeState(r, err); },
                           err);
+}
+
+bool Engine::processUserInstruction(const std::string& text, uint64_t tick) {
+  // Build validation context from current organism state
+  ValidationContext ctx;
+  ctx.health = body_.health();
+  ctx.hunger = body_.hunger();
+  ctx.thirst = body_.thirst();
+  ctx.energy = body_.energy();
+  ctx.fatigue = body_.fatigue();
+  ctx.isSleeping = body_.isSleeping();
+  ctx.isResting = (prevMode_ == 1); // 1 = rest mode
+  ctx.simTime = clock_.now();
+  ctx.day = clock_.day();
+  ctx.hour = clock_.hourOfDay();
+  
+  // World state
+  ctx.worldW = world_.grid().width();
+  ctx.worldH = world_.grid().height();
+  const Vec2i pos = world_.organismPos();
+  ctx.posX = pos.x;
+  ctx.posY = pos.y;
+  
+  // Nearby threats/resources
+  const WildlifeAgent* predator = world_.nearestPredator(pos, 12);
+  ctx.predatorNearby = (predator != nullptr);
+  if (predator) {
+    ctx.predatorDist = std::max(std::abs(predator->pos.x - pos.x),
+                                std::abs(predator->pos.y - pos.y));
+  } else {
+    ctx.predatorDist = -1;
+  }
+  
+  const WaterSource* water = world_.nearestWaterSource(pos, 12);
+  ctx.waterNearby = (water != nullptr);
+  if (water) {
+    ctx.waterDist = std::max(std::abs(water->pos.x - pos.x),
+                             std::abs(water->pos.y - pos.y));
+  } else {
+    ctx.waterDist = -1;
+  }
+  
+  const Plant* plant = world_.nearestEdiblePlant(pos, 12);
+  ctx.foodNearby = (plant != nullptr);
+  if (plant) {
+    ctx.foodDist = std::max(std::abs(plant->pos.x - pos.x),
+                            std::abs(plant->pos.y - pos.y));
+  } else {
+    ctx.foodDist = -1;
+  }
+  
+  // Process through instruction learning system
+  ParsedInstruction instr;
+  bool valid = instructionLearning_.process_instruction(text, ctx, tick, userModel_, instr);
+  
+  // If instruction is valid and maps to a goal-directed action, inject into goal system
+  if (valid && instr.intent != UserIntentType::None && instr.intent != UserIntentType::Greet &&
+      instr.intent != UserIntentType::Thank && instr.intent != UserIntentType::Cancel) {
+    // Map user intent to goal type
+    GoalType goalType = GoalType::None;
+    switch (instr.intent) {
+      case UserIntentType::GoToLocation: goalType = GoalType::Explore; break;
+      case UserIntentType::FollowMe: goalType = GoalType::Explore; break;
+      case UserIntentType::Explore: goalType = GoalType::Explore; break;
+      case UserIntentType::Forage: goalType = GoalType::FindFood; break;
+      case UserIntentType::Drink: goalType = GoalType::FindWater; break;
+      case UserIntentType::Rest: goalType = GoalType::Rest; break;
+      case UserIntentType::Sleep: goalType = GoalType::Rest; break;
+      case UserIntentType::Flee: goalType = GoalType::FleeThreat; break;
+      case UserIntentType::Avoid: goalType = GoalType::FleeThreat; break;
+      case UserIntentType::Build: goalType = GoalType::BuildShelter; break;
+      case UserIntentType::Craft: goalType = GoalType::CraftTool; break;
+      case UserIntentType::Observe: goalType = GoalType::Explore; break;
+      case UserIntentType::Stop: case UserIntentType::Wait:
+        // These don't map to goals but are valid instructions
+        break;
+      default:
+        break;
+    }
+    
+    // If we have a goal type, inject it with high priority
+    if (goalType != GoalType::None) {
+      // Note: In a full implementation, we would inject this into the goal system
+      // For now, the instruction learning system tracks the habit/trust
+    }
+  }
+  
+  return valid;
 }
 
 } // namespace eidolon

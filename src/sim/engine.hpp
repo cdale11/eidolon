@@ -17,6 +17,7 @@
 #include "mind/learn.hpp"
 #include "mind/memory.hpp"
 #include "mind/memory_system.hpp"
+#include "llm/instruction_learning.hpp"
 #include "world/world.hpp"
 
 namespace eidolon {
@@ -137,7 +138,15 @@ bool stepTo(Vec2i q, bool allowFall = false) noexcept;
   // Compute scheduler (Phase 11): coordinates optional background work and reports
   // per-domain profiling. Never changes tick semantics (determinism invariant).
   ComputeScheduler& scheduler() { return scheduler_; }
-  const ComputeScheduler& scheduler() const { return scheduler_; }
+  const ComputeScheduler& scheduler() const { return scheduler_; };
+
+  // User instruction processing (Phase: Learning from user speech)
+  InstructionLearningSystem& instructionLearning() { return instructionLearning_; }
+  const InstructionLearningSystem& instructionLearning() const { return instructionLearning_; };
+
+  // Process a user text instruction: parse, validate, update trust/habits, and
+  // optionally inject as a goal/policy bias. Returns whether instruction was valid.
+  bool processUserInstruction(const std::string& text, uint64_t tick);
 
 private:
   void stepClock(StepKind kind) noexcept;
@@ -188,6 +197,9 @@ private:
   Rng rngWorld_, rngWeather_, rngBody_, rngCognition_, rngLearn_, rngEvents_;
   // Phase 11 compute scheduler + profiling (diagnostics only; never gates tick output).
   ComputeScheduler scheduler_;
+  InstructionLearningSystem instructionLearning_;
+  // User model for tracking relationship with the user
+  UserModel userModel_;
 };
 
 } // namespace eidolon

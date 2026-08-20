@@ -123,7 +123,7 @@ bool InstructionMemory::deserialize(BinaryReader& r) {
 }
 
 bool InstructionLearningSystem::process_instruction(const std::string& text, const ValidationContext& ctx,
-                                                    uint64_t tick, UserModel& user_model,
+                                                    [[maybe_unused]] uint64_t tick, UserModel& user_model,
                                                     ParsedInstruction& out_instr) {
   // Parse and validate
   out_instr = parser_.parseAndValidate(text, ctx);
@@ -148,13 +148,13 @@ void InstructionLearningSystem::record_execution(const ParsedInstruction& instr,
   memory_.record_instruction(instr, tick, instr.confidence, positive_outcome, user_model);
 }
 
-void InstructionLearningSystem::record_ignored(const ParsedInstruction& instr, UserModel& user_model) {
+void InstructionLearningSystem::record_ignored([[maybe_unused]] const ParsedInstruction& instr, UserModel& user_model) {
   // Valid instruction was ignored - small trust loss
   user_model.trust = std::max(0.0f, user_model.trust - InstructionTrustModulator::TRUST_LOSS_IGNORED);
   user_model.record_interaction(false, 0);
 }
 
-void InstructionLearningSystem::record_harmful(const ParsedInstruction& instr, UserModel& user_model) {
+void InstructionLearningSystem::record_harmful([[maybe_unused]] const ParsedInstruction& instr, UserModel& user_model) {
   // Following instruction led to harm - larger trust loss
   user_model.trust = std::max(0.0f, user_model.trust - InstructionTrustModulator::TRUST_LOSS_HARMFUL);
   user_model.record_interaction(false, 0);

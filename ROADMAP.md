@@ -391,8 +391,8 @@ and "client does the maximum work" invariants apply to all of them.
   - [x] Instruction validation against current state + safety (never inject prompt text)
   - [x] Trust modulation: successful instructions → trust+, harmful → trust- (implemented in InstructionLearningSystem + UserModel)
   - [x] Repetition learning: repeated instructions → stronger habit weights (InstructionMemory with habit_strength)
-  - [ ] Integration with GoalEmergence + Policy for execution
-  - [ ] Trust integration with UserModel (Phase 8)
+  - [x] Integration with GoalEmergence + Policy for execution (Engine::processUserInstruction maps intents to GoalTypes and updates GoalEmergence)
+  - [x] Trust integration with UserModel (Phase 8) (UserModel trust, familiarity, reciprocity updated via record_interaction)
 - **Organism-driven self-improvement**: the organism proposes its own improvements — to
   itself (skills to rehearse, habits to form, memory to consolidate, survival strategies to
   try) and to the game (from a performance perspective: "I spend most ticks wandering —

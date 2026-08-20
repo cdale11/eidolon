@@ -59,7 +59,7 @@ struct InstructionTrustModulator {
   static constexpr float TRUST_LOSS_HARMFUL = 0.04f;    // instruction led to harm
   
   // Apply trust change based on instruction outcome
-  static void apply_outcome(UserModel& user_model, bool positive, const char* reason = nullptr) {
+  static void apply_outcome(UserModel& user_model, bool positive, [[maybe_unused]] const char* reason = nullptr) {
     user_model.record_interaction(positive, 0); // tick will be filled by caller
     // Additional logging could go here
   }
