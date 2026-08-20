@@ -138,6 +138,17 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   subtree crossover/mutation, depth cap, validated against world physics; emits flat
   artifacts (`CraftingSystem::loadEvolvedRecipes`) the organism can use at runtime.
   Fixes a pre-existing duplicate-skill variable and double recipe-id bump in crafting.cpp.
+- **Chat latency fix (Nemotron 3 Nano)**: disable the model's `[THINK]` reasoning phase
+  (`chat_template_kwargs.enable_thinking=false`) for classify/respond — reasoning rambled
+  for hundreds of tokens (~90s on the iGPU) and blew the LLM timeout, so the organism
+  always fell back to a bare state dump. Replies are now short and grounded.
+- **Entropy seeds**: `eidolon-server` no longer defaults to seed 42 — a fresh organism
+  derives its master seed from the system clock / random_device / pid unless `--seed` is
+  given (matches `eidolon-sim`). Every restart produces a new world; `--deterministic`
+  still requires `--seed`.
+- **iGPU offload**: llama-server for Nemotron 3 Nano now runs with `--n-gpu-layers 20`
+  (up from 14; the 42-layer model is generation-bound on the Radeon 740M, so 26+ layers
+  add no speed and destabilized the Vulkan context).
 - Gate: same seeded scenario produces the same individual state on native and WASM (parity test pending); no heavy work on the main UI thread
 
 ### Tests & tooling

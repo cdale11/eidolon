@@ -170,6 +170,12 @@ bool LLMBridge::chatComplete(const JsonValue& messages, int maxTokens, JsonValue
   req.set("messages", messages);
   req.setNumber("max_tokens", maxTokens);
   req.setNumber("temperature", 0.7);
+  // Nemotron-style reasoning models ramble for ~hundreds of tokens before answering,
+  // blowing the latency budget on the iGPU. Disable the [THINK] phase for chat;
+  // structured thinking is not needed for these short classify/respond calls.
+  JsonValue kwargs = JsonValue::makeObject();
+  kwargs.setBool("enable_thinking", false);
+  req.set("chat_template_kwargs", kwargs);
   std::string respBody;
   if (!post(req.dump(), respBody)) {
     ++failures_;

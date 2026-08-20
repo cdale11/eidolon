@@ -22,7 +22,7 @@ void printUsage(FILE* out, const char* prog) {
                "  --data DIR        run directory (default data/runs/server)\n"
                "  --host HOST       listen host (default 127.0.0.1)\n"
                "  --port N          listen port (default 8081)\n"
-               "  --seed N          master seed for fresh organisms (default 42)\n"
+               "  --seed N          master seed for fresh organisms (default: entropy)\n"
                "  --deterministic   deterministic sim (requires --seed)\n"
                "  --world WxH       world grid size (default 128x128)\n"
                "  --policy-prior FILE  seed fresh organisms with teacher-baked weights\n"

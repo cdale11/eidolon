@@ -1,11 +1,13 @@
 #include "server/server.hpp"
 
 #include <csignal>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <random>
 #include <thread>
+#include <unistd.h>
 
 #include "httplib.h"
 
@@ -335,6 +337,16 @@ std::string jsonEscape(const std::string& s) {
   }
   return out;
 }
+
+// Derive a fresh master seed from entropy sources (system clock, random_device, pid).
+// Used when the user does not pass --seed so every restart/start yields a new world.
+uint64_t entropySeed() {
+  std::random_device rd;
+  const auto t = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+  uint64_t s = static_cast<uint64_t>(t) ^ (static_cast<uint64_t>(rd()) << 1);
+  s ^= static_cast<uint64_t>(::getpid()) << 33;
+  return s;
+}
 } // namespace
 
 Server::Server(Options opts) : opts_(std::move(opts)) {
@@ -369,7 +381,8 @@ void Server::simLoop() {
       }
     }
     if (!resumed) {
-      engine_.init(opts_.seed, opts_.deterministic, opts_.worldW, opts_.worldH);
+      const uint64_t seed = opts_.seed != 0 ? opts_.seed : entropySeed();
+      engine_.init(seed, opts_.deterministic, opts_.worldW, opts_.worldH);
       if (!opts_.policyPriorPath.empty() &&
           !engine_.loadPolicyPrior(opts_.policyPriorPath)) {
         std::fprintf(stderr, "warning: cannot load policy prior %s; using random init\n",

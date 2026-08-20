@@ -25,7 +25,7 @@ public:
     std::string dataDir = "data/runs/server";
     std::string listenHost = "127.0.0.1";
     int port = 8081;
-    uint64_t seed = 42;
+    uint64_t seed = 0; // 0 = derive from entropy (system clock / pid / rd) at fresh start
     bool deterministic = false;
     int worldW = 128, worldH = 128;
     std::string policyPriorPath; // optional teacher-baked policy prior for fresh organisms
