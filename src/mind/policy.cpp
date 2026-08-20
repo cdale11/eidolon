@@ -69,6 +69,32 @@ PolicyAction Policy::choose(const float* feats, float temperature, Rng& r, float
   return PolicyAction::Observe;
 }
 
+PolicyAction Policy::choose_with_habit(const float* feats, float temperature, Rng& r, float* scores,
+                                       const float* habit_strength, float habit_weight) const {
+  ++metrics_.inferences;
+  float maxS = -1e30f;
+  for (int a = 0; a < kActions; ++a) {
+    // Base score + habit boost
+    scores[a] = score(static_cast<PolicyAction>(a), feats);
+    if (habit_strength && habit_weight > 0.0f) {
+      scores[a] += habit_weight * habit_strength[a];
+    }
+    maxS = std::max(maxS, scores[a]);
+  }
+  float sum = 0.0f;
+  const float invT = 1.0f / std::max(0.05f, temperature);
+  for (int a = 0; a < kActions; ++a) {
+    scores[a] = detmath::expf((scores[a] - maxS) * invT);
+    sum += scores[a];
+  }
+  double roll = r.unit() * sum;
+  for (int a = 0; a < kActions; ++a) {
+    roll -= scores[a];
+    if (roll <= 0.0) return static_cast<PolicyAction>(a);
+  }
+  return PolicyAction::Observe;
+}
+
 void Policy::update(PolicyAction a, const float* feats, float advantage, float lr) {
   ++metrics_.updates;
   float* row = &w_[static_cast<size_t>(a) * (nFeatures_ + 1)];

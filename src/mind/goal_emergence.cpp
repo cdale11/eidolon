@@ -327,4 +327,75 @@ bool GoalEmergence::deserialize(struct BinaryReader& r) {
   return true;
 }
 
+void GoalEmergence::inject_user_goal(GoalType type, const Vec2i& target_pos, uint64_t current_tick,
+                                     float priority_boost) {
+  // Check if this goal type already exists
+  auto it = std::find_if(active_goals_.begin(), active_goals_.end(),
+                         [type](const Goal& g) { return g.type == type; });
+  
+  if (it != active_goals_.end()) {
+    // Boost existing goal's priority
+    it->priority = std::min(1.0f, it->priority + priority_boost);
+    it->confidence = std::min(1.0f, it->confidence + 0.2f);
+    if (target_pos.x >= 0 && target_pos.y >= 0) {
+      it->target_pos = target_pos;
+    }
+    return;
+  }
+  
+  // Create new goal with boosted priority
+  Goal goal;
+  goal.type = type;
+  goal.target_pos = target_pos;
+  goal.created_at = current_tick;
+  
+  // Base priority from compute_priority (need body/world - simplified)
+  float base_priority = 0.0f;
+  switch (type) {
+    case GoalType::Survive: base_priority = 1.0f; break;
+    case GoalType::FindFood: base_priority = 0.8f; break;
+    case GoalType::FindWater: base_priority = 0.8f; break;
+    case GoalType::Rest: base_priority = 0.6f; break;
+    case GoalType::FleeThreat: base_priority = 1.0f; break;
+    case GoalType::Explore: base_priority = 0.3f; break;
+    case GoalType::BuildShelter: base_priority = 0.4f; break;
+    case GoalType::CraftTool: base_priority = 0.2f; break;
+    default: base_priority = 0.1f;
+  }
+  
+  goal.priority = std::min(1.0f, base_priority + priority_boost);
+  goal.confidence = 0.8f;
+  
+  // Set deadline for urgent goals
+  if (type == GoalType::FleeThreat || type == GoalType::FindWater) {
+    goal.deadline = current_tick + 3600;
+  } else if (type == GoalType::FindFood) {
+    goal.deadline = current_tick + 7200;
+  }
+  
+  goal.description = [type]() {
+    switch (type) {
+      case GoalType::Survive: return "Survive";
+      case GoalType::FindFood: return "Find food";
+      case GoalType::FindWater: return "Find water";
+      case GoalType::Rest: return "Rest";
+      case GoalType::FleeThreat: return "Flee threat";
+      case GoalType::Explore: return "Explore";
+      case GoalType::BuildShelter: return "Build shelter";
+      case GoalType::CraftTool: return "Craft tool";
+      default: return "Unknown";
+    }
+  }();
+  
+  active_goals_.push_back(goal);
+  
+  // Sort by priority
+  std::sort(active_goals_.begin(), active_goals_.end(),
+            [](const Goal& a, const Goal& b) {
+              return a.priority > b.priority;
+            });
+  
+  last_update_tick_ = current_tick;
+}
+
 } // namespace eidolon

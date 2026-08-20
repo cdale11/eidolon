@@ -79,6 +79,10 @@ public:
                              uint64_t current_tick,
                              class Rng& rng);
 
+  // Add a user-injected goal with high priority
+  void inject_user_goal(GoalType type, const Vec2i& target_pos, uint64_t current_tick,
+                        float priority_boost = 0.5f);
+  
   // Get current active goals (not satisfied, not expired)
   const std::vector<Goal>& active_goals() const { return active_goals_; }
 

@@ -49,6 +49,11 @@ public:
   // Softmax sample over actions given temperature (>= 0); returns a PolicyAction.
   PolicyAction choose(const float* feats, float temperature, Rng& r, float* scores);
 
+  // Softmax sample with habit strength bias (0..1 per action).
+  // habit_strength[a] boosts the score for action a before softmax.
+  PolicyAction choose_with_habit(const float* feats, float temperature, Rng& r, float* scores,
+                                 const float* habit_strength, float habit_weight = 1.0f) const;
+
   // Reinforce the chosen action by `advantage` (scaled by `lr`).
   void update(PolicyAction a, const float* feats, float advantage, float lr);
 
@@ -66,7 +71,7 @@ private:
   int nFeatures_ = 0;
   std::vector<float> w_; // kActions * (nFeatures + 1); last column is the bias
   float lr_ = 0.05f;
-  LearnerMetrics metrics_;
+  mutable LearnerMetrics metrics_;
 };
 
 } // namespace eidolon

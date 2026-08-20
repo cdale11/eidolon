@@ -56,6 +56,7 @@ void Engine::init(uint64_t masterSeed, bool deterministic, int worldW, int world
   stats_ = Stats{};
   memorySys_ = MemorySystem(256);
   scheduler_.reset();
+  goal_emergence_ = GoalEmergence(masterSeed_);
 
   rngWorld_ = subsystemStream(masterSeed_, Subsystem::World);
   rngWeather_ = subsystemStream(masterSeed_, Subsystem::Weather);
@@ -432,7 +433,28 @@ Action Engine::decide() noexcept {
   if (body_.hunger() > 80.0) return Action::Forage;
   if (body_.pain() > 40.0) return Action::Rest;
   // Learned policy proposes an agentic action from the state features.
-  const PolicyAction chosen = learn_.chooseAction(featsBefore_, rngLearn_);
+  // Get habit strengths from instruction learning to bias policy
+  float habit_strength[Policy::kActions] = {0.0f};
+  for (int a = 0; a < Policy::kActions; ++a) {
+    // Map PolicyAction to UserIntentType for habit lookup
+    UserIntentType intent = UserIntentType::None;
+    switch (static_cast<PolicyAction>(a)) {
+      case PolicyAction::Forage: intent = UserIntentType::Forage; break;
+      case PolicyAction::Drink: intent = UserIntentType::Drink; break;
+      case PolicyAction::Rest: intent = UserIntentType::Rest; break;
+      case PolicyAction::Wander: intent = UserIntentType::Explore; break;
+      case PolicyAction::Observe: intent = UserIntentType::Observe; break;
+      case PolicyAction::Flee: intent = UserIntentType::Flee; break;
+    }
+    if (intent != UserIntentType::None) {
+      habit_strength[a] = instructionLearning_.get_habit_influence(intent, "");
+    }
+  }
+  
+  // Learned policy proposes an agentic action from the state features, biased by habit
+  float policy_scores[Policy::kActions];
+  const PolicyAction chosen = learn_.policy().choose_with_habit(featsBefore_, 
+      learn_.temperature(), rngLearn_, policy_scores, habit_strength, 1.0f);
   Action a = policyToAction(chosen);
   // ThreatNet veto: in a threatening state, avoid exploration. If a predator is in
   // sight, flee; otherwise retreat to rest.
@@ -777,6 +799,7 @@ void Engine::serializeState(BinaryWriter& w) const {
   body_.serialize(w);
   memorySys_.serialize(w);
   learn_.serialize(w);
+  goal_emergence_.serialize(w);
   w.u64(stats_.ticksFine);
   w.u64(stats_.ticksCoarse);
   w.u64(stats_.ticksSleep);
@@ -823,7 +846,7 @@ bool Engine::deserializeState(BinaryReader& r, std::string& err) {
     return false;
   }
   if (!world_.deserialize(r) || !body_.deserialize(r) || !memorySys_.deserialize(r) ||
-      !learn_.deserialize(r)) {
+       !learn_.deserialize(r) || !goal_emergence_.deserialize(r)) {
     err = "snapshot world/body/memory corrupt";
     return false;
   }
@@ -948,8 +971,8 @@ bool Engine::processUserInstruction(const std::string& text, uint64_t tick) {
     
     // If we have a goal type, inject it with high priority
     if (goalType != GoalType::None) {
-      // Note: In a full implementation, we would inject this into the goal system
-      // For now, the instruction learning system tracks the habit/trust
+      // Inject into goal system with high priority boost
+      goal_emergence_.inject_user_goal(goalType, Vec2i{ctx.posX, ctx.posY}, tick, 0.5f);
     }
   }
   

@@ -18,6 +18,7 @@
 #include "mind/memory.hpp"
 #include "mind/memory_system.hpp"
 #include "llm/instruction_learning.hpp"
+#include "mind/goal_emergence.hpp"
 #include "world/world.hpp"
 
 namespace eidolon {
@@ -198,6 +199,7 @@ private:
   // Phase 11 compute scheduler + profiling (diagnostics only; never gates tick output).
   ComputeScheduler scheduler_;
   InstructionLearningSystem instructionLearning_;
+  GoalEmergence goal_emergence_;
   // User model for tracking relationship with the user
   UserModel userModel_;
 };
