@@ -46,6 +46,7 @@ public:
 
   // API surface (called from HTTP handlers on server threads).
   std::string statusJson();
+  std::string metricsJson();
   std::string sendMessage(const std::string& conversationIdStr, const std::string& text,
                           std::string& err);
   std::string conversationsJson();

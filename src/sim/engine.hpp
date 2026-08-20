@@ -13,6 +13,7 @@
 #include "core/rng.hpp"
 #include "core/serialize.hpp"
 #include "mind/archive.hpp"
+#include "mind/compute_scheduler.hpp"
 #include "mind/learn.hpp"
 #include "mind/memory.hpp"
 #include "mind/memory_system.hpp"
@@ -133,6 +134,11 @@ bool stepTo(Vec2i q, bool allowFall = false) noexcept;
   // headless CLI for offline teacher pipelines; never in the server hot path.
   void setExperienceOut(std::FILE* f) { experienceOut_ = f; }
 
+  // Compute scheduler (Phase 11): coordinates optional background work and reports
+  // per-domain profiling. Never changes tick semantics (determinism invariant).
+  ComputeScheduler& scheduler() { return scheduler_; }
+  const ComputeScheduler& scheduler() const { return scheduler_; }
+
 private:
   void stepClock(StepKind kind) noexcept;
   void logStatus(EventLog& log) noexcept;
@@ -180,6 +186,8 @@ private:
   float featsAfter_[LearnSystem::kFeatures] = {};
   // Per-subsystem RNG streams (isolated so subsystem randomness never perturbs others).
   Rng rngWorld_, rngWeather_, rngBody_, rngCognition_, rngLearn_, rngEvents_;
+  // Phase 11 compute scheduler + profiling (diagnostics only; never gates tick output).
+  ComputeScheduler scheduler_;
 };
 
 } // namespace eidolon

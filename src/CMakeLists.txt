@@ -45,6 +45,9 @@ add_library(eidolon_core STATIC
   mind/graph_rewriting.cpp
   mind/reflection.cpp
   mind/grounded_language.cpp
+  mind/compute_profile.cpp
+  mind/heredity.cpp
+  mind/compute_scheduler.cpp
   sim/engine.cpp)
 target_include_directories(eidolon_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 

@@ -2,6 +2,9 @@
 build/
 build-dbg/
 cmake-build-*/
+build-wasm/
+build-wasm-simd/
+build-wasm-mt/
 *.o
 *.a
 *.so

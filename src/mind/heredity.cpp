@@ -49,7 +49,8 @@ bool HeredityGenome::deserialize(struct BinaryReader& r) {
   if (!r.u64(deathTick)) return false;
   if (!r.u64(lifespanTicks)) return false;
   if (!r.str(causeOfDeath)) return false;
-  if (!r.u32(n)) return false; generation = static_cast<int>(n);
+  if (!r.u32(n)) return false;
+  generation = static_cast<int>(n);
   
   return true;
 }
@@ -135,7 +136,6 @@ HeredityGenome HeredityManager::extractGenome(
   genome.personality = learn.personality();
   
   // Life stats from learn system (using available metrics)
-  const auto& policyMetrics = learn.policy().metrics();
   genome.lifeStats.avgReward = 0.0f; // Not tracked in base LearnerMetrics
   genome.lifeStats.avgThreat = 0.0f;
   genome.lifeStats.avgNovelty = 0.0f;

@@ -36,6 +36,12 @@ const char* kIndexHtml = R"html(<!DOCTYPE html>
   #saveprior { width: 100%; padding: 8px 12px; margin-top: 4px; border: 1px dashed #10a37f;
     border-radius: 8px; background: #f7f7f8; color: #10a37f; cursor: pointer; }
   #saveprior:hover { background: #e7f7f2; }
+  #diagbtn { width: 100%; padding: 8px 12px; margin-top: 4px; border: 1px solid #d9d9e3;
+    border-radius: 8px; background: #ececf1; color: #0d0d0d; cursor: pointer; font-size: 13px; }
+  #diagbtn:hover { background: #e3e3ea; }
+  #diag { display: none; padding: 12px; border-top: 1px solid #ececec; background: #fafafa;
+          font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px;
+          white-space: pre; overflow-x: auto; max-height: 40vh; overflow-y: auto; }
   #convlist { flex: 1; overflow-y: auto; padding: 8px; }
   .conv { display: flex; align-items: center; padding: 8px 10px; border-radius: 8px;
           cursor: pointer; font-size: 13px; gap: 6px; color: #0d0d0d; }
@@ -87,8 +93,10 @@ const char* kIndexHtml = R"html(<!DOCTYPE html>
     <button id="newchat">+ New chat</button>
     <button id="newworld">Restart world (fresh organism)</button>
     <button id="saveprior" title="Save this organism's learned behaviour as a prior for future runs">Save this organism as prior</button>
+    <button id="diagbtn">Diagnostics</button>
   </div>
   <div id="convlist"></div>
+  <div id="diag">loading…</div>
 </div>
 <div id="main">
   <div id="statusbar">connecting…</div>
@@ -209,6 +217,47 @@ async function savePrior() {
    const j = await r.json();
    alert(j.ok ? 'Saved prior to ' + j.path : 'Save failed: ' + (j.error || 'unknown error'));
  }
+function fmtUs(us) {
+  if (us < 1000) return us.toFixed(0) + ' us';
+  if (us < 1000000) return (us / 1000).toFixed(2) + ' ms';
+  return (us / 1000000).toFixed(2) + ' s';
+}
+async function refreshDiag() {
+  const el = document.getElementById('diag');
+  try {
+    const r = await fetch('/api/metrics');
+    const m = await r.json();
+    const lines = [];
+    lines.push('SCHEDULER');
+    lines.push(`  pending=${m.scheduler.pending} messages=${m.scheduler.messages} total=${fmtUs(m.scheduler.total_wall_us)}`);
+    for (const [name, d] of Object.entries(m.scheduler.domains)) {
+      lines.push(`  ${name.padEnd(18)} samples=${String(d.samples).padStart(6)}` +
+        ` total=${fmtUs(d.total_us).padStart(11)} last=${fmtUs(d.last_us).padStart(11)} peak=${fmtUs(d.peak_us).padStart(11)}`);
+    }
+    lines.push('ACTIONS');
+    const a = m.stats;
+    lines.push(`  fine=${a.ticks_fine} coarse=${a.ticks_coarse} sleep=${a.ticks_sleep}`);
+    lines.push(`  wander=${a.wander} rest=${a.rest} sleep=${a.sleep} observe=${a.observe} forage=${a.forage} drink=${a.drink} flee=${a.flee}`);
+    lines.push(`  predator_attacks=${a.predator_attacks} berries=${a.berries_eaten} drinks=${a.drinks} wounds=${a.wounds} infections=${a.infections}`);
+    lines.push('LEARNER');
+    lines.push(`  inferences=${m.learner.inferences} updates=${m.learner.updates}`);
+    el.textContent = lines.join('\n');
+  } catch (e) {
+    el.textContent = 'metrics unavailable: ' + e;
+  }
+}
+let diagTimer = null;
+function toggleDiag() {
+  const el = document.getElementById('diag');
+  const show = el.style.display === 'none' || el.style.display === '';
+  el.style.display = show ? 'block' : 'none';
+  if (show) {
+    refreshDiag();
+    diagTimer = setInterval(refreshDiag, 5000);
+  } else {
+    clearInterval(diagTimer);
+  }
+}
 function autoGrow() {
   input.style.height = 'auto';
   input.style.height = Math.min(input.scrollHeight, 200) + 'px';
@@ -246,6 +295,7 @@ sendBtn.onclick = send;
 document.getElementById('newchat').onclick = newChat;
 document.getElementById('newworld').onclick = resetWorld;
 document.getElementById('saveprior').onclick = savePrior;
+document.getElementById('diagbtn').onclick = toggleDiag;
 input.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
 });
@@ -411,6 +461,58 @@ std::string Server::statusJson() {
                   return pr ? distCheb(pr->pos, p) : -1;
                 }());
   return buf;
+}
+
+std::string Server::metricsJson() {
+  std::lock_guard<std::mutex> lock(engineMu_);
+  const auto& sched = engine_.scheduler();
+  const auto& stats = engine_.stats();
+  const auto& learnMetrics = engine_.learn().metrics();
+
+  JsonValue doms = JsonValue::makeObject();
+  static const char* kDomains[4] = {"World", "PhysioCognition", "NeuralMl",
+                                    "MemoryConsolidation"};
+  for (size_t i = 0; i < 4; ++i) {
+    const auto& p = sched.profile(static_cast<WorkerDomain>(i));
+    JsonValue d = JsonValue::makeObject();
+    d.setNumber("samples", static_cast<double>(p.samples));
+    d.setNumber("total_us", p.totalWallUs);
+    d.setNumber("last_us", p.lastWallUs);
+    d.setNumber("peak_us", p.peakWallUs);
+    doms.set(kDomains[i], std::move(d));
+  }
+  JsonValue schedObj = JsonValue::makeObject();
+  schedObj.setNumber("pending", static_cast<double>(sched.pendingCount()));
+  schedObj.setNumber("messages", static_cast<double>(sched.messageCount()));
+  schedObj.setNumber("total_wall_us", sched.totalWallUs());
+  schedObj.set("domains", std::move(doms));
+
+  JsonValue st = JsonValue::makeObject();
+  st.setNumber("ticks_fine", static_cast<double>(stats.ticksFine));
+  st.setNumber("ticks_coarse", static_cast<double>(stats.ticksCoarse));
+  st.setNumber("ticks_sleep", static_cast<double>(stats.ticksSleep));
+  st.setNumber("wander", static_cast<double>(stats.actionsWander));
+  st.setNumber("rest", static_cast<double>(stats.actionsRest));
+  st.setNumber("sleep", static_cast<double>(stats.actionsSleep));
+  st.setNumber("observe", static_cast<double>(stats.actionsObserve));
+  st.setNumber("forage", static_cast<double>(stats.actionsForage));
+  st.setNumber("drink", static_cast<double>(stats.actionsDrink));
+  st.setNumber("flee", static_cast<double>(stats.actionsFlee));
+  st.setNumber("predator_attacks", static_cast<double>(stats.predatorAttacks));
+  st.setNumber("berries_eaten", static_cast<double>(stats.berriesEaten));
+  st.setNumber("drinks", static_cast<double>(stats.drinks));
+  st.setNumber("wounds", static_cast<double>(stats.woundsSustained));
+  st.setNumber("infections", static_cast<double>(stats.infections));
+
+  JsonValue lm = JsonValue::makeObject();
+  lm.setNumber("inferences", static_cast<double>(learnMetrics.inferences));
+  lm.setNumber("updates", static_cast<double>(learnMetrics.updates));
+
+  JsonValue root = JsonValue::makeObject();
+  root.set("scheduler", std::move(schedObj));
+  root.set("stats", std::move(st));
+  root.set("learner", std::move(lm));
+  return root.dump();
 }
 
 std::string Server::sendMessage(const std::string& conversationIdStr,
@@ -606,6 +708,9 @@ int Server::run() {
   });
   svr.Get("/api/status", [this](const httplib::Request&, httplib::Response& res) {
     res.set_content(statusJson(), "application/json");
+  });
+  svr.Get("/api/metrics", [this](const httplib::Request&, httplib::Response& res) {
+    res.set_content(metricsJson(), "application/json");
   });
   svr.Get("/api/conversations", [this](const httplib::Request&,
                                        httplib::Response& res) {

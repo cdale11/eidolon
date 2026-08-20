@@ -1,6 +1,7 @@
 #include "sim/engine.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -49,6 +50,7 @@ void Engine::init(uint64_t masterSeed, bool deterministic, int worldW, int world
   statusInterval_ = 600;
   stats_ = Stats{};
   memorySys_ = MemorySystem(256);
+  scheduler_.reset();
 
   rngWorld_ = subsystemStream(masterSeed_, Subsystem::World);
   rngWeather_ = subsystemStream(masterSeed_, Subsystem::Weather);
@@ -103,6 +105,8 @@ void Engine::stepClock(StepKind kind) noexcept {
 
 Action Engine::tick() noexcept {
   if (died_) return Action::Observe;
+  using Clock = std::chrono::steady_clock;
+  auto t0 = Clock::now();
 
   // Decay episode importances (slow forgetting).
   memorySys_.tickDecay();
@@ -125,6 +129,9 @@ Action Engine::tick() noexcept {
     events_.push({clock_.now(), 1 /* kind: weather */, 0});
     recordEpisode(EventKind::Weather, 0, 0.05, 255, Participant::None, Outcome::Unknown, 0.0f, 0.0f, 0.0f, 0.0f, Relevance::None);
   }
+  auto tWorld = Clock::now();
+  scheduler_.recordTick(WorkerDomain::World,
+                        std::chrono::duration<double, std::micro>(tWorld - t0).count());
 
   const Activity act = body_.isSleeping()          ? Activity::Sleep
                        : action == Action::Rest    ? Activity::Rest
@@ -167,10 +174,16 @@ Action Engine::tick() noexcept {
   const bool nowSleeping = body_.isSleeping();
   if (wasSleeping && !nowSleeping) {
     // Just woke up: run sleep consolidation.
+    auto tCons = Clock::now();
     if (archive_) memorySys_.consolidate(learn_, archive_);
     // Dreams v1: associative recombination.
     memorySys_.dream(learn_);
+    scheduler_.recordTick(WorkerDomain::MemoryConsolidation,
+                          std::chrono::duration<double, std::micro>(Clock::now() - tCons).count());
   }
+  auto tPhysio = Clock::now();
+  scheduler_.recordTick(WorkerDomain::PhysioCognition,
+                        std::chrono::duration<double, std::micro>(tPhysio - tWorld).count());
 
   const double eaten = static_cast<double>(stats_.berriesEaten - berriesBefore);
   const bool drank = stats_.drinks > drinksBefore;
@@ -204,6 +217,8 @@ Action Engine::tick() noexcept {
     died_ = true;
     world_.killOrganism();
   }
+  scheduler_.recordTick(WorkerDomain::NeuralMl,
+                        std::chrono::duration<double, std::micro>(Clock::now() - tPhysio).count());
   return action;
 }
 

@@ -23,14 +23,21 @@ void ComputeProfile::serialize(struct BinaryWriter& w) const {
 
 bool ComputeProfile::deserialize(struct BinaryReader& r) {
   uint8_t u8;
-  if (!r.u8(u8)) return false; simdLevel = static_cast<SimdLevel>(u8);
-  if (!r.u8(u8)) return false; hasWasmSimd128 = (u8 != 0);
-  if (!r.u8(u8)) return false; threadSupport = static_cast<ThreadSupport>(u8);
+  if (!r.u8(u8)) return false;
+  simdLevel = static_cast<SimdLevel>(u8);
+  if (!r.u8(u8)) return false;
+  hasWasmSimd128 = (u8 != 0);
+  if (!r.u8(u8)) return false;
+  threadSupport = static_cast<ThreadSupport>(u8);
   if (!r.u32(maxWorkers)) return false;
-  if (!r.u8(u8)) return false; hasSharedArrayBuffer = (u8 != 0);
-  if (!r.u8(u8)) return false; gpuBackend = static_cast<GpuBackend>(u8);
-  if (!r.u8(u8)) return false; hasWebGPU = (u8 != 0);
-  if (!r.u8(u8)) return false; hasWebGL = (u8 != 0);
+  if (!r.u8(u8)) return false;
+  hasSharedArrayBuffer = (u8 != 0);
+  if (!r.u8(u8)) return false;
+  gpuBackend = static_cast<GpuBackend>(u8);
+  if (!r.u8(u8)) return false;
+  hasWebGPU = (u8 != 0);
+  if (!r.u8(u8)) return false;
+  hasWebGL = (u8 != 0);
   if (!r.u64(maxMemoryBytes)) return false;
   if (!r.u64(preferredMemoryBytes)) return false;
   if (!r.f64(estimatedSimStepsPerSec)) return false;
@@ -91,12 +98,13 @@ void BackendSelection::serialize(struct BinaryWriter& w) const {
 
 bool BackendSelection::deserialize(struct BinaryReader& r) {
   uint8_t u8;
-  if (!r.u8(u8)) return false; type = static_cast<BackendType>(u8);
+  if (!r.u8(u8)) return false;
+  type = static_cast<BackendType>(u8);
   if (!r.str(reason)) return false;
   return profile.deserialize(r);
 }
 
-static SimdLevel detectSimdLevel(const std::string& userAgent, bool wasmSimd128) {
+SimdLevel ComputeProfileDetector::detectSimdLevel(const std::string& userAgent, bool wasmSimd128) {
   if (wasmSimd128) return SimdLevel::WASM_SIMD128;
   
   if (userAgent.find("x86_64") != std::string::npos || userAgent.find("amd64") != std::string::npos) {
@@ -107,13 +115,13 @@ static SimdLevel detectSimdLevel(const std::string& userAgent, bool wasmSimd128)
   return SimdLevel::None;
 }
 
-static ThreadSupport detectThreadSupport(bool sharedArrayBuffer, uint32_t concurrency) {
+ThreadSupport ComputeProfileDetector::detectThreadSupport(bool sharedArrayBuffer, uint32_t concurrency) {
   if (sharedArrayBuffer && concurrency > 1) return ThreadSupport::SharedArrayBuffer;
   if (concurrency > 1) return ThreadSupport::WebWorkers;
   return ThreadSupport::SingleThread;
 }
 
-static GpuBackend detectGpuBackend(bool webgpu, bool webgl) {
+GpuBackend ComputeProfileDetector::detectGpuBackend(bool webgpu, bool webgl) {
   if (webgpu) return GpuBackend::WebGPU;
   if (webgl) return GpuBackend::WebGL;
   return GpuBackend::None;
