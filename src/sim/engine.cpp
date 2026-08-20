@@ -419,8 +419,11 @@ Action Engine::decide() noexcept {
   }
   // Rest mode with hysteresis: stay resting until fatigue recovers well below the
   // trigger, so the organism doesn't oscillate around the fatigue boundary.
+  // Critical thirst/hunger break out of rest — they kill faster than fatigue.
   if (resting_) {
-    if (body_.fatigue() < 25.0) resting_ = false;
+    if (body_.thirst() > 80.0 || body_.hunger() > 80.0 || body_.pain() > 40.0)
+      resting_ = false;
+    else if (body_.fatigue() < 25.0) resting_ = false;
     else return Action::Rest;
   } else if (body_.fatigue() > 75.0) {
     resting_ = true;
