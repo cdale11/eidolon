@@ -131,6 +131,20 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 - **Current limitation**: DuckDuckGo HTML scraping is CAPTCHA-blocked on html.duckduckgo.com.
   For production use, configure `--search-endpoint` with a proper search API (SerpAPI, Brave, etc.)
   and implement the corresponding parser in `src/llm/web_browser.cpp`.
+- **Implemented**: SearchProvider abstraction with 6 engines (SearXNG default, DuckDuckGo,
+  SerpAPI, Brave, Google, Custom), multi-instance SearXNG with CAPTCHA detection,
+  Brave/SerpAPI/Google/Custom providers with API key support, fetch with redirect following
+  and HTML text extraction, server config flags, endpoints for search/fetch/compute-profile.
+
+### Future Directions (partial) — Learning from the user's actual speech
+- **Speech-to-text + intent parsing**: User spoken/typed instructions ("eat", "sleep",
+  "go to the river", "avoid wolves") become validated, structured goals the organism
+  pursues through its normal planning loop (never injected as prompt text, never
+  mutating world state directly).
+- **Instruction following improves with repetition**; instructions that prove harmful
+  lower the organism's trust in the user's advice (ties into Phase 8 user model).
+- **Requires**: speech-to-text / intent parsing in the language bridge, then grounding
+  into the existing goal system.
 
 ### Phase 11 — Portable WASM client compute (in progress)
 - **WASM compilation** (`cmake/Modules/Platform/Emscripten.cmake`, `src/CMakeLists.wasm.txt`): Eidolon ReplicaCore compiles to WebAssembly via Emscripten

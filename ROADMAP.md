@@ -381,13 +381,19 @@ and "client does the maximum work" invariants apply to all of them.
   - [ ] HTTPS support via OpenSSL-linked httplib.
 - **Client-side offload**: migrate most compute to the client per DESIGN §17 (Phases 11-12)
   to free the server; headless fallback continues life when the client is away.
-- **Learning from the user's actual speech**: the organism understands and acts on what the
-  user says — spoken/typed instructions ("eat", "sleep", "go to the river", "avoid wolves")
+- **Learning from the user's actual speech (text)**: the organism understands and acts on what the
+  user says — typed instructions ("eat", "sleep", "go to the river", "avoid wolves")
   become validated, structured goals the organism pursues through its normal planning loop
   (never injected as prompt text, never mutating world state directly). Instruction
   following improves with repetition; instructions that prove harmful lower the organism's
-  trust in the user's advice (ties into Phase 8 user model). Requires speech-to-text /
-  intent parsing in the language bridge, then grounding into the existing goal system.
+  trust in the user's advice (ties into Phase 8 user model).
+  - [ ] Intent parsing → structured goal actions (GoTo, Flee, Forage, Drink, Rest, Sleep, Observe, Build, Craft)
+  - [ ] Instruction validation against current state + safety (never inject prompt text)
+  - [ ] Trust modulation: successful instructions → trust+, harmful → trust-
+  - [ ] Repetition learning: repeated instructions become stronger habit weights
+  - [ ] Integration with GoalEmergence + Policy for execution
+  - [ ] Trust integration with UserModel (Phase 8)
+  - [ ] (Future) Speech-to-text integration (local Whisper.cpp) for audio input
 - **Organism-driven self-improvement**: the organism proposes its own improvements — to
   itself (skills to rehearse, habits to form, memory to consolidate, survival strategies to
   try) and to the game (from a performance perspective: "I spend most ticks wandering —
