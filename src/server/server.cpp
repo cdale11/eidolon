@@ -7,9 +7,11 @@
 #include <filesystem>
 #include <random>
 #include <thread>
+#include <unordered_map>
 #include <unistd.h>
 
 #include "httplib.h"
+#include "mind/compute_scheduler.hpp"
 
 namespace eidolon {
 
@@ -730,8 +732,228 @@ std::string Server::snapshotJson() {
   std::lock_guard<std::mutex> lock(engineMu_);
   std::vector<uint8_t> blob = engine_.snapshot();
   std::string out = "{\"size\":" + std::to_string(blob.size()) + ",\"seed\":" +
-                     std::to_string(engine_.masterSeed()) + "}";
+                      std::to_string(engine_.masterSeed()) + "}";
   return out;
+}
+
+// Phase 12: Binary snapshot download (raw blob)
+std::string Server::snapshotDownload() {
+  std::lock_guard<std::mutex> lock(engineMu_);
+  return std::string(reinterpret_cast<const char*>(engine_.snapshot().data()),
+                     engine_.snapshot().size());
+}
+
+// Phase 12: Binary snapshot upload
+std::string Server::snapshotUpload(const std::vector<uint8_t>& blob, std::string& err) {
+  std::lock_guard<std::mutex> lock(engineMu_);
+  if (!engine_.restore(blob, err)) {
+    return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
+  }
+  // Persist to disk immediately so the new state survives restarts
+  std::string saveErr;
+  engine_.saveFile(opts_.dataDir + "/save.snap", saveErr);
+  return "{\"ok\":true}";
+}
+
+// Phase 12: Delta sync - simple checkpoint/delta protocol
+// Checkpoints are identified by sim-time (clock.now()). A delta is a list of
+// (offset, new_bytes) patches from base checkpoint to current state.
+struct Checkpoint {
+  int64_t simTime;
+  std::vector<uint8_t> blob;
+  std::vector<uint8_t> fnv1a64; // 8-byte hash
+};
+static std::unordered_map<std::string, Checkpoint> checkpoints_;
+
+std::string Server::checkpointCreateJson() {
+  std::lock_guard<std::mutex> lock(engineMu_);
+  std::vector<uint8_t> blob = engine_.snapshot();
+  uint64_t hash = fnv1a64(blob.data(), blob.size());
+  std::string id = std::to_string(engine_.clock().now());
+  checkpoints_[id] = {engine_.clock().now(), std::move(blob),
+                      std::vector<uint8_t>(reinterpret_cast<uint8_t*>(&hash),
+                                           reinterpret_cast<uint8_t*>(&hash) + 8)};
+  // Keep only last 10 checkpoints to bound memory
+  if (checkpoints_.size() > 10) {
+    auto it = checkpoints_.begin();
+    checkpoints_.erase(it);
+  }
+  return "{\"ok\":true,\"checkpoint_id\":\"" + id + "\"}";
+}
+
+std::string Server::checkpointDeltaJson(const std::string& baseCheckpointId) {
+  std::lock_guard<std::mutex> lock(engineMu_);
+  auto it = checkpoints_.find(baseCheckpointId);
+  if (it == checkpoints_.end()) {
+    return "{\"ok\":false,\"error\":\"checkpoint not found\"}";
+  }
+  std::vector<uint8_t> current = engine_.snapshot();
+  const Checkpoint& base = it->second;
+  const std::vector<uint8_t>& baseBlob = base.blob;
+  
+  // Compute delta as list of patches: each patch = {offset, length, new_data}
+  // Use simple diff: find first differing byte, then last differing byte in contiguous run
+  struct Patch {
+    uint32_t offset;
+    uint32_t length;
+    std::vector<uint8_t> data;
+  };
+  std::vector<Patch> patches;
+  
+  size_t i = 0;
+  while (i < current.size() && i < baseBlob.size()) {
+    if (current[i] != baseBlob[i]) {
+      size_t start = i;
+      while (i < current.size() && i < baseBlob.size() && current[i] != baseBlob[i]) ++i;
+      Patch p;
+      p.offset = static_cast<uint32_t>(start);
+      p.length = static_cast<uint32_t>(i - start);
+      p.data.assign(current.begin() + start, current.begin() + i);
+      patches.push_back(std::move(p));
+    } else {
+      ++i;
+    }
+  }
+  // Handle trailing bytes if current is longer
+  if (current.size() > baseBlob.size()) {
+    Patch p;
+    p.offset = static_cast<uint32_t>(baseBlob.size());
+    p.length = static_cast<uint32_t>(current.size() - baseBlob.size());
+    p.data.assign(current.begin() + baseBlob.size(), current.end());
+    patches.push_back(std::move(p));
+  }
+  
+  // Serialize delta: magic(4) + version(4) + base_hash(8) + patch_count(4) + patches...
+  // Each patch: offset(4) + length(4) + data
+  std::vector<uint8_t> delta;
+  delta.insert(delta.end(), {'E','D','L','T'}); // magic
+  uint32_t ver = 1;
+  delta.insert(delta.end(), 
+               reinterpret_cast<uint8_t*>(&ver), 
+               reinterpret_cast<uint8_t*>(&ver) + 4);
+  delta.insert(delta.end(), base.fnv1a64.begin(), base.fnv1a64.end());
+  uint32_t patchCount = static_cast<uint32_t>(patches.size());
+  delta.insert(delta.end(),
+               reinterpret_cast<uint8_t*>(&patchCount),
+               reinterpret_cast<uint8_t*>(&patchCount) + 4);
+  for (const auto& p : patches) {
+    delta.insert(delta.end(),
+                 reinterpret_cast<const uint8_t*>(&p.offset),
+                 reinterpret_cast<const uint8_t*>(&p.offset) + 4);
+    delta.insert(delta.end(),
+                 reinterpret_cast<const uint8_t*>(&p.length),
+                 reinterpret_cast<const uint8_t*>(&p.length) + 4);
+    delta.insert(delta.end(), p.data.begin(), p.data.end());
+  }
+  
+  return std::string(reinterpret_cast<const char*>(delta.data()), delta.size());
+}
+
+std::string Server::applyDelta(const std::vector<uint8_t>& deltaBlob, std::string& err) {
+  std::lock_guard<std::mutex> lock(engineMu_);
+  
+  if (deltaBlob.size() < 20) { // magic(4) + ver(4) + hash(8) + count(4) = 20
+    err = "delta too small";
+    return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
+  }
+  
+  // Parse delta
+  if (deltaBlob[0] != 'E' || deltaBlob[1] != 'D' || deltaBlob[2] != 'L' || deltaBlob[3] != 'T') {
+    err = "bad delta magic";
+    return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
+  }
+  uint32_t ver = *reinterpret_cast<const uint32_t*>(deltaBlob.data() + 4);
+  if (ver != 1) {
+    err = "unsupported delta version";
+    return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
+  }
+  // base hash at offset 8 (8 bytes)
+  uint32_t patchCount = *reinterpret_cast<const uint32_t*>(deltaBlob.data() + 16);
+  
+  // Get current snapshot as base
+  std::vector<uint8_t> current = engine_.snapshot();
+  
+  // Apply patches
+  size_t pos = 20;
+  for (uint32_t i = 0; i < patchCount; ++i) {
+    if (pos + 8 > deltaBlob.size()) { err = "delta truncated"; return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}"; }
+    uint32_t offset = *reinterpret_cast<const uint32_t*>(deltaBlob.data() + pos);
+    pos += 4;
+    uint32_t length = *reinterpret_cast<const uint32_t*>(deltaBlob.data() + pos);
+    pos += 4;
+    if (pos + length > deltaBlob.size()) { err = "delta truncated"; return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}"; }
+    if (offset + length > current.size()) {
+      // Extend if needed
+      current.resize(offset + length);
+    }
+    std::memcpy(current.data() + offset, deltaBlob.data() + pos, length);
+    pos += length;
+  }
+  
+  // Restore the patched state
+  if (!engine_.restore(current, err)) {
+    return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
+  }
+  // Persist
+  std::string saveErr;
+  engine_.saveFile(opts_.dataDir + "/save.snap", saveErr);
+  
+  return "{\"ok\":true}";
+}
+
+// Phase 12: ComputeProfile endpoint - client reports capabilities, server selects backend/fidelity
+std::string Server::computeProfileJson(const std::string& jsonBody, std::string& err) {
+  std::lock_guard<std::mutex> lock(engineMu_);
+  
+  // Parse JSON for ComputeProfile fields
+  JsonValue body;
+  if (!jsonParse(jsonBody, body)) {
+    err = "invalid JSON";
+    return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
+  }
+  
+  ComputeProfile profile;
+  profile.simdLevel = static_cast<SimdLevel>(body.num("simd_level", 0));
+  profile.hasWasmSimd128 = body.num("wasm_simd128", 0) > 0.5;
+  profile.threadSupport = static_cast<ThreadSupport>(body.num("thread_support", 0));
+  profile.maxWorkers = static_cast<uint32_t>(body.num("max_workers", 1));
+  profile.hasSharedArrayBuffer = body.num("shared_array_buffer", 0) > 0.5;
+  profile.gpuBackend = static_cast<GpuBackend>(body.num("gpu_backend", 0));
+  profile.hasWebGPU = body.num("webgpu", 0) > 0.5;
+  profile.hasWebGL = body.num("webgl", 0) > 0.5;
+  profile.maxMemoryBytes = static_cast<uint64_t>(body.num("max_memory_bytes", 64*1024*1024));
+  profile.preferredMemoryBytes = static_cast<uint64_t>(body.num("preferred_memory_bytes", 256*1024*1024));
+  profile.estimatedSimStepsPerSec = body.num("estimated_sim_steps_per_sec", 1000.0);
+  profile.estimatedInferencesPerSec = body.num("estimated_inferences_per_sec", 100.0);
+  profile.userAgent = body.str("user_agent", "");
+  profile.platform = body.str("platform", "");
+  
+  // Select best backend
+  ComputeProfileDetector detector;
+  BackendSelection selection = detector.selectBackend(profile);
+  
+  // Auto-select fidelity level from profile
+  FidelityLevel level = FidelityController::autoLevel(profile);
+  fidelity_ = FidelityController::settingsFor(level);
+  
+  // Update pacing in sim loop will pick up new fidelity_ on next iteration
+  
+  JsonValue root = JsonValue::makeObject();
+  root.setBool("ok", true);
+  JsonValue sel = JsonValue::makeObject();
+  sel.setNumber("backend", static_cast<double>(selection.type));
+  sel.setString("reason", selection.reason);
+  root.set("selection", std::move(sel));
+  JsonValue fid = JsonValue::makeObject();
+  fid.setNumber("level", static_cast<double>(level));
+  fid.setNumber("sim_sec_per_wall_sec", fidelity_.simSecondsPerWallSecond);
+  fid.setNumber("model_budget", fidelity_.modelBudgetScale);
+  fid.setNumber("world_detail", fidelity_.worldDetailScale);
+  fid.setBool("llm_reflection", fidelity_.llmReflectionEnabled);
+  fid.setBool("defer_consolidation", fidelity_.deferConsolidation);
+  root.set("fidelity", std::move(fid));
+  
+  return root.dump();
 }
 
 int Server::run() {
@@ -796,6 +1018,54 @@ int Server::run() {
   svr.Get("/api/snapshot", [this](const httplib::Request&, httplib::Response& res) {
     res.set_content(snapshotJson(), "application/json");
   });
+  
+  // Phase 12: Binary snapshot download (raw blob)
+  svr.Get("/api/snapshot/download", [this](const httplib::Request&, httplib::Response& res) {
+    res.set_content(snapshotDownload(), "application/octet-stream");
+  });
+  
+  // Phase 12: Binary snapshot upload
+  svr.Post("/api/snapshot/upload", [this](const httplib::Request& req, httplib::Response& res) {
+    std::vector<uint8_t> blob(req.body.begin(), req.body.end());
+    std::string err;
+    std::string out = snapshotUpload(blob, err);
+    if (!err.empty()) res.status = 400;
+    res.set_content(out, "application/json");
+  });
+  
+  // Phase 12: Delta sync - checkpoint create
+  svr.Post("/api/checkpoint/create", [this](const httplib::Request&, httplib::Response& res) {
+    res.set_content(checkpointCreateJson(), "application/json");
+  });
+  
+  // Phase 12: Delta sync - get delta from base checkpoint
+  svr.Get("/api/checkpoint/delta", [this](const httplib::Request& req, httplib::Response& res) {
+    const std::string baseId = req.get_param_value("base");
+    if (baseId.empty()) {
+      res.status = 400;
+      res.set_content("{\"ok\":false,\"error\":\"missing base checkpoint id\"}", "application/json");
+      return;
+    }
+    res.set_content(checkpointDeltaJson(baseId), "application/octet-stream");
+  });
+  
+  // Phase 12: Delta sync - apply delta
+  svr.Post("/api/checkpoint/apply", [this](const httplib::Request& req, httplib::Response& res) {
+    std::vector<uint8_t> delta(req.body.begin(), req.body.end());
+    std::string err;
+    std::string out = applyDelta(delta, err);
+    if (!err.empty()) res.status = 400;
+    res.set_content(out, "application/json");
+  });
+  
+  // Phase 12: ComputeProfile endpoint
+  svr.Post("/api/compute-profile", [this](const httplib::Request& req, httplib::Response& res) {
+    std::string err;
+    std::string out = computeProfileJson(req.body, err);
+    if (!err.empty()) res.status = 400;
+    res.set_content(out, "application/json");
+  });
+  
   svr.Post("/api/send", [this](const httplib::Request& req, httplib::Response& res) {
     JsonValue body;
     if (!jsonParse(req.body, body)) {

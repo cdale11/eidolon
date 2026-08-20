@@ -60,6 +60,19 @@ public:
   std::string deleteConversationJson(const std::string& conversationIdStr);
   std::string resetWorldJson(const std::string& seedStr);
   std::string snapshotJson();
+  
+  // Phase 12: Binary snapshot download/upload (client-authoritative persistence)
+  std::string snapshotDownload();  // Returns raw binary blob
+  std::string snapshotUpload(const std::vector<uint8_t>& blob, std::string& err);
+  
+  // Phase 12: Delta sync protocol (compact binary deltas)
+  std::string checkpointCreateJson();  // Returns checkpoint ID
+  std::string checkpointDeltaJson(const std::string& baseCheckpointId);  // Returns delta from base
+  std::string applyDelta(const std::vector<uint8_t>& deltaBlob, std::string& err);
+  
+  // Phase 12: ComputeProfile handling (client reports capabilities)
+  std::string computeProfileJson(const std::string& jsonBody, std::string& err);
+  
   std::string savePriorJson(const std::string& name);
 
 private:

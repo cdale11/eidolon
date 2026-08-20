@@ -108,6 +108,16 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   module with deterministic sin/cos/tanh/exp/log1p (bit-identical, max rel err ~3e-7);
   (3) `-ffp-contract=off` on both backends; (4) `Attention::attend` sort tie-break
   (libstdc++ and libc++ permute equal keys differently). Verified across seeds 1,7,13,42,99,2024.
+- **Binary snapshot download/upload endpoints** (`GET /api/snapshot/download`, `POST /api/snapshot/upload`):
+  client-authoritative persistence path; raw blob transfer for offline-first clients.
+- **Checkpoint/delta sync protocol** (`POST /api/checkpoint/create`, `GET /api/checkpoint/delta?base=<id>`, `POST /api/checkpoint/apply`):
+  compact binary deltas (patch list: offset + length + new_data) from a base checkpoint;
+  no tick streaming; batched + compressed via patch encoding.
+- **Server accepts client ComputeProfile** (`POST /api/compute-profile`): client reports
+  capabilities (SIMD, Workers, SAB, WebGPU, WebGL, concurrency, memory); server auto-selects
+  fastest stable backend (WebGPU → WASM SIMD+MT → plain WASM → server fallback) and maps
+  to adaptive fidelity settings (Low/Medium/High) affecting pacing/model budget/world detail
+  only — never tick semantics.
 
 ### Phase 11 — Portable WASM client compute (in progress)
 - **WASM compilation** (`cmake/Modules/Platform/Emscripten.cmake`, `src/CMakeLists.wasm.txt`): Eidolon ReplicaCore compiles to WebAssembly via Emscripten
