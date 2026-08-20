@@ -17,7 +17,9 @@ N_FEATURES = 43
 class Experience:
     __slots__ = ("t", "agentic", "action", "reward", "novelty", "threat", "aversive",
                  "safe", "body", "wx", "bush_dist", "water_dist", "eaten", "drank",
-                 "feats", "action_index", "teacher_label_index")
+                 "feats", "action_index", "teacher_label_index",
+                 "value", "temperature", "scores", "probs", "neuromod", "personality",
+                 "drives", "life", "metrics", "attention")
 
     def __init__(self, rec: dict[str, Any]):
         self.t: int = int(rec["t"])
@@ -49,6 +51,23 @@ class Experience:
             self.teacher_label_index: int | None = ACTION_INDEX[tl]
         else:
             self.teacher_label_index = None
+        # Extended training-data fields for ALL live learning systems (ValueNet, policy
+        # bandit, ThreatNet, Attention, neuromodulators, personality latent, drives, life
+        # stats, learner metrics). Present only in dumps from the current runtime.
+        self.value: float = float(rec.get("value", 0.0))
+        self.temperature: float = float(rec.get("temp", 0.5))
+        self.scores: np.ndarray | None = (np.asarray(rec["scores"], dtype=np.float32)
+                                          if "scores" in rec else None)
+        self.probs: np.ndarray | None = (np.asarray(rec["probs"], dtype=np.float32)
+                                         if "probs" in rec else None)
+        self.neuromod: dict[str, float] = rec.get("neuromod", {})
+        self.personality: np.ndarray | None = (np.asarray(rec["personality"], dtype=np.float32)
+                                               if "personality" in rec else None)
+        self.drives: dict[str, float] = rec.get("drives", {})
+        self.life: dict[str, float] = rec.get("life", {})
+        self.metrics: dict[str, list[int]] = rec.get("metrics", {})
+        self.attention: np.ndarray | None = (np.asarray(rec["attention"], dtype=np.float32)
+                                             if "attention" in rec else None)
 
     def interpretable_text(self) -> str:
         b = self.body
@@ -59,7 +78,8 @@ class Experience:
             f"pain={b.get('p', 0):.0f}, sleep-pressure={b.get('s', 0):.0f}, "
             f"body-temp={b.get('temp', 36.6):.1f}C; weather: {self.wx.get('desc', 'clear')} "
             f"at {self.wx.get('tempC', 0):.1f}C; nearest berry bush {self.bush_dist} tiles, "
-            f"nearest water {self.water_dist} tiles"
+            f"nearest water {self.water_dist} tiles; threat={self.threat:.2f} "
+            f"({'predator nearby' if self.threat >= 0.6 else 'calm'})"
         )
 
 

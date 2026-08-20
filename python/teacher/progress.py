@@ -30,6 +30,8 @@ class ProgressState:
             "measured_rpm": 0,
             "rate_per_min": 0.0,
             "results": {},  # filled after fitting: quality report + sim evaluation
+            # Live training-progress fields (filled during the fit loop):
+            "fit": None,  # {epoch, epochs, loss, acc, val_acc, last_epoch}
         }
 
     def start(self, stage: str, total: int, model: str = "") -> None:
@@ -56,6 +58,28 @@ class ProgressState:
         with self._lock:
             self._s["results"] = results
             self._s["stage"] = "done"
+
+    def fit_tick(self, epoch: int, epochs: int, loss: float,
+                 acc: float | None = None, val_acc: float | None = None) -> None:
+        """Report live training (fit-loop) progress. Called once per epoch (or every few
+        epochs) from the fitting thread."""
+        with self._lock:
+            self._s["stage"] = "fitting"
+            fit = self._s["fit"] or {}
+            if fit.get("fit_started") is None:
+                fit["fit_started"] = time.monotonic()
+            curve = list(fit.get("loss_curve") or [])
+            if not curve or curve[-1] != round(float(loss), 4):
+                curve.append(round(float(loss), 4))
+            self._s["fit"] = {
+                **fit,
+                "epoch": epoch,
+                "epochs": epochs,
+                "loss": loss,
+                "acc": acc,
+                "val_acc": val_acc,
+                "loss_curve": curve[-200:],
+            }
 
     def tick(self, label: str | None = None, context: str = "",
              fallback: bool = False, failed: bool = False,
@@ -91,4 +115,16 @@ class ProgressState:
             s["eta_seconds"] = round((s["total"] - done) / rate, 1) if rate > 0 and done < s["total"] else None
             s["elapsed"] = round(time.monotonic() - s["started"], 1) if s["started"] else 0.0
             s["percent"] = round(100.0 * done / s["total"], 1) if s["total"] else 0.0
+            fit = s.get("fit")
+            if fit:
+                fit = dict(fit)
+                started = fit.get("fit_started")
+                per_epoch = None
+                if started:
+                    per_epoch = (time.monotonic() - started) / max(fit["epoch"], 1)
+                fit["fit_eta_seconds"] = (
+                    round(per_epoch * (fit["epochs"] - fit["epoch"]), 1)
+                    if per_epoch is not None else None)
+                fit["fit_percent"] = round(100.0 * fit["epoch"] / fit["epochs"], 1)
+                s["fit"] = fit
             return s

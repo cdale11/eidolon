@@ -47,6 +47,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="max tokens the model may spend thinking")
     ap.add_argument("--rpm", type=int, default=None,
                     help="teacher request rate limit (default 25, NVIDIA NIM free tier)")
+    ap.add_argument("--strict", action="store_true",
+                    help="teacher mode never silently falls back to the reward heuristic: "
+                         "records are retried and a dead endpoint aborts the run (0 fallbacks)")
     ap.add_argument("--progress-port", type=int, default=8090,
                     help="port for the dataset-generation progress web UI (0 = off)")
     ap.add_argument("--progress-host", default="0.0.0.0",
@@ -140,7 +143,8 @@ def main(argv: list[str] | None = None) -> int:
             labels_used = label_experiences(exp, client=client,
                                             fallback=("reward" if use_teacher else args.label_mode),
                                             progress=progress, on_label=label_writer,
-                                            counters=counters)
+                                            counters=counters,
+                                            strict=bool(use_teacher and args.strict))
         finally:
             if args.labels_out:
                 lf.close()
@@ -154,7 +158,12 @@ def main(argv: list[str] | None = None) -> int:
     X = feature_matrix(exp)
     y = __import__("numpy").asarray(label_idx, dtype="int64")
     print(f"fitting softmax-linear prior ({X.shape[0]} x {X.shape[1]}) ...")
-    res = fit_prior(X, y, epochs=args.epochs, lr=args.lr, val_frac=args.val_frac)
+    on_epoch = None
+    if progress:
+        def on_epoch(epoch, epochs, loss, acc, val_acc):
+            progress.fit_tick(epoch, epochs, loss, acc, val_acc)
+    res = fit_prior(X, y, epochs=args.epochs, lr=args.lr, val_frac=args.val_frac,
+                    on_epoch=on_epoch)
     write_prior(args.out, res["weights"], res["bias"])
     val = f"  val-acc={res['val_acc']:.3f}" if res["val_acc"] is not None else ""
     print(f"prior written to {args.out}")

@@ -53,14 +53,25 @@ class RpmLimiter:
         return len(self._times)
 
 SYSTEM_PROMPT = (
-    "You are a wise mentor teaching a small autonomous organism how to survive in a "
-    "simple 2D world. The organism is always hungry, thirsty, and tired; berries are its "
-    "only food and water its only drink. Its only actions are: Forage (search for and eat "
-    "berries), Drink (find water and drink), Rest (recover energy, does not consume food "
-    "or water), Wander (move to find food/water), Observe (look around, reduces "
-    "uncertainty). Pick the single wisest action for the CURRENT situation. "
+    "You are a wise survival mentor teaching a small autonomous organism to STAY ALIVE "
+    "in a simple 2D world. Its physiology is unforgiving: it DIES when health reaches 0. "
+    "Thirst at 100 drains health fast (death in minutes); hunger at 100 drains health; "
+    "energy at 0 drains health; predators bite. Berries are the only food, water only "
+    "from water tiles. Actions: Forage (search for and eat berries), Drink (find water "
+    "and drink), Rest (recover energy/fatigue, needs nothing), Wander (move to find "
+    "food/water), Observe (look around, reduces uncertainty), Flee (run away from a "
+    "nearby predator). Your #1 rule: prevent death. Pick the single wisest action for "
+    "the CURRENT situation:"
+    "\n- thirst >= 55 -> Drink is almost always wisest (thirst kills fastest)."
+    "\n- hunger >= 60 -> Forage is almost always wisest."
+    "\n- energy < 30 or fatigue >= 70 -> Rest (or sleep if it is night) so energy does "
+    "not bottom out."
+    "\n- threat >= 0.6 -> Flee immediately; survival trumps eating and drinking."
+    "\n- otherwise Wander or Observe to find the nearest need (water < berries unless "
+    "thirst > hunger). Never let thirst climb past ~75 or hunger past ~80: act well "
+    "before the danger zone."
     "Answer with ONLY a single JSON object on the last line: {\"action\": \"Forage\"} "
-    "where the value is exactly one of the five action names. Do NOT explain, do NOT "
+    "where the value is exactly one of the six action names. Do NOT explain, do NOT "
     "write any other text, do NOT use markdown."
 )
 
@@ -95,13 +106,14 @@ class TeacherClient:
                  key: str | None = None, timeout: float = 60.0,
                  enable_thinking: bool | None = None,
                  reasoning_budget: int | None = None,
-                 rpm: int | None = None):
+                 rpm: int | None = None, max_retries: int = 5):
         self.base = (base or os.environ.get("EIDOLON_TEACHER_BASE")
                      or "http://127.0.0.1:8080/v1").rstrip("/")
         self.model = (model or os.environ.get("EIDOLON_TEACHER_MODEL")
                       or "Qwen3-4B-Instruct-Q4_K_M.gguf")
         self.key = key or os.environ.get("EIDOLON_TEACHER_KEY") or ""
         self.timeout = timeout
+        self.max_retries = max_retries
         # Reasoning models (NIM Nemotron/DeepSeek, …) take chat_template_kwargs to enable
         # the chain-of-thought and a reasoning_budget for how many tokens to spend thinking.
         think_env = os.environ.get("EIDOLON_TEACHER_THINKING", "").strip().lower()
@@ -118,9 +130,12 @@ class TeacherClient:
         self.limiter = RpmLimiter(rpm)
 
     def label(self, context: str) -> str | None:
-        """Return the teacher's chosen action name, or None if the endpoint is unavailable
-        or the message contains no parseable final answer. Rate-limited to <= rpm requests
-        per rolling minute."""
+        """Return the teacher's chosen action name, or None only after exhausting retries.
+
+        Transient failures (rate limits, network blips, empty/parseable response) are
+        retried with backoff so a live teacher never silently falls back to the offline
+        heuristic: a fallback only happens when the endpoint is genuinely unreachable.
+        """
         headers = {"Content-Type": "application/json"}
         if self.key:
             headers["Authorization"] = f"Bearer {self.key}"
@@ -140,23 +155,39 @@ class TeacherClient:
             payload["chat_template_kwargs"] = {"enable_thinking": True}
             if self.reasoning_budget:
                 payload["reasoning_budget"] = self.reasoning_budget
-        self.limiter.acquire()
-        try:
-            r = requests.post(f"{self.base}/chat/completions", json=payload,
-                              headers=headers, timeout=self.timeout)
-            r.raise_for_status()
-            msg = r.json()["choices"][0]["message"]
-        except (requests.RequestException, KeyError, IndexError, ValueError):
-            return None
-        # `reasoning_content` (chain-of-thought) is deliberately ignored; the label comes
-        # only from the final `content`, which reasoning models populate after thinking.
-        return _action_from_content(msg.get("content"))
+        last_err = None
+        for attempt in range(self.max_retries):
+            self.limiter.acquire()
+            try:
+                r = requests.post(f"{self.base}/chat/completions", json=payload,
+                                  headers=headers, timeout=self.timeout)
+                r.raise_for_status()
+                msg = r.json()["choices"][0]["message"]
+            except (requests.RequestException, KeyError, IndexError, ValueError) as e:
+                last_err = e
+                time.sleep(min(30.0, 2.0 ** attempt))  # exponential backoff
+                continue
+            # `reasoning_content` (chain-of-thought) is deliberately ignored; the label
+            # comes only from the final `content`, which reasoning models populate after
+            # thinking. Empty content with reasoning present is a retriable transient.
+            action = _action_from_content(msg.get("content"))
+            if action is not None:
+                return action
+            if msg.get("reasoning_content"):
+                last_err = "empty final content (thinking consumed the budget)"
+            else:
+                last_err = "unparseable response"
+            time.sleep(min(30.0, 2.0 ** attempt))
+        print(f"  teacher: giving up after {self.max_retries} attempts ({last_err})",
+              file=__import__("sys").stderr)
+        return None
 
 
 def label_experiences(exp: list[Any], client: TeacherClient | None = None,
                       fallback: str = "reward", report_every: int = 500,
                       progress: Any = None, on_label=None,
-                      counters: dict | None = None) -> list[str]:
+                      counters: dict | None = None,
+                      strict: bool = False) -> list[str]:
     """Label each record; unavailable/absent teacher falls back to the offline heuristic.
 
     fallback: 'reward' = action with best mean observed reward; 'self' = the action the
@@ -164,6 +195,11 @@ def label_experiences(exp: list[Any], client: TeacherClient | None = None,
     updated per record for the progress web UI. `on_label(t, label)`, if given, is called
     per record as labels are produced (e.g. to stream the dataset to disk). `counters`, if
     given, is incremented in place: counters['fallback'].
+
+    `strict=True` (recommended for live NIM training): the teacher is the only source of
+    truth. A record that comes back None is retried up to `client.max_retries` (transient
+    blips) and only if the endpoint is genuinely unreachable do we fail loudly with an
+    exception — never a silent reward-heuristic fallback. Guarantees fallbacks == 0.
     """
     from .dataset import reward_best_labels
 
@@ -178,8 +214,22 @@ def label_experiences(exp: list[Any], client: TeacherClient | None = None,
         is_fallback = False
         measured_rpm = None
         if client is not None:
-            label = client.label(e.interpretable_text())
-            measured_rpm = client.limiter.measured_rpm()
+            if strict:
+                # Retry until the teacher actually answers; only give up (loudly) if the
+                # endpoint is down. Zero silent fallbacks.
+                while label is None:
+                    label = client.label(e.interpretable_text())
+                    if label is None:
+                        print(f"  teacher: t={e.t} still unlabeled after "
+                              f"{client.max_retries} attempts; endpoint unreachable? "
+                              f"aborting (no silent fallback)", file=__import__("sys").stderr)
+                        raise RuntimeError(
+                            f"teacher endpoint failed for t={e.t} after "
+                            f"{client.max_retries} retries; refusing to silently fall back")
+                measured_rpm = client.limiter.measured_rpm()
+            else:
+                label = client.label(e.interpretable_text())
+                measured_rpm = client.limiter.measured_rpm()
             if label is not None and i % report_every == 0:
                 print(f"  teacher: t={e.t} -> {label}")
         if label is None:

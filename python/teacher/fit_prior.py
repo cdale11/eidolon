@@ -35,8 +35,14 @@ def _tensors(X: np.ndarray, y: np.ndarray, val_frac: float):
 
 
 def fit_prior(X: np.ndarray, y: np.ndarray, epochs: int = 400, lr: float = 0.05,
-              val_frac: float = 0.1, seed: int = 0) -> dict[str, Any]:
-    """Linear-softmax fit. Returns weights (np.float32 (nActions, nFeatures)), bias, acc."""
+              val_frac: float = 0.1, seed: int = 0,
+              on_epoch=None) -> dict[str, Any]:
+    """Linear-softmax fit. Returns weights (np.float32 (nActions, nFeatures)), bias, acc.
+
+    `on_epoch(epoch, epochs, loss, acc, val_acc)`, if given, is called every epoch so a
+    caller can stream live training progress (web UI). acc/val_acc are computed on a
+    periodic subsample every `report_every` epochs to keep the loop cheap.
+    """
     if X.shape[1] != N_FEATURES:
         raise ValueError(f"expected {N_FEATURES} features, got {X.shape[1]}")
     torch.manual_seed(seed)
@@ -45,6 +51,7 @@ def fit_prior(X: np.ndarray, y: np.ndarray, epochs: int = 400, lr: float = 0.05,
     loss_fn = nn.CrossEntropyLoss()
     Xt, yt, Xv, yv = _tensors(X, y, val_frac)
     last = None
+    report_every = max(1, epochs // 40)  # ~40 live updates over the run
     for epoch in range(epochs):
         model.train()
         opt.zero_grad()
@@ -53,6 +60,12 @@ def fit_prior(X: np.ndarray, y: np.ndarray, epochs: int = 400, lr: float = 0.05,
         loss.backward()
         opt.step()
         last = float(loss.detach())
+        if on_epoch is not None and (epoch + 1) % report_every == 0:
+            with torch.no_grad():
+                acc = float((model(Xt).argmax(1) == yt).float().mean())
+                val_acc = (float((model(Xv).argmax(1) == yv).float().mean())
+                           if Xv is not None else None)
+            on_epoch(epoch + 1, epochs, last, acc, val_acc)
     model.eval()
     with torch.no_grad():
         acc = float((model(Xt).argmax(1) == yt).float().mean())

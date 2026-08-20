@@ -57,6 +57,20 @@ PAGE = """<!DOCTYPE html>
   </div>
   <div class="card"><h2 style="font-size:15px;margin:0 0 8px;">Labels</h2>
     <table id="labels"></table></div>
+  <div class="card" id="fitcard" hidden><h2 style="font-size:15px;margin:0 0 8px;">
+    Training</h2>
+    <div class="row"><span class="k">Epoch</span><span id="fepoch">…</span></div>
+    <div class="bar"><div id="fbar"></div></div>
+    <div class="row"><span class="k">Loss</span><span id="floss">…</span></div>
+    <div class="row"><span class="k">Train accuracy</span><span id="facc">…</span></div>
+    <div class="row"><span class="k">Validation accuracy</span><span id="fval">…</span></div>
+    <div class="row"><span class="k">ETA</span><span id="feta">…</span></div>
+    <div style="margin-top:10px;height:60px;position:relative;background:#f2f2f6;
+                border-radius:8px;">
+      <canvas id="flosscurve" style="position:absolute;inset:0;width:100%;height:100%;">
+      </canvas>
+    </div>
+  </div>
   <div class="card"><h2 style="font-size:15px;margin:0 0 8px;">Recent errors</h2>
     <div class="err" id="errors"><span class="muted">none</span></div></div>
   <div class="card" id="rescard" hidden><h2 style="font-size:15px;margin:0 0 8px;">
@@ -90,6 +104,42 @@ async function poll() {
   const errs = document.getElementById('errors');
   errs.textContent = s.errors.length ? s.errors.join('\\n') : 'none';
   errs.classList.toggle('muted', !s.errors.length);
+  const fc = document.getElementById('fitcard');
+  const f = s.fit;
+  if (f && f.epochs) {
+    fc.hidden = false;
+    document.getElementById('fepoch').textContent =
+      f.epoch + ' / ' + f.epochs + '  (' + f.fit_percent + '%)';
+    document.getElementById('fbar').style.width = f.fit_percent + '%';
+    document.getElementById('floss').textContent = f.loss != null ? f.loss.toFixed(4) : '—';
+    document.getElementById('facc').textContent =
+      f.acc != null ? (f.acc * 100).toFixed(1) + '%' : '—';
+    document.getElementById('fval').textContent =
+      f.val_acc != null ? (f.val_acc * 100).toFixed(1) + '%' : '—';
+    document.getElementById('feta').textContent =
+      f.fit_eta_seconds == null ? '—' : (f.fit_eta_seconds / 60).toFixed(1) + ' min';
+    const cv = document.getElementById('flosscurve');
+    const ctx = cv.getContext('2d');
+    if (f.loss_curve && f.loss_curve.length > 1) {
+      const curve = f.loss_curve;
+      const min = Math.min.apply(null, curve);
+      const max = Math.max.apply(null, curve);
+      const w = cv.clientWidth, h = cv.clientHeight;
+      const span = (max - min) || 1;
+      ctx.clearRect(0, 0, w, h);
+      ctx.beginPath();
+      ctx.strokeStyle = '#10a37f';
+      ctx.lineWidth = 1.5;
+      curve.forEach((v, i) => {
+        const x = (i / (curve.length - 1)) * w;
+        const y = h - ((v - min) / span) * (h - 6) - 3;
+        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      });
+      ctx.stroke();
+    }
+  } else {
+    fc.hidden = true;
+  }
   const rc = document.getElementById('rescard');
   const r = s.results || {};
   if (Object.keys(r).length) {
