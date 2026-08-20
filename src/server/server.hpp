@@ -13,6 +13,7 @@
 #include "core/clock.hpp"
 #include "core/log.hpp"
 #include "llm/bridge.hpp"
+#include "mind/compute_profile.hpp"
 #include "sim/engine.hpp"
 #include "store/sqlite_archive.hpp"
 
@@ -30,6 +31,10 @@ public:
     std::string policyPriorPath; // optional teacher-baked policy prior for fresh organisms
     std::string llmEndpoint; // empty = offline
     int llmTimeoutMs = 10000;
+    // Adaptive fidelity (Phase 11): 0 = auto (from compute profile), else explicit level
+    // 1..3 for Low/Medium/High. Only affects pacing/model budget/world detail, never the
+    // deterministic tick semantics.
+    int fidelityLevel = 0;
   };
 
   explicit Server(Options opts);
@@ -72,6 +77,7 @@ private:
 
   mutable std::mutex engineMu_; // guards engine_ (sim thread vs HTTP handlers)
   int64_t conversationId_ = -1;
+  FidelitySettings fidelity_; // resolved at simLoop start (metrics/status report)
 };
 
 } // namespace eidolon

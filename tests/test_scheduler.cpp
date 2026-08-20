@@ -2,6 +2,7 @@
 // background budget gating, serialization round-trip.
 #include "harness.hpp"
 #include "mind/compute_scheduler.hpp"
+#include "mind/compute_profile.hpp"
 
 #include <cstring>
 
@@ -147,4 +148,44 @@ TEST(compute_scheduler_serialize_roundtrip) {
   WorkerMessage mout;
   CHECK(t.poll(mout));
   CHECK_EQ(mout.kind, 9u);
+}
+
+TEST(compute_scheduler_fidelity_levels) {
+  // Low fidelity: slow pacing, reduced model budget, smaller world, no LLM reflection.
+  const FidelitySettings low = FidelityController::settingsFor(FidelityLevel::Low);
+  CHECK_EQ(low.simSecondsPerWallSecond, 60.0);
+  CHECK(low.modelBudgetScale < 1.0);
+  CHECK(low.worldDetailScale < 1.0);
+  CHECK(!low.llmReflectionEnabled);
+  CHECK(low.deferConsolidation);
+
+  // High fidelity: full speed/budget/world.
+  const FidelitySettings high = FidelityController::settingsFor(FidelityLevel::High);
+  CHECK_EQ(high.modelBudgetScale, 1.0);
+  CHECK_EQ(high.worldDetailScale, 1.0);
+  CHECK(high.llmReflectionEnabled);
+  CHECK(high.simSecondsPerWallSecond > low.simSecondsPerWallSecond);
+
+  // Auto-level from profiles: capable GPU -> High, plain low-memory -> Low.
+  ComputeProfile gpu;
+  gpu.gpuBackend = GpuBackend::WebGPU;
+  gpu.maxMemoryBytes = 512 * 1024 * 1024;
+  CHECK(FidelityController::autoLevel(gpu) == FidelityLevel::High);
+
+  ComputeProfile weak;
+  weak.gpuBackend = GpuBackend::None;
+  weak.maxMemoryBytes = 8 * 1024 * 1024;
+  weak.hasWasmSimd128 = false;
+  weak.maxWorkers = 1;
+  CHECK(FidelityController::autoLevel(weak) == FidelityLevel::Low);
+
+  // Serialization round-trip for fidelity settings.
+  BinaryWriter w;
+  high.serialize(w);
+  FidelitySettings back;
+  BinaryReader r(w.data());
+  CHECK(back.deserialize(r));
+  CHECK_EQ(back.modelBudgetScale, high.modelBudgetScale);
+  CHECK_EQ(back.worldDetailScale, high.worldDetailScale);
+  CHECK_EQ(back.llmReflectionEnabled, high.llmReflectionEnabled);
 }

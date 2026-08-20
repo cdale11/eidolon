@@ -293,13 +293,18 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
   - `HeredityGenome` serialization for persistence across restarts
   - Policy weights accessor added; PersonalityLatent operator[] for mutation/blending
   - Engine non-const `learn()` for heredity application
-- [ ] `ComputeScheduler`: priority queues (chat/responsiveness > active sim > background
+- [x] `ComputeScheduler`: priority queues (chat/responsiveness > active sim > background
       consolidation); worker separation (world / physiology-cognition / neural-ML /
       memory-consolidation); compact message passing, no big buffer transfers
-- [ ] Adaptive fidelity: constrained clients reduce sim frequency, model budget, world detail —
-      identity unchanged
-- [ ] Profiling from the beginning: per-backend sim steps/sec, simulated hours/sec, inferences/
+      (`src/mind/compute_scheduler.hpp/.cpp`; `--fidelity` on eidolon-server; per-domain
+      profiling fed to the Diagnostics panel).
+- [x] Adaptive fidelity: constrained clients reduce sim frequency, model budget, world detail —
+      identity unchanged (`FidelityController` in `src/mind/compute_profile.hpp/.cpp`;
+      `--fidelity 0|1|2|3`; affects pacing/model-budget/world-detail only, never the
+      deterministic tick).
+- [x] Profiling from the beginning: per-backend sim steps/sec, simulated hours/sec, inferences/
       sec, worker utilization, WASM memory, latency — diagnostics panel in the UI
+      (`/api/metrics` + collapsible Diagnostics panel in the sidebar).
 - [ ] **Genetic programming** (offline tooling): evolve recipe trees (crafting / tool
       invention) and behaviour trees (action sequences) validated against world physics;
       tournament + subtree crossover / mutation; fitness = sim validation; depth cap.

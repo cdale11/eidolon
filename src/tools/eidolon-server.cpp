@@ -29,6 +29,7 @@ void printUsage(FILE* out, const char* prog) {
                "  --llm URL         OpenAI-compatible endpoint, e.g.\n"
                "                    http://127.0.0.1:8080/v1 (default: offline)\n"
                "  --llm-timeout MS  LLM call timeout in ms (default 10000)\n"
+               "  --fidelity 0|1|2|3  adaptive fidelity: 0=auto (default), 1=low, 2=medium, 3=high\n"
                "  --help            this message\n",
                prog);
 }
@@ -61,6 +62,9 @@ int main(int argc, char** argv) {
     } else if (a == "--policy-prior") opts.policyPriorPath = need("FILE");
     else if (a == "--llm") opts.llmEndpoint = need("URL");
     else if (a == "--llm-timeout") opts.llmTimeoutMs = std::atoi(need("MS"));
+    else if (a == "--fidelity") {
+      opts.fidelityLevel = std::atoi(need("0|1|2|3 (auto|low|medium|high)"));
+    }
     else if (a == "--help") {
       printUsage(stdout, argv[0]);
       return 0;

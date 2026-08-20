@@ -392,6 +392,20 @@ void Server::simLoop() {
     }
   }
   int64_t lastAutosave = 0;
+  const FidelitySettings fidelity = [&] {
+    if (opts_.fidelityLevel == 1) return FidelityController::settingsFor(FidelityLevel::Low);
+    if (opts_.fidelityLevel == 2) return FidelityController::settingsFor(FidelityLevel::Medium);
+    if (opts_.fidelityLevel == 3) return FidelityController::settingsFor(FidelityLevel::High);
+    // Auto: default to Medium for the native server (client profiles arrive later).
+    return FidelityController::settingsFor(FidelityLevel::Medium);
+  }();
+  fidelity_ = fidelity;
+  // Real-time pacing: one sim-second per (1e6 / simSecondsPerWallSecond) microseconds of
+  // wall time; the native server default is 500x. A constrained client drops this so the
+  // sim covers less ground per wall-second, without changing the tick itself.
+  const int64_t pacingUs =
+      static_cast<int64_t>(1e6 / fidelity.simSecondsPerWallSecond);
+  std::fprintf(stderr, "fidelity: %s\n", fidelity.toString().c_str());
   while (!stop_.load()) {
     {
       // Scope the lock so HTTP handler threads always get a window to acquire the
@@ -407,9 +421,9 @@ void Server::simLoop() {
         log_.flush();
       }
     }
-    // Real-time pacing: 1 sim-second per 2ms wall (500x speed); capped so the server
-    // can keep up with a long unattended run.
-    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    // Real-time pacing: simSecondsPerWallSecond wall pacing (500x default); a constrained
+    // client (Low/Medium fidelity) slows this so the sim covers less ground per wall-second.
+    std::this_thread::sleep_for(std::chrono::microseconds(pacingUs));
   }
   {
     std::lock_guard<std::mutex> lock(engineMu_);
@@ -509,9 +523,17 @@ std::string Server::metricsJson() {
   lm.setNumber("updates", static_cast<double>(learnMetrics.updates));
 
   JsonValue root = JsonValue::makeObject();
+  JsonValue fid = JsonValue::makeObject();
+  fid.setNumber("level", static_cast<double>(fidelity_.level));
+  fid.setNumber("sim_sec_per_wall_sec", fidelity_.simSecondsPerWallSecond);
+  fid.setNumber("model_budget", fidelity_.modelBudgetScale);
+  fid.setNumber("world_detail", fidelity_.worldDetailScale);
+  fid.setBool("llm_reflection", fidelity_.llmReflectionEnabled);
+  fid.setBool("defer_consolidation", fidelity_.deferConsolidation);
   root.set("scheduler", std::move(schedObj));
   root.set("stats", std::move(st));
   root.set("learner", std::move(lm));
+  root.set("fidelity", std::move(fid));
   return root.dump();
 }
 

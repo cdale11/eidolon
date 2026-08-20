@@ -279,4 +279,89 @@ double ComputeProfileDetector::estimatePerformance(BackendType backend, const Co
   return 0.0;
 }
 
+void FidelitySettings::serialize(struct BinaryWriter& w) const {
+  w.u8(static_cast<uint8_t>(level));
+  w.f64(simSecondsPerWallSecond);
+  w.f64(modelBudgetScale);
+  w.f64(worldDetailScale);
+  w.u8(llmReflectionEnabled ? 1 : 0);
+  w.u8(deferConsolidation ? 1 : 0);
+}
+
+bool FidelitySettings::deserialize(struct BinaryReader& r) {
+  uint8_t u8;
+  if (!r.u8(u8)) return false;
+  level = static_cast<FidelityLevel>(u8);
+  if (!r.f64(simSecondsPerWallSecond)) return false;
+  if (!r.f64(modelBudgetScale)) return false;
+  if (!r.f64(worldDetailScale)) return false;
+  if (!r.u8(u8)) return false;
+  llmReflectionEnabled = (u8 != 0);
+  if (!r.u8(u8)) return false;
+  deferConsolidation = (u8 != 0);
+  return true;
+}
+
+std::string FidelitySettings::toString() const {
+  std::ostringstream oss;
+  oss << "FidelityLevel="
+      << (level == FidelityLevel::Low ? "Low"
+          : level == FidelityLevel::Medium ? "Medium" : "High")
+      << " sim_s/w_s=" << simSecondsPerWallSecond
+      << " model_budget=" << modelBudgetScale
+      << " world_detail=" << worldDetailScale
+      << " llm_reflection=" << (llmReflectionEnabled ? "on" : "off")
+      << " defer_consolidation=" << (deferConsolidation ? "on" : "off");
+  return oss.str();
+}
+
+FidelitySettings FidelityController::settingsFor(FidelityLevel level) {
+  FidelitySettings s;
+  s.level = level;
+  switch (level) {
+    case FidelityLevel::Low:
+      s.simSecondsPerWallSecond = 60.0;
+      s.modelBudgetScale = 0.4;
+      s.worldDetailScale = 0.5;
+      s.llmReflectionEnabled = false;
+      s.deferConsolidation = true;
+      break;
+    case FidelityLevel::Medium:
+      s.simSecondsPerWallSecond = 300.0;
+      s.modelBudgetScale = 0.75;
+      s.worldDetailScale = 0.75;
+      s.llmReflectionEnabled = true;
+      s.deferConsolidation = false;
+      break;
+    case FidelityLevel::High:
+      s.simSecondsPerWallSecond = 1000.0;
+      s.modelBudgetScale = 1.0;
+      s.worldDetailScale = 1.0;
+      s.llmReflectionEnabled = true;
+      s.deferConsolidation = false;
+      break;
+  }
+  return s;
+}
+
+FidelitySettings FidelityController::settingsForProfile(const ComputeProfile& profile) {
+  return settingsFor(autoLevel(profile));
+}
+
+FidelityLevel FidelityController::autoLevel(const ComputeProfile& profile) {
+  // High: capable GPU or strong native CPU with plenty of memory.
+  if ((profile.gpuBackend == GpuBackend::WebGPU || profile.gpuBackend == GpuBackend::Vulkan ||
+       profile.gpuBackend == GpuBackend::CUDA || profile.gpuBackend == GpuBackend::Metal ||
+       profile.gpuBackend == GpuBackend::ROCm) &&
+      profile.maxMemoryBytes >= 128 * 1024 * 1024) {
+    return FidelityLevel::High;
+  }
+  // Medium: SIMD + workers, or a plain WASM client with modest memory.
+  if (profile.hasWasmSimd128 || profile.maxWorkers > 1 ||
+      profile.maxMemoryBytes >= 32 * 1024 * 1024) {
+    return FidelityLevel::Medium;
+  }
+  return FidelityLevel::Low;
+}
+
 } // namespace eidolon

@@ -129,6 +129,46 @@ private:
   static GpuBackend detectGpuBackend(bool webgpu, bool webgl);
 };
 
+// Adaptive fidelity (Phase 11): constrained clients reduce sim frequency, model budget,
+// and world detail without changing the organism's identity. All knobs affect ONLY
+// throughput/resolution — never the deterministic tick semantics (bit-exact replay for
+// the same seed is preserved; a slower client simply covers less simulated ground per
+// wall-second).
+enum class FidelityLevel : uint8_t {
+  Low = 0,     // constrained client: slow pacing, low model budget, small world
+  Medium = 1,  // typical client: balanced pacing/model/world
+  High = 2,    // capable client / native: full speed, full model budget
+};
+
+struct FidelitySettings {
+  FidelityLevel level = FidelityLevel::Medium;
+
+  // Sim pacing: simulated seconds per wall second the client can sustain.
+  double simSecondsPerWallSecond = 500.0;
+  // Model budget: fraction of learning/ML work per tick (0.5 = half inference budget).
+  double modelBudgetScale = 1.0;
+  // World detail: scale factor applied to world size on fresh generation (1.0 = full).
+  double worldDetailScale = 1.0;
+  // Whether optional expensive features (LLM reflection, life review) are enabled.
+  bool llmReflectionEnabled = true;
+  // Whether sleep consolidation is deferred to lighter loads.
+  bool deferConsolidation = false;
+
+  // Serialization
+  void serialize(struct BinaryWriter& w) const;
+  bool deserialize(struct BinaryReader& r);
+  std::string toString() const;
+};
+
+// Maps a compute profile (or an explicit level) to concrete fidelity settings.
+class FidelityController {
+public:
+  static FidelitySettings settingsFor(FidelityLevel level);
+  static FidelitySettings settingsForProfile(const ComputeProfile& profile);
+  // Pick the most capable level the profile supports (for auto-selection).
+  static FidelityLevel autoLevel(const ComputeProfile& profile);
+};
+
 } // namespace eidolon
 
 #endif // EIDOLON_COMPUTE_PROFILE_HPP

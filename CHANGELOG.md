@@ -121,6 +121,18 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   - `HeredityGenome` serialization for persistence across restarts
   - Policy `weights()` accessor added; `PersonalityLatent` operator[] for mutation/blending
   - Engine non-const `learn()` for heredity application
+- **ComputeScheduler** (`src/mind/compute_scheduler.hpp/.cpp`): coordinates deferrable background
+  work (consolidation, reflection, planning, LLM proposals) around the single-threaded
+  deterministic tick without reordering it
+  - Priority classes Responsive > Normal > Background > Idle, FIFO within priority, fixed-capacity queue
+  - Worker separation (world / physiology-cognition / neural-ML / memory-consolidation)
+  - Compact message ring (no big buffer transfers); per-domain wall-time profiling
+  - Wired into `Engine::tick` (profiling only, never gates tick output) and the Diagnostics panel
+- **Adaptive fidelity** (`src/mind/compute_profile.hpp/.cpp`): `FidelityLevel` Low/Medium/High +
+  `FidelitySettings` + `FidelityController` map a client compute profile to sim pacing, model
+  budget, and world detail — identity unchanged, tick semantics untouched (`--fidelity 0|1|2|3`)
+- **Diagnostics panel** (`/api/metrics` + sidebar toggle): live scheduler queue/message depth,
+  per-domain profiling, action counts, learner inference/update counts, fidelity settings
 - Gate: same seeded scenario produces the same individual state on native and WASM (parity test pending); no heavy work on the main UI thread
 
 ### Tests & tooling
