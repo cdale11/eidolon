@@ -209,6 +209,8 @@ Action Engine::tick() noexcept {
 
 bool Engine::loadPolicyPrior(const std::string& path) { return learn_.loadPolicyPrior(path); }
 
+bool Engine::savePolicyPrior(const std::string& path) const { return learn_.savePolicyPrior(path); }
+
 bool Engine::aversiveTick(const Physiology& before) const noexcept {
   // Acute danger only: pain, rapid health loss, or near-lethal core temperature.
   // Chronic cold is survival pressure (energy drain), not an immediate threat — it must
@@ -221,8 +223,12 @@ bool Engine::aversiveTick(const Physiology& before) const noexcept {
 }
 
 bool Engine::safeTick(float reward) const noexcept {
+  // "Safe" = not in acute danger: no pain spike, no rapid health loss, and body
+  // temperature not at the aversive extreme (dev > 8C). Chronic mild cold (e.g. 33C)
+  // is discomfort/energy pressure, not an acute threat — it must not suppress threat
+  // extinction, otherwise one attack pins the ThreatNet at 1.0 forever.
   return reward >= 0.0f && body_.pain() < 5.0 &&
-         std::fabs(body_.bodyTemp() - Physiology::kBodyTempC) <= 2.0;
+         std::fabs(body_.bodyTemp() - Physiology::kBodyTempC) <= 8.0;
 }
 
 void Engine::dumpExperience(PolicyAction pa, bool agentic, float reward, float novelty,
@@ -242,19 +248,102 @@ void Engine::dumpExperience(PolicyAction pa, bool agentic, float reward, float n
     waterDist = distCheb(water->pos, p);
   }
   std::FILE* f = experienceOut_;
+
+  // Policy preference scores for every action (the bandit's raw output).
+  float scores[Policy::kActions];
+  for (int a = 0; a < Policy::kActions; ++a) {
+    scores[a] = learn_.policy().score(static_cast<PolicyAction>(a), featsBefore_);
+  }
+
+  // ValueNet estimate and policy softmax probabilities (training targets/context).
+  float hidden[ValueNet::kHidden];
+  const float value = learn_.valueNet().predict(featsBefore_, hidden);
+  const float temperature = learn_.temperature();
+  float softmax[Policy::kActions];
+  {
+    float mx = scores[0];
+    for (int a = 1; a < Policy::kActions; ++a) mx = std::max(mx, scores[a]);
+    float sum = 0.0f;
+    for (int a = 0; a < Policy::kActions; ++a) {
+      softmax[a] = std::exp((scores[a] - mx) / std::max(temperature, 1e-3f));
+      sum += softmax[a];
+    }
+    for (int a = 0; a < Policy::kActions; ++a) softmax[a] /= sum;
+  }
+
+  const Neuromod& nm = learn_.neuromod();
+  const PersonalityLatent& lat = learn_.personality();
+  const DriveWeights& drv = learn_.driveWeights();
+  const LifeStats& ls = learn_.lifeStats();
+  const LearnerMetrics& mv = learn_.valueNet().metrics();
+  const LearnerMetrics& mt = learn_.threatNet().metrics();
+  const LearnerMetrics& mp = learn_.policy().metrics();
+  const LearnerMetrics& ma = learn_.attention().metrics();
+
   std::fprintf(f,
                "{\"t\":%lld,\"agentic\":%d,\"action\":\"%s\",\"reward\":%.4f,"
                "\"novelty\":%.4f,\"threat\":%.4f,\"aversive\":%d,\"safe\":%d,"
                "\"body\":{\"h\":%.1f,\"t\":%.1f,\"f\":%.1f,\"e\":%.1f,\"hp\":%.1f,"
                "\"p\":%.1f,\"s\":%.1f,\"temp\":%.1f},\"wx\":{\"tempC\":%.1f,\"desc\":\"%s\"},"
-               "\"bushDist\":%d,\"waterDist\":%d,\"eaten\":%.1f,\"drank\":%d,\"feats\":[",
+               "\"bushDist\":%d,\"waterDist\":%d,\"eaten\":%.1f,\"drank\":%d,"
+               "\"value\":%.4f,\"temp\":%.4f,\"scores\":[",
                static_cast<long long>(clock_.now()), agentic ? 1 : 0,
                kActionNames[static_cast<int>(pa)], static_cast<double>(reward),
                static_cast<double>(novelty), static_cast<double>(learn_.threatEstimate()),
                aversive ? 1 : 0, safe ? 1 : 0, body_.hunger(), body_.thirst(),
                body_.fatigue(), body_.energy(), body_.health(), body_.pain(),
                body_.sleepPressure(), body_.bodyTemp(), world_.weather().ambientTempC(clock_),
-               world_.weather().describe(), bushDist, waterDist, eaten, drank ? 1 : 0);
+               world_.weather().describe(), bushDist, waterDist, eaten, drank ? 1 : 0,
+               static_cast<double>(value), static_cast<double>(temperature));
+  for (int a = 0; a < Policy::kActions; ++a) {
+    std::fprintf(f, "%s%.4f", a ? "," : "", static_cast<double>(scores[a]));
+  }
+  std::fprintf(f, "],\"probs\":[");
+  for (int a = 0; a < Policy::kActions; ++a) {
+    std::fprintf(f, "%s%.4f", a ? "," : "", static_cast<double>(softmax[a]));
+  }
+  // Neuromodulators (gating signals for every learner).
+  std::fprintf(f, "],\"neuromod\":{\"arousal\":%.4f,\"valence\":%.4f,\"stress\":%.4f,"
+                  "\"curiosity\":%.4f,\"uncertainty\":%.4f,\"pe\":%.4f}",
+               static_cast<double>(nm.arousal), static_cast<double>(nm.valence),
+               static_cast<double>(nm.stress), static_cast<double>(nm.curiosity),
+               static_cast<double>(nm.uncertainty), static_cast<double>(nm.predictionError));
+  // Personality latent vector + derived drives (16 dims).
+  std::fprintf(f, ",\"personality\":[");
+  for (int i = 0; i < PersonalityLatent::kDims; ++i) {
+    std::fprintf(f, "%s%.4f", i ? "," : "", static_cast<double>(lat.data()[i]));
+  }
+  std::fprintf(f, "],\"drives\":{\"hunger\":%.4f,\"thirst\":%.4f,\"rest\":%.4f,"
+                  "\"energy\":%.4f,\"curiosity\":%.4f}",
+               static_cast<double>(drv.hunger), static_cast<double>(drv.thirst),
+               static_cast<double>(drv.rest), static_cast<double>(drv.energy),
+               static_cast<double>(drv.curiosity));
+  // Life statistics (EMAs that drift the latent over time).
+  std::fprintf(f, ",\"life\":{\"avgReward\":%.4f,\"avgNovelty\":%.4f,\"threatRate\":%.4f,"
+                  "\"avgValence\":%.4f,\"forageRate\":%.4f,\"drinkRate\":%.4f,"
+                  "\"restRate\":%.4f,\"avgPain\":%.4f}",
+               static_cast<double>(ls.avgReward), static_cast<double>(ls.avgNovelty),
+               static_cast<double>(ls.threatRate), static_cast<double>(ls.avgValence),
+               static_cast<double>(ls.forageRate), static_cast<double>(ls.drinkRate),
+               static_cast<double>(ls.restRate), static_cast<double>(ls.avgPain));
+  // Learner metrics for every live model (inference/update counts).
+  std::fprintf(f, ",\"metrics\":{\"value\":[%llu,%llu],\"threat\":[%llu,%llu],"
+                  "\"policy\":[%llu,%llu],\"attention\":[%llu,%llu]}",
+               static_cast<unsigned long long>(mv.inferences),
+               static_cast<unsigned long long>(mv.updates),
+               static_cast<unsigned long long>(mt.inferences),
+               static_cast<unsigned long long>(mt.updates),
+               static_cast<unsigned long long>(mp.inferences),
+               static_cast<unsigned long long>(mp.updates),
+               static_cast<unsigned long long>(ma.inferences),
+               static_cast<unsigned long long>(ma.updates));
+  // Attention salience over the 28 perception channels.
+  std::fprintf(f, ",\"attention\":[");
+  const std::vector<float>& sal = learn_.attention().saliences();
+  for (size_t i = 0; i < sal.size(); ++i) {
+    std::fprintf(f, "%s%.4f", i ? "," : "", static_cast<double>(sal[i]));
+  }
+  std::fprintf(f, "],\"feats\":[");
   for (int i = 0; i < LearnSystem::kFeatures; ++i) {
     std::fprintf(f, "%s%.4f", i ? "," : "", static_cast<double>(featsBefore_[i]));
   }

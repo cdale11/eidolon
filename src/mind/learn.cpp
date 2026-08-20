@@ -48,6 +48,10 @@ bool LearnSystem::loadPolicyPrior(const std::string& path) {
   return policy_.loadPrior(path);
 }
 
+bool LearnSystem::savePolicyPrior(const std::string& path) const {
+  return policy_.writePrior(path);
+}
+
 void LearnSystem::buildFeatures(const Perception& p, const Physiology& b, float* out) {
   // Perception channels with drive-directed bias: hungry -> food cues upweighted,
   // thirsty -> water cues upweighted. Then attention selects the top-k salient ones.
@@ -163,16 +167,24 @@ void LearnSystem::learnStep(const float* featsBefore, const float* featsAfter,
   }
 
   // Threat learning: aversive events sensitize, safe events extinguish; stress and
-  // threat-sensitivity accelerate it (DESIGN §6 coupling).
-  const float p = threatNet_.predict(featsAfter, hAfter);
+  // threat-sensitivity accelerate it (DESIGN §6 coupling). The ThreatNet must NOT see
+  // its own previous output as an input feature (kThreat feedback channel): feeding
+  // lastThreat_ back into the net creates a self-sustaining loop that pins threat at
+  // 1.0 after any attack, so safe ticks can never extinguish it and the threat veto
+  // locks the organism into Rest/Flee forever. The policy still reads kThreat, but the
+  // threat learner only sees the physical/neuromodulator state.
+  float threatFeats[kFeatures];
+  std::copy(featsAfter, featsAfter + kFeatures, threatFeats);
+  threatFeats[kThreat] = 0.0f;
+  const float p = threatNet_.predict(threatFeats, hAfter);
   if (aversive) {
     const float lrT = lrThreat_ * (1.0f + 0.5f * neuromod_.stress / 100.0f) *
                       latent_.sensitivity(PersonalityLatent::kThreatSensitivity);
-    threatNet_.update(featsAfter, 1.0f, lrT);
+    threatNet_.update(threatFeats, 1.0f, lrT);
   } else if (safe) {
     const float lrT = 0.3f * lrThreat_ *
                       latent_.sensitivity(PersonalityLatent::kThreatSensitivity);
-    threatNet_.update(featsAfter, 0.0f, lrT);
+    threatNet_.update(threatFeats, 0.0f, lrT);
   }
   lastThreat_ = p;
 

@@ -39,6 +39,10 @@ public:
   // this only changes the initialization.
   bool loadPrior(const std::string& path);
 
+  // Write the current policy weights as a teacher-prior .eprp file (same format as
+  // loadPrior), so a user can save a well-adapted organism as a prior for future runs.
+  bool writePrior(const std::string& path) const;
+
   // Preference score for one action (deterministic; no RNG).
   float score(PolicyAction a, const float* feats) const;
 

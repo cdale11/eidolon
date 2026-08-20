@@ -98,4 +98,18 @@ bool Policy::deserialize(BinaryReader& r) {
   return r.u64(metrics_.inferences) && r.u64(metrics_.updates);
 }
 
+bool Policy::writePrior(const std::string& path) const {
+  std::FILE* f = std::fopen(path.c_str(), "wb");
+  if (!f) return false;
+  const uint32_t version = 1, nf = static_cast<uint32_t>(nFeatures_),
+                 na = static_cast<uint32_t>(kActions);
+  bool ok = std::fwrite("EPRP", 1, 4, f) == 4 &&
+            std::fwrite(&version, sizeof(version), 1, f) == 1 &&
+            std::fwrite(&nf, sizeof(nf), 1, f) == 1 &&
+            std::fwrite(&na, sizeof(na), 1, f) == 1 &&
+            std::fwrite(w_.data(), sizeof(float), w_.size(), f) == w_.size();
+  std::fclose(f);
+  return ok;
+}
+
 } // namespace eidolon

@@ -54,6 +54,7 @@ public:
   std::string deleteConversationJson(const std::string& conversationIdStr);
   std::string resetWorldJson(const std::string& seedStr);
   std::string snapshotJson();
+  std::string savePriorJson(const std::string& name);
 
 private:
   void simLoop();

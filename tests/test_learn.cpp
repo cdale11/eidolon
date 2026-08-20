@@ -273,6 +273,18 @@ TEST(policy_loads_prior_and_retrains_online) {
   }
   CHECK_EQ(f2.learn().policy().score(PolicyAction::Drink, feats),
            e.learn().policy().score(PolicyAction::Drink, feats));
+
+  // Round-trip: export the evolved organism as a prior, load it into a fresh engine.
+  char outbuf[128];
+  std::snprintf(outbuf, sizeof(outbuf), "/tmp/eidolon_test_prior_out_%d.eprp",
+                static_cast<int>(::getpid()));
+  CHECK(e.savePolicyPrior(outbuf));
+  Engine f3;
+  f3.init(123, true, 64, 64);
+  CHECK(f3.loadPolicyPrior(outbuf));
+  CHECK(std::fabs(f3.learn().policy().score(PolicyAction::Drink, feats) -
+                  e.learn().policy().score(PolicyAction::Drink, feats)) < 1e-4f);
+  std::remove(outbuf);
 }
 
 TEST(engine_survives_days_with_learning) {

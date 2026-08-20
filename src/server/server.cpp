@@ -33,6 +33,9 @@ const char* kIndexHtml = R"html(<!DOCTYPE html>
   #newworld { width: 100%; padding: 8px 12px; border: 1px solid #d9d9e3; border-radius: 8px;
               background: #ececf1; color: #0d0d0d; font-size: 13px; cursor: pointer; }
   #newworld:hover { background: #e3e3ea; }
+  #saveprior { width: 100%; padding: 8px 12px; margin-top: 4px; border: 1px dashed #10a37f;
+    border-radius: 8px; background: #f7f7f8; color: #10a37f; cursor: pointer; }
+  #saveprior:hover { background: #e7f7f2; }
   #convlist { flex: 1; overflow-y: auto; padding: 8px; }
   .conv { display: flex; align-items: center; padding: 8px 10px; border-radius: 8px;
           cursor: pointer; font-size: 13px; gap: 6px; color: #0d0d0d; }
@@ -83,6 +86,7 @@ const char* kIndexHtml = R"html(<!DOCTYPE html>
   <div id="sidehead">
     <button id="newchat">+ New chat</button>
     <button id="newworld">Restart world (fresh organism)</button>
+    <button id="saveprior" title="Save this organism's learned behaviour as a prior for future runs">Save this organism as prior</button>
   </div>
   <div id="convlist"></div>
 </div>
@@ -187,13 +191,24 @@ async function newChat() {
   }
 }
 async function resetWorld() {
-  if (!confirm('Start a fresh world with a brand-new organism? Current life and world are replaced.')) return;
-  await fetch('/api/world/reset', {
-    method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'
-  });
-  await refreshStatus();
-  await newChat();
-}
+   if (!confirm('Start a fresh world with a brand-new organism? Current life and world are replaced.')) return;
+   await fetch('/api/world/reset', {
+     method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'
+   });
+   await refreshStatus();
+   await newChat();
+ }
+async function savePrior() {
+   const name = prompt('Name this organism (letters, numbers, - and _). It becomes a reusable prior '
+     + 'loaded on future fresh runs:');
+   if (name == null) return;
+   const r = await fetch('/api/save-prior', {
+     method: 'POST', headers: {'Content-Type': 'application/json'},
+     body: JSON.stringify({name: name.trim()})
+   });
+   const j = await r.json();
+   alert(j.ok ? 'Saved prior to ' + j.path : 'Save failed: ' + (j.error || 'unknown error'));
+ }
 function autoGrow() {
   input.style.height = 'auto';
   input.style.height = Math.min(input.scrollHeight, 200) + 'px';
@@ -230,6 +245,7 @@ async function send() {
 sendBtn.onclick = send;
 document.getElementById('newchat').onclick = newChat;
 document.getElementById('newworld').onclick = resetWorld;
+document.getElementById('saveprior').onclick = savePrior;
 input.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
 });
@@ -525,6 +541,33 @@ std::string Server::resetWorldJson(const std::string& seedStr) {
   return statusJson();
 }
 
+std::string Server::savePriorJson(const std::string& name) {
+  std::string safe;
+  for (char c : name) {
+    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+        c == '_' || c == '-') {
+      safe += c;
+    }
+  }
+  if (safe.empty()) safe = "organism";
+  const std::string dir = opts_.dataDir + "/priors";
+  std::error_code ec;
+  std::filesystem::create_directories(dir, ec);
+  const std::string path = dir + "/prior_" + safe + ".eprp";
+  bool ok = false;
+  {
+    std::lock_guard<std::mutex> lock(engineMu_);
+    ok = engine_.savePolicyPrior(path);
+  }
+  if (ok) {
+    log_.line(engine_.clock().now(), "prior_saved",
+              "user saved current organism policy prior to %s", path.c_str());
+    log_.flush();
+    return "{\"ok\":true,\"path\":\"" + jsonEscape(path) + "\"}";
+  }
+  return "{\"ok\":false,\"error\":\"failed to write prior\"}";
+}
+
 std::string Server::messagesJson(const std::string& conversationIdStr,
                                  std::string& err) {
   if (!archive_) return "[]";
@@ -592,6 +635,16 @@ int Server::run() {
       return;
     }
     res.set_content(resetWorldJson(body.str("seed")), "application/json");
+  });
+  svr.Post("/api/save-prior", [this](const httplib::Request& req,
+                                     httplib::Response& res) {
+    JsonValue body;
+    if (!jsonParse(req.body, body)) {
+      res.status = 400;
+      res.set_content("{\"error\":\"bad json\"}", "application/json");
+      return;
+    }
+    res.set_content(savePriorJson(body.str("name")), "application/json");
   });
   svr.Get("/api/messages", [this](const httplib::Request& req,
                                   httplib::Response& res) {

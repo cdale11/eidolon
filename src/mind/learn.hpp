@@ -38,6 +38,9 @@ public:
   // online updates in learnStep continue on top of the prior.
   bool loadPolicyPrior(const std::string& path);
 
+  // Export the current policy weights as an .eprp prior (see Policy::writePrior).
+  bool savePolicyPrior(const std::string& path) const;
+
   // Build the current feature vector from the world/body/neuromod state.
   void buildFeatures(const Perception& p, const Physiology& b, float* out);
 

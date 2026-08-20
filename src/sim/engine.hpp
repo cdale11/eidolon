@@ -124,6 +124,10 @@ bool stepTo(Vec2i q, bool allowFall = false) noexcept;
   // random init. Only meaningful for a fresh organism; online learning continues on top.
   bool loadPolicyPrior(const std::string& path);
 
+  // Export the current organism's learned policy as an .eprp prior file, so a well-adapted
+  // organism can seed future fresh runs (mirror of loadPolicyPrior).
+  bool savePolicyPrior(const std::string& path) const;
+
   // Optional offline experience dump (teacher training data): when set, each tick appends
   // one JSONL record (features, action, reward, interpretable context). Used only by the
   // headless CLI for offline teacher pipelines; never in the server hot path.
