@@ -102,6 +102,12 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   ≤ 2 ms (measured ~0.06 ms on the Ryzen 8300GE).
 - Backend-selection unit tests: capability→backend mapping and fidelity auto-leveling
   for weak/SIMD/SIMD-MT/WebGPU profiles; ComputeProfile serialization round-trip.
+- **Native ↔ WASM bit-exact parity achieved**: same seeded scenario produces identical
+  individual state digests and snapshots across libstdc++ (native) and libc++ (WASM).
+  Root causes fixed: (1) WASM archive `CMAKE_RANLIB=emranlib` (llvm-ar 24); (2) `detmath`
+  module with deterministic sin/cos/tanh/exp/log1p (bit-identical, max rel err ~3e-7);
+  (3) `-ffp-contract=off` on both backends; (4) `Attention::attend` sort tie-break
+  (libstdc++ and libc++ permute equal keys differently). Verified across seeds 1,7,13,42,99,2024.
 
 ### Phase 11 — Portable WASM client compute (in progress)
 - **WASM compilation** (`cmake/Modules/Platform/Emscripten.cmake`, `src/CMakeLists.wasm.txt`): Eidolon ReplicaCore compiles to WebAssembly via Emscripten

@@ -338,7 +338,7 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
       learner counts, ticks-by-class; builds a host ComputeProfile from measured throughput
       and reports the auto-selected backend (weak→ServerFallback, SIMD→WasmSimd,
       SIMD+MT→WasmSimdMt, WebGPU→WebGPU). Budget gate: p50 ≤ 2 ms fine tick (measured ~0.06 ms).
-- [ ] Native vs WASM parity test (same seeded scenario → same individual state)
+- [x] Native vs WASM parity test (same seeded scenario → same individual state)
 - [ ] Binary snapshot download/upload endpoints (client-authoritative persistence path)
 - [ ] Checkpoint/delta sync protocol (compact binary deltas + compression)
 - [ ] Server accepts client ComputeProfile; auto-select fastest stable backend
