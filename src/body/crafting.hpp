@@ -136,6 +136,11 @@ public:
   // Try to discover new recipes from available materials (experimentation)
   void experiment(const CraftingContext& ctx, class Rng& rng);
 
+  // Load evolved recipes from a GP artifact JSON file (python/teacher/gp_evolve.py
+  // output). The file carries a "recipes" array in the flat schema below. Returns the
+  // number of recipes imported (0 on missing/unparseable file).
+  int loadEvolvedRecipes(const std::string& jsonPath);
+
   // Get all recipes that can be attempted with current context
   std::vector<const Recipe*> getAvailableRecipes(const CraftingContext& ctx) const;
 

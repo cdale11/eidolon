@@ -1,6 +1,10 @@
 #include "body/crafting.hpp"
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <string>
+
+#include "core/json.hpp"
 
 namespace eidolon {
 
@@ -140,7 +144,6 @@ CraftingResult CraftingSystem::attemptCraft(uint32_t recipeId, const CraftingCon
   // Calculate success probability
   float successProb = recipe.baseSuccessRate;
   if (recipe.requiredSkill != SkillType::None && ctx.skills) {
-    float skill = ctx.skills->skill(recipe.requiredSkill).mean();
     // Skill modifier: up to 2x base rate at max skill
     successProb *= (0.5f + 1.5f * skillLevel);
   }
@@ -283,6 +286,102 @@ bool CraftingSystem::deserialize(struct BinaryReader& r) {
   }
   if (!r.u32(nextRecipeId_)) return false;
   return true;
+}
+
+namespace {
+// Map a material name string to its MaterialType enum ("" => None). Returns None for
+// unknown names so the importer can skip malformed entries without failing hard.
+MaterialType materialFromName(const std::string& name) {
+  if (name == "Stone") return MaterialType::Stone;
+  if (name == "Wood") return MaterialType::Wood;
+  if (name == "Vine") return MaterialType::Vine;
+  if (name == "Bone") return MaterialType::Bone;
+  if (name == "Hide") return MaterialType::Hide;
+  if (name == "Fiber") return MaterialType::Fiber;
+  if (name == "Clay") return MaterialType::Clay;
+  if (name == "Sand") return MaterialType::Sand;
+  if (name == "Water") return MaterialType::Water;
+  if (name == "Fire") return MaterialType::Fire;
+  return MaterialType::None;
+}
+ToolType toolFromName(const std::string& name) {
+  if (name == "StoneAxe") return ToolType::StoneAxe;
+  if (name == "StoneKnife") return ToolType::StoneKnife;
+  if (name == "Spear") return ToolType::Spear;
+  if (name == "Hammer") return ToolType::Hammer;
+  if (name == "Chisel") return ToolType::Chisel;
+  if (name == "Needle") return ToolType::Needle;
+  if (name == "Bow") return ToolType::Bow;
+  if (name == "FishingRod") return ToolType::FishingRod;
+  if (name == "Basket") return ToolType::Basket;
+  if (name == "Pot") return ToolType::Pot;
+  return ToolType::None;
+}
+StructureType structureFromName(const std::string& name) {
+  if (name == "Campfire") return StructureType::Campfire;
+  if (name == "LeanTo") return StructureType::LeanTo;
+  if (name == "Wall") return StructureType::Wall;
+  if (name == "Storage") return StructureType::Storage;
+  if (name == "FarmPlot") return StructureType::FarmPlot;
+  if (name == "Shelter") return StructureType::Shelter;
+  if (name == "WallSection") return StructureType::WallSection;
+  if (name == "Roof") return StructureType::Roof;
+  if (name == "Door") return StructureType::Door;
+  if (name == "Furnace") return StructureType::Furnace;
+  if (name == "Kiln") return StructureType::Kiln;
+  if (name == "Well") return StructureType::Well;
+  return StructureType::None;
+}
+} // namespace
+
+int CraftingSystem::loadEvolvedRecipes(const std::string& jsonPath) {
+  std::FILE* f = std::fopen(jsonPath.c_str(), "rb");
+  if (!f) return 0;
+  std::string text;
+  char buf[4096];
+  size_t n;
+  while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0) text.append(buf, n);
+  std::fclose(f);
+
+  JsonValue doc;
+  if (!jsonParse(text, doc)) return 0;
+  const JsonValue* recipes = doc.find("recipes");
+  if (!recipes || recipes->type() != JsonValue::Type::Array) return 0;
+
+  int imported = 0;
+  for (const auto& r : recipes->asArray()) {
+    if (r.type() != JsonValue::Type::Object) continue;
+    const std::string name = r.str("name");
+    Recipe rec;
+    rec.name = name;
+    rec.resultTool = toolFromName(r.str("result_tool"));
+    rec.resultStructure = structureFromName(r.str("result_structure"));
+    rec.resultMaterial = materialFromName(r.str("result_material"));
+    if (rec.resultTool == ToolType::None && rec.resultStructure == StructureType::None &&
+        rec.resultMaterial == MaterialType::None) {
+      continue; // no usable result -> skip
+    }
+    rec.resultQuantity = static_cast<uint32_t>(r.num("result_quantity", 1.0));
+    rec.baseSuccessRate = static_cast<float>(r.num("base_success_rate", 1.0));
+    rec.timeCost = static_cast<float>(r.num("time_cost", 10.0));
+    rec.discovered = true;
+    rec.discoverySeed = static_cast<uint64_t>(rec.id);
+    const JsonValue* ings = r.find("ingredients");
+    if (ings && ings->type() == JsonValue::Type::Array) {
+      for (const auto& ing : ings->asArray()) {
+        RecipeIngredient ri;
+        ri.material = materialFromName(ing.str("material"));
+        ri.quantity = static_cast<uint32_t>(ing.num("quantity", 1.0));
+        ri.consumed = ing.boolean("consumed", true);
+        if (ri.material == MaterialType::None) continue; // sub-recipe refs skipped
+        rec.ingredients.push_back(ri);
+      }
+    }
+    if (rec.ingredients.empty()) continue; // no concrete ingredients -> unusable
+    addRecipe(rec);
+    ++imported;
+  }
+  return imported;
 }
 
 } // namespace eidolon

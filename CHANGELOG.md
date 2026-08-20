@@ -133,6 +133,11 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   budget, and world detail — identity unchanged, tick semantics untouched (`--fidelity 0|1|2|3`)
 - **Diagnostics panel** (`/api/metrics` + sidebar toggle): live scheduler queue/message depth,
   per-domain profiling, action counts, learner inference/update counts, fidelity settings
+- **Genetic programming** (`python/teacher/gp_evolve.py`): offline GP for recipe trees
+  (crafting/tool invention) and behavior trees — deterministic RNG, tournament selection,
+  subtree crossover/mutation, depth cap, validated against world physics; emits flat
+  artifacts (`CraftingSystem::loadEvolvedRecipes`) the organism can use at runtime.
+  Fixes a pre-existing duplicate-skill variable and double recipe-id bump in crafting.cpp.
 - Gate: same seeded scenario produces the same individual state on native and WASM (parity test pending); no heavy work on the main UI thread
 
 ### Tests & tooling
