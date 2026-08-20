@@ -331,6 +331,7 @@ bool eidolon::WaterSource::deserialize(eidolon::BinaryReader& r) {
 void eidolon::World::generate(int w, int h, eidolon::Rng& r) {
   grid_.generate(w, h, r);
   infectionCA_.resize(w, h);
+  alive_ = true; // fresh world -> fresh organism (reset after a previous death)
   pos_ = grid_.randomWalkable(r);
 
   plants_.clear();
