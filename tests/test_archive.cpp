@@ -1,3 +1,4 @@
+#ifndef EIDOLON_WASM_BUILD
 #include "harness.hpp"
 
 #include <sqlite3.h>
@@ -81,3 +82,4 @@ TEST(sqlite_archive_conversations) {
   CHECK_EQ(msgs[2].role, std::string("user"));
   CHECK_EQ(msgs[2].text, std::string("how are you?"));
 }
+#endif

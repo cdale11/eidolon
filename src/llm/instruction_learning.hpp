@@ -35,7 +35,7 @@ struct InstructionRecord {
     last_tick = tick;
     count++;
     avg_confidence = (avg_confidence * (count - 1) + confidence) / count;
-    trust_current = trust_current; // will be updated externally
+    // trust_current is updated externally by the trust modulator
     
     if (positive_outcome) {
       successful_executions++;

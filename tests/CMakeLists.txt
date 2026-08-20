@@ -6,9 +6,7 @@ add_executable(eidolon_tests
   test_world.cpp
   test_physiology.cpp
   test_memory.cpp
-  test_archive.cpp
   test_json.cpp
-  test_bridge.cpp
   test_engine.cpp
   test_learn.cpp
   test_wildlife.cpp
@@ -18,7 +16,12 @@ add_executable(eidolon_tests
   test_goals.cpp
   test_scheduler.cpp
   test_crafting.cpp)
-target_link_libraries(eidolon_tests PRIVATE eidolon_core eidolon_store eidolon_llm)
+if(NOT EIDOLON_WASM_BUILD)
+  target_sources(eidolon_tests PRIVATE test_archive.cpp test_bridge.cpp)
+  target_link_libraries(eidolon_tests PRIVATE eidolon_core eidolon_store eidolon_llm)
+else()
+  target_link_libraries(eidolon_tests PRIVATE eidolon_core eidolon_llm)
+endif()
 target_include_directories(eidolon_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 enable_testing()
