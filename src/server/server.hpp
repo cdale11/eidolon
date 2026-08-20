@@ -13,6 +13,7 @@
 #include "core/clock.hpp"
 #include "core/log.hpp"
 #include "llm/bridge.hpp"
+#include "llm/web_browser.hpp"
 #include "mind/compute_profile.hpp"
 #include "sim/engine.hpp"
 #include "store/sqlite_archive.hpp"
@@ -35,6 +36,14 @@ public:
     // 1..3 for Low/Medium/High. Only affects pacing/model budget/world detail, never the
     // deterministic tick semantics.
     int fidelityLevel = 0;
+    // Internet access (Future Directions): configurable, user-gated browsing.
+    // Results become content the organism reads/learns from via normal memory pipeline.
+    bool internetEnabled = false;
+    std::string searchEndpoint; // optional custom search endpoint
+    std::string searchApiKey;   // optional API key
+    uint32_t maxSearchResults = 5;
+    uint32_t maxFetchChars = 8000;
+    uint32_t browseTimeoutMs = 10000;
   };
 
   explicit Server(Options opts);
@@ -71,8 +80,13 @@ public:
   std::string applyDelta(const std::vector<uint8_t>& deltaBlob, std::string& err);
   
   // Phase 12: ComputeProfile handling (client reports capabilities)
+// Phase 12: ComputeProfile handling (client reports capabilities)
   std::string computeProfileJson(const std::string& jsonBody, std::string& err);
-  
+
+  // Future Directions: Internet access (configurable, user-gated)
+  std::string browseSearchJson(const std::string& jsonBody, std::string& err);
+  std::string browseFetchJson(const std::string& jsonBody, std::string& err);
+
   std::string savePriorJson(const std::string& name);
 
 private:
@@ -85,6 +99,7 @@ private:
   EventLog log_;
   std::unique_ptr<SQLiteArchive> archive_;
   std::unique_ptr<LLMBridge> llm_;
+  std::unique_ptr<WebBrowser> browser_;
   std::atomic<bool> stop_ = false;
   std::thread simThread_;
 

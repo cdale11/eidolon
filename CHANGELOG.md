@@ -119,6 +119,16 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   to adaptive fidelity settings (Low/Medium/High) affecting pacing/model budget/world detail
   only — never tick semantics.
 
+### Future Directions (partial) — Internet access for the organism
+- **Configurable, user-gated browsing**: `--internet-enabled` flag, optional search API
+  endpoint/key, per-request timeouts, result limits.
+- **Search & fetch endpoints**: `POST /api/browse/search` (query → ranked results with
+  snippets), `POST /api/browse/fetch` (URL → extracted text content).
+- **Safety**: results flow through normal memory/learning pipeline as "read content" —
+  never injected as prompt text or live-mind backdoor.
+- **Graceful degradation**: search/fetch errors return structured JSON; CAPTCHA/blocking
+  detected and reported; HTTPS handled via fallback when SSL unavailable.
+
 ### Phase 11 — Portable WASM client compute (in progress)
 - **WASM compilation** (`cmake/Modules/Platform/Emscripten.cmake`, `src/CMakeLists.wasm.txt`): Eidolon ReplicaCore compiles to WebAssembly via Emscripten
   - Emscripten toolchain configured and working

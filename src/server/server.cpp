@@ -360,6 +360,22 @@ Server::Server(Options opts) : opts_(std::move(opts)) {
     std::fprintf(stderr, "warning: archive unavailable: %s\n", err.c_str());
   }
   llm_ = std::make_unique<LLMBridge>(opts_.llmEndpoint, opts_.llmTimeoutMs);
+  // Internet access (Future Directions): configurable, user-gated browsing
+  if (opts_.internetEnabled) {
+    BrowserConfig bcfg;
+    bcfg.enabled = true;
+    bcfg.searchEndpoint = opts_.searchEndpoint;
+    bcfg.searchApiKey = opts_.searchApiKey;
+    bcfg.maxResults = opts_.maxSearchResults;
+    bcfg.maxFetchChars = opts_.maxFetchChars;
+    bcfg.timeoutMs = opts_.browseTimeoutMs;
+    bcfg.allowFetch = true;
+    browser_ = std::make_unique<HttpWebBrowser>(bcfg);
+    std::fprintf(stderr, "internet access: ENABLED (max_results=%u, fetch_chars=%u)\n",
+                 opts_.maxSearchResults, opts_.maxFetchChars);
+  } else {
+    std::fprintf(stderr, "internet access: disabled (use --internet-enabled to enable)\n");
+  }
 }
 
 Server::~Server() {
@@ -956,6 +972,97 @@ std::string Server::computeProfileJson(const std::string& jsonBody, std::string&
   return root.dump();
 }
 
+// Future Directions: Internet access - search endpoint
+std::string Server::browseSearchJson(const std::string& jsonBody, std::string& err) {
+  if (!browser_ || !browser_->enabled()) {
+    err = "internet access disabled";
+    return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
+  }
+  JsonValue body;
+  if (!jsonParse(jsonBody, body)) {
+    err = "invalid JSON";
+    return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
+  }
+  std::string query = body.str("query", "");
+  if (query.empty()) {
+    err = "empty query";
+    return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
+  }
+  uint32_t maxResults = static_cast<uint32_t>(body.num("max_results", browser_->config().maxResults));
+  
+  std::vector<WebSearchResult> results;
+  std::string berr;
+  try {
+    if (!browser_->search(query, results, berr)) {
+      err = berr.empty() ? "search failed" : berr;
+      return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
+    }
+  } catch (const std::exception& e) {
+    err = "search exception: " + std::string(e.what());
+    return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
+  } catch (...) {
+    err = "search unknown exception";
+    return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
+  }
+  if (results.size() > maxResults) results.resize(maxResults);
+  
+  JsonValue root = JsonValue::makeObject();
+  root.setBool("ok", true);
+  JsonValue arr = JsonValue::makeArray();
+  for (const auto& r : results) {
+    JsonValue item = JsonValue::makeObject();
+    item.setString("title", r.title);
+    item.setString("url", r.url);
+    item.setString("snippet", r.snippet);
+    arr.push(std::move(item));
+  }
+  root.set("results", std::move(arr));
+  return root.dump();
+}
+
+// Future Directions: Internet access - fetch endpoint
+std::string Server::browseFetchJson(const std::string& jsonBody, std::string& err) {
+  if (!browser_ || !browser_->enabled()) {
+    err = "internet access disabled";
+    return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
+  }
+  JsonValue body;
+  if (!jsonParse(jsonBody, body)) {
+    err = "invalid JSON";
+    return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
+  }
+  std::string url = body.str("url", "");
+  if (url.empty()) {
+    err = "empty url";
+    return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
+  }
+  
+  WebFetchResult result;
+  std::string berr;
+  try {
+    if (!browser_->fetch(url, result, berr)) {
+      err = berr.empty() ? "fetch failed" : berr;
+      return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
+    }
+  } catch (const std::exception& e) {
+    err = "fetch exception: " + std::string(e.what());
+    return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
+  } catch (...) {
+    err = "fetch unknown exception";
+    return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
+  }
+  
+  JsonValue root = JsonValue::makeObject();
+  root.setBool("ok", result.success);
+  root.setString("url", result.url);
+  if (result.success) {
+    root.setString("content", result.content);
+  } else {
+    root.setString("error", result.error);
+  }
+  return root.dump();
+}
+
 int Server::run() {
   simThread_ = std::thread([this] { simLoop(); });
 
@@ -1062,6 +1169,22 @@ int Server::run() {
   svr.Post("/api/compute-profile", [this](const httplib::Request& req, httplib::Response& res) {
     std::string err;
     std::string out = computeProfileJson(req.body, err);
+    if (!err.empty()) res.status = 400;
+    res.set_content(out, "application/json");
+  });
+  
+  // Future Directions: Internet access - search
+  svr.Post("/api/browse/search", [this](const httplib::Request& req, httplib::Response& res) {
+    std::string err;
+    std::string out = browseSearchJson(req.body, err);
+    if (!err.empty()) res.status = 400;
+    res.set_content(out, "application/json");
+  });
+  
+  // Future Directions: Internet access - fetch
+  svr.Post("/api/browse/fetch", [this](const httplib::Request& req, httplib::Response& res) {
+    std::string err;
+    std::string out = browseFetchJson(req.body, err);
     if (!err.empty()) res.status = 400;
     res.set_content(out, "application/json");
   });

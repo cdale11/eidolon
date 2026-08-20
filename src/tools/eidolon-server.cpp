@@ -30,6 +30,12 @@ void printUsage(FILE* out, const char* prog) {
                "                    http://127.0.0.1:8080/v1 (default: offline)\n"
                "  --llm-timeout MS  LLM call timeout in ms (default 10000)\n"
                "  --fidelity 0|1|2|3  adaptive fidelity: 0=auto (default), 1=low, 2=medium, 3=high\n"
+               "  --internet-enabled  enable internet browsing for the organism (default: off)\n"
+               "  --search-endpoint URL  custom search API endpoint (optional)\n"
+               "  --search-api-key KEY   API key for search endpoint (optional)\n"
+               "  --max-search-results N  max results per search (default 5)\n"
+               "  --max-fetch-chars N  max chars to fetch per page (default 8000)\n"
+               "  --browse-timeout MS  browse request timeout in ms (default 10000)\n"
                "  --help            this message\n",
                prog);
 }
@@ -64,8 +70,19 @@ int main(int argc, char** argv) {
     else if (a == "--llm-timeout") opts.llmTimeoutMs = std::atoi(need("MS"));
     else if (a == "--fidelity") {
       opts.fidelityLevel = std::atoi(need("0|1|2|3 (auto|low|medium|high)"));
-    }
-    else if (a == "--help") {
+    } else if (a == "--internet-enabled") {
+      opts.internetEnabled = true;
+    } else if (a == "--search-endpoint") {
+      opts.searchEndpoint = need("URL");
+    } else if (a == "--search-api-key") {
+      opts.searchApiKey = need("KEY");
+    } else if (a == "--max-search-results") {
+      opts.maxSearchResults = static_cast<uint32_t>(std::atoi(need("N")));
+    } else if (a == "--max-fetch-chars") {
+      opts.maxFetchChars = static_cast<uint32_t>(std::atoi(need("N")));
+    } else if (a == "--browse-timeout") {
+      opts.browseTimeoutMs = static_cast<uint32_t>(std::atoi(need("MS")));
+    } else if (a == "--help") {
       printUsage(stdout, argv[0]);
       return 0;
     } else {

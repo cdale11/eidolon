@@ -369,6 +369,16 @@ and "client does the maximum work" invariants apply to all of them.
   memory, not prompt text.
 - **Internet access**: configurable, user-gated browsing so the organism can research —
   always as *content it reads and learns from*, never as a live-mind backdoor.
+  - [x] Configurable `--internet-enabled` flag, search endpoint/key, timeouts, limits.
+  - [x] Search endpoint: `POST /api/browse/search` (query → ranked results + snippets).
+  - [x] Fetch endpoint: `POST /api/browse/fetch` (URL → extracted text content).
+  - [x] Results flow through normal memory/learning pipeline as "read content".
+  - [x] Graceful degradation: structured error responses, CAPTCHA detection.
+  - [ ] Integration with organism's decision loop (browse as tool/action).
+  - [ ] User consent UI in chat (per-request or session approval).
+  - [ ] Rate limiting + caching.
+  - [ ] Proper search API integration (SerpAPI, Bing, Google) with API keys.
+  - [ ] HTTPS support via OpenSSL-linked httplib.
 - **Client-side offload**: migrate most compute to the client per DESIGN §17 (Phases 11-12)
   to free the server; headless fallback continues life when the client is away.
 - **Learning from the user's actual speech**: the organism understands and acts on what the
