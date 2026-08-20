@@ -53,7 +53,8 @@ target_include_directories(eidolon_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_library(eidolon_llm STATIC
   llm/bridge.cpp
-  llm/web_browser.cpp)
+  llm/web_browser.cpp
+  llm/intent_parser.cpp)
 target_link_libraries(eidolon_llm PRIVATE eidolon_core OpenSSL::SSL OpenSSL::Crypto)
 target_include_directories(eidolon_llm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(eidolon_llm PRIVATE ${CMAKE_SOURCE_DIR}/third_party)

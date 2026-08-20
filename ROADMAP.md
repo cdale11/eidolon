@@ -393,7 +393,6 @@ and "client does the maximum work" invariants apply to all of them.
   - [ ] Repetition learning: repeated instructions become stronger habit weights
   - [ ] Integration with GoalEmergence + Policy for execution
   - [ ] Trust integration with UserModel (Phase 8)
-  - [ ] (Future) Speech-to-text integration (local Whisper.cpp) for audio input
 - **Organism-driven self-improvement**: the organism proposes its own improvements — to
   itself (skills to rehearse, habits to form, memory to consolidate, survival strategies to
   try) and to the game (from a performance perspective: "I spend most ticks wandering —
