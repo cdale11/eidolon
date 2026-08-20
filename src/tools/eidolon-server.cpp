@@ -19,24 +19,26 @@ void handleSignal(int) {
 void printUsage(FILE* out, const char* prog) {
   std::fprintf(out,
                "usage: %s [options]\n"
-               "  --data DIR        run directory (default data/runs/server)\n"
-               "  --host HOST       listen host (default 127.0.0.1)\n"
-               "  --port N          listen port (default 8081)\n"
-               "  --seed N          master seed for fresh organisms (default: entropy)\n"
-               "  --deterministic   deterministic sim (requires --seed)\n"
-               "  --world WxH       world grid size (default 128x128)\n"
+               "  --data DIR           run directory (default data/runs/server)\n"
+               "  --host HOST          listen host (default 127.0.0.1)\n"
+               "  --port N             listen port (default 8081)\n"
+               "  --seed N             master seed for fresh organisms (default: entropy)\n"
+               "  --deterministic      deterministic sim (requires --seed)\n"
+               "  --world WxH          world grid size (default 128x128)\n"
                "  --policy-prior FILE  seed fresh organisms with teacher-baked weights\n"
-               "  --llm URL         OpenAI-compatible endpoint, e.g.\n"
-               "                    http://127.0.0.1:8080/v1 (default: offline)\n"
-               "  --llm-timeout MS  LLM call timeout in ms (default 10000)\n"
-               "  --fidelity 0|1|2|3  adaptive fidelity: 0=auto (default), 1=low, 2=medium, 3=high\n"
-               "  --internet-enabled  enable internet browsing for the organism (default: off)\n"
-               "  --search-endpoint URL  custom search API endpoint (optional)\n"
-               "  --search-api-key KEY   API key for search endpoint (optional)\n"
+               "  --llm URL            OpenAI-compatible endpoint, e.g.\n"
+               "                       http://127.0.0.1:8080/v1 (default: offline)\n"
+               "  --llm-timeout MS     LLM call timeout in ms (default 10000)\n"
+               "  --fidelity 0|1|2|3   adaptive fidelity: 0=auto (default), 1=low, 2=medium, 3=high\n"
+               "  --internet-enabled   enable internet browsing for the organism (default: off)\n"
+               "  --search-engine NAME search engine: searxng|ddg|serpapi|brave|google|custom (default: searxng)\n"
+               "  --search-endpoint URL  custom search API endpoint (for custom engine)\n"
+               "  --search-api-key KEY   API key for search engine (Brave/SerpAPI/Google)\n"
+               "  --google-cx ID         Google Custom Search CX (for google engine)\n"
                "  --max-search-results N  max results per search (default 5)\n"
                "  --max-fetch-chars N  max chars to fetch per page (default 8000)\n"
                "  --browse-timeout MS  browse request timeout in ms (default 10000)\n"
-               "  --help            this message\n",
+               "  --help               this message\n",
                prog);
 }
 } // namespace
@@ -72,10 +74,24 @@ int main(int argc, char** argv) {
       opts.fidelityLevel = std::atoi(need("0|1|2|3 (auto|low|medium|high)"));
     } else if (a == "--internet-enabled") {
       opts.internetEnabled = true;
+    } else if (a == "--search-engine") {
+      const std::string engine = need("searxng|ddg|serpapi|brave|google|custom");
+      if (engine == "searxng") opts.searchEngine = eidolon::SearchEngine::SearXNG;
+      else if (engine == "ddg") opts.searchEngine = eidolon::SearchEngine::DuckDuckGo;
+      else if (engine == "serpapi") opts.searchEngine = eidolon::SearchEngine::SerpAPI;
+      else if (engine == "brave") opts.searchEngine = eidolon::SearchEngine::Brave;
+      else if (engine == "google") opts.searchEngine = eidolon::SearchEngine::Google;
+      else if (engine == "custom") opts.searchEngine = eidolon::SearchEngine::Custom;
+      else {
+        std::fprintf(stderr, "error: unknown search engine '%s'\n", engine.c_str());
+        return 2;
+      }
     } else if (a == "--search-endpoint") {
       opts.searchEndpoint = need("URL");
     } else if (a == "--search-api-key") {
       opts.searchApiKey = need("KEY");
+    } else if (a == "--google-cx") {
+      opts.searchApiKey += ":" + std::string(need("CX")); // format: apiKey:cx
     } else if (a == "--max-search-results") {
       opts.maxSearchResults = static_cast<uint32_t>(std::atoi(need("N")));
     } else if (a == "--max-fetch-chars") {

@@ -40,7 +40,8 @@ public:
     // Results become content the organism reads/learns from via normal memory pipeline.
     bool internetEnabled = false;
     std::string searchEndpoint; // optional custom search endpoint
-    std::string searchApiKey;   // optional API key
+    std::string searchApiKey;   // optional API key (format "apiKey:cx" for Google)
+    SearchEngine searchEngine = SearchEngine::SearXNG;  // default: SearXNG (free, no API key)
     uint32_t maxSearchResults = 5;
     uint32_t maxFetchChars = 8000;
     uint32_t browseTimeoutMs = 10000;
