@@ -136,6 +136,16 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   Brave/SerpAPI/Google/Custom providers with API key support, fetch with redirect following
   and HTML text extraction, server config flags, endpoints for search/fetch/compute-profile.
 
+### Future Directions (partial) — Learning from the user's actual speech (text)
+- **Intent parsing + instruction validation implemented** (`src/llm/intent_parser.hpp/cpp`):
+  - 18 intent types mapped to organism actions (GoTo, FollowMe, Explore, Forage, Drink, Rest, Sleep, Flee, Avoid, Build, Craft, Observe, Status, Greet, Thank, Stop, Wait, Cancel)
+  - Keyword-based parsing with confidence scoring (position + keyword length)
+  - Target/parameter extraction from text
+  - ValidationContext: checks organism state (energy, hunger, thirst, health, sleep state, nearby threats/resources)
+  - Validation rules: energy thresholds, hunger/thirst requirements, sleep state, predator awareness
+  - Returns ParsedInstruction with intent, confidence, target, params, valid flag, error message
+  - Ready for integration with GoalEmergence, Policy, UserModel
+
 ### Future Directions (partial) — Learning from the user's actual speech
 - **Speech-to-text + intent parsing**: User spoken/typed instructions ("eat", "sleep",
   "go to the river", "avoid wolves") become validated, structured goals the organism

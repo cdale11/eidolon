@@ -387,8 +387,8 @@ and "client does the maximum work" invariants apply to all of them.
   (never injected as prompt text, never mutating world state directly). Instruction
   following improves with repetition; instructions that prove harmful lower the organism's
   trust in the user's advice (ties into Phase 8 user model).
-  - [ ] Intent parsing → structured goal actions (GoTo, Flee, Forage, Drink, Rest, Sleep, Observe, Build, Craft)
-  - [ ] Instruction validation against current state + safety (never inject prompt text)
+  - [x] Intent parsing → structured goal actions (18 types: GoTo, FollowMe, Explore, Forage, Drink, Rest, Sleep, Flee, Avoid, Build, Craft, Observe, Status, Greet, Thank, Stop, Wait, Cancel)
+  - [x] Instruction validation against current state + safety (never inject prompt text)
   - [ ] Trust modulation: successful instructions → trust+, harmful → trust-
   - [ ] Repetition learning: repeated instructions become stronger habit weights
   - [ ] Integration with GoalEmergence + Policy for execution
