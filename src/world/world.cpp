@@ -1,12 +1,12 @@
 #include "world/world.hpp"
 
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <queue>
 
 #include "core/clock.hpp"
+#include "core/detmath.hpp"
 #include "core/rng.hpp"
 #include "core/serialize.hpp"
 
@@ -222,8 +222,8 @@ uint64_t eidolon::Grid::hash() const noexcept {
 // ---------------------------------------------------------------------------
 
 double eidolon::Weather::ambientTempC(const eidolon::SimClock& c) const noexcept {
-  const double seasonal = 10.0 + 15.0 * std::cos(2.0 * kPi * (c.yearFraction() - 0.25));
-  const double diurnal = 4.0 * std::sin(2.0 * kPi * (c.hourOfDay() - 9.0) / 24.0);
+  const double seasonal = 10.0 + 15.0 * detmath::cos(2.0 * kPi * (c.yearFraction() - 0.25));
+  const double diurnal = 4.0 * detmath::sin(2.0 * kPi * (c.hourOfDay() - 9.0) / 24.0);
   double t = seasonal + diurnal;
   if (raining_ || storming_) t -= 3.0;
   if (snowing_) t -= 6.0;
@@ -255,7 +255,7 @@ void eidolon::Weather::update(const eidolon::SimClock& c, int64_t dt, eidolon::R
   }
   storming_ = (raining_ || snowing_) && r.unit() < stormChance;
 
-  humidity_ = 0.5 + 0.3 * std::sin(2.0 * kPi * c.yearFraction());
+  humidity_ = 0.5 + 0.3 * detmath::sin(2.0 * kPi * c.yearFraction());
   if (raining_ || storming_) humidity_ = std::min(1.0, humidity_ + 0.3);
   windSpeed_ = 2.0 + 3.0 * r.unit();
   if (storming_) windSpeed_ += 5.0;

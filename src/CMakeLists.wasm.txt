@@ -16,6 +16,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Build configuration
 set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -O3 -DNDEBUG")
+# Disable FP contraction (FMA) so WASM and native execute identical IEEE
+# arithmetic — required for bit-exact native/WASM parity (see core/detmath).
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffp-contract=off")
 
 # WASM-specific definitions
 add_compile_definitions(
@@ -33,6 +36,7 @@ add_library(eidolon_replica_core STATIC
   core/log.cpp
   core/serialize.cpp
   core/json.cpp
+  core/detmath.cpp
   world/world.cpp
   world/wildlife.cpp
   world/cellular_automata.cpp
@@ -74,6 +78,7 @@ add_library(eidolon_replica_core STATIC
   mind/reflection.cpp
   mind/grounded_language.cpp
   mind/compute_profile.cpp
+  mind/compute_scheduler.cpp
   mind/heredity.cpp
   sim/engine.cpp
 )
@@ -94,6 +99,26 @@ add_executable(eidolon_wasm_test
   ../tools/eidolon-wasm-test.cpp
 )
 target_link_libraries(eidolon_wasm_test PRIVATE eidolon_replica_core)
+
+# Phase 12 parity harness (WASM side): same source as the native eidolon-parity-dump.
+# Compiled under node so `node eidolon_parity_dump.js --seed 42 --ticks 1000` prints the
+# same `parity:` digest line as the native binary when the core is bit-for-bit portable.
+add_executable(eidolon_parity_dump
+  ../tools/eidolon-parity-dump.cpp
+)
+target_link_libraries(eidolon_parity_dump PRIVATE eidolon_replica_core)
+# Plain node executable (no MODULARIZE factory): main() runs under `node <file>.js`
+# and prints the `parity:` digest line that the native binary also prints.
+target_link_options(eidolon_parity_dump PRIVATE
+  -sWASM=1
+  -sMODULARIZE=0
+  -sALLOW_MEMORY_GROWTH=1
+  -sENVIRONMENT=node
+  -sNODERAWFS=1
+  -sINITIAL_MEMORY=64MB
+  -sMAXIMUM_MEMORY=256MB
+  -sSTACK_SIZE=5MB
+)
 
 # WASM link options for executable
 target_link_options(eidolon_wasm_test PRIVATE

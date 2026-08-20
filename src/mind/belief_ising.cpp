@@ -1,6 +1,6 @@
 #include "mind/belief_ising.hpp"
+#include "core/detmath.hpp"
 #include <algorithm>
-#include <cmath>
 #include <queue>
 #include <unordered_set>
 
@@ -82,7 +82,7 @@ void BeliefIsingModel::update(class Rng& rng, float temperature) {
     }
     
     // Glauber dynamics: probability of state +1
-    float prob_up = 1.0f / (1.0f + std::exp(-2.0f * h / temperature_));
+    float prob_up = 1.0f / (1.0f + detmath::expf(-2.0f * h / temperature_));
     
     // Deterministic with seeded noise
     float r = static_cast<float>(rng.range(0.0, 1.0));

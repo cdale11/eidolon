@@ -1,8 +1,10 @@
 #include "world/voronoi.hpp"
 #include <algorithm>
-#include <queue>
 #include <cmath>
+#include <queue>
 #include <unordered_map>
+
+#include "core/detmath.hpp"
 
 namespace eidolon {
 
@@ -219,7 +221,7 @@ std::vector<VoronoiSite> poissonDiscSamples(int W, int H, float minDist, int max
     for (int attempt = 0; attempt < k; ++attempt) {
       float angle = static_cast<float>(r.range(0.0, 2.0 * 3.14159265358979323846));
       float radius = static_cast<float>(r.range(static_cast<double>(minDist), static_cast<double>(2 * minDist)));
-      Vec2f cand = {base.x + radius * std::cos(angle), base.y + radius * std::sin(angle)};
+      Vec2f cand = {base.x + radius * detmath::cosf(angle), base.y + radius * detmath::sinf(angle)};
       if (cand.x < 0 || cand.x >= W || cand.y < 0 || cand.y >= H) continue;
       if (!canPlace(cand)) continue;
       // Place it

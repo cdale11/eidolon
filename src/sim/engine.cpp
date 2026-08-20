@@ -1,8 +1,9 @@
 #include "sim/engine.hpp"
 
+#include "core/detmath.hpp"
+
 #include <algorithm>
 #include <chrono>
-#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -280,7 +281,7 @@ void Engine::dumpExperience(PolicyAction pa, bool agentic, float reward, float n
     for (int a = 1; a < Policy::kActions; ++a) mx = std::max(mx, scores[a]);
     float sum = 0.0f;
     for (int a = 0; a < Policy::kActions; ++a) {
-      softmax[a] = std::exp((scores[a] - mx) / std::max(temperature, 1e-3f));
+      softmax[a] = detmath::expf((scores[a] - mx) / std::max(temperature, 1e-3f));
       sum += softmax[a];
     }
     for (int a = 0; a < Policy::kActions; ++a) softmax[a] /= sum;

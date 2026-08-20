@@ -19,7 +19,10 @@ void Attention::attend(const float* in, int k, float* out) {
   int order[kChannels];
   for (int i = 0; i < kChannels; ++i) order[i] = i;
   std::sort(order, order + kChannels, [this](int a, int b) {
-    return salience_[static_cast<size_t>(a)] > salience_[static_cast<size_t>(b)];
+    const float sa = salience_[static_cast<size_t>(a)];
+    const float sb = salience_[static_cast<size_t>(b)];
+    if (sa != sb) return sa > sb;
+    return a < b; // Deterministic tie-break: libstdc++ and libc++ permute equal keys differently.
   });
   const int keep = std::max(1, std::min(k, kChannels));
   for (int i = 0; i < kChannels; ++i) {

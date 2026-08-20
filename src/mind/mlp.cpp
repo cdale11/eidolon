@@ -1,6 +1,7 @@
 #include "mind/mlp.hpp"
 
-#include <cmath>
+#include "core/detmath.hpp"
+
 #include <cstring>
 
 namespace eidolon {
@@ -27,16 +28,16 @@ void Mlp::forward(const float* in, float* hidden, float* out) const {
     float z = b1_[static_cast<size_t>(j)];
     const float* w = &w1_[static_cast<size_t>(j) * inN_];
     for (int i = 0; i < inN_; ++i) z += w[i] * in[i];
-    if (hidden) hidden[j] = std::tanh(z);
+    if (hidden) hidden[j] = detmath::tanhf(z);
   }
   for (int o = 0; o < outN_; ++o) {
     float z = b2_[static_cast<size_t>(o)];
     const float* w = &w2_[static_cast<size_t>(o) * hiddenN_];
     for (int j = 0; j < hiddenN_; ++j) z += w[j] * (hidden ? hidden[j] : 0.0f);
     if (outAct_ == OutAct::Sigmoid) {
-      z = 1.0f / (1.0f + std::exp(-z));
+      z = 1.0f / (1.0f + detmath::expf(-z));
     } else if (outAct_ == OutAct::Tanh) {
-      z = std::tanh(z);
+      z = detmath::tanhf(z);
     }
     out[o] = z;
   }

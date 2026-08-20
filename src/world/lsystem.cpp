@@ -1,8 +1,8 @@
 #include "world/lsystem.hpp"
-#include <cmath>
 #include <stack>
 #include <random>
 
+#include "core/detmath.hpp"
 #include "core/rng.hpp"
 
 namespace eidolon {
@@ -66,8 +66,8 @@ std::vector<LSystemBranch> LSystemInterpreter::interpret(
       case 'f': // Forward with drawing, smaller
       {
         Vec2f endPos = {
-          state.pos.x + state.length * std::cos(state.heading),
-          state.pos.y + state.length * std::sin(state.heading)
+          state.pos.x + state.length * detmath::cosf(state.heading),
+          state.pos.y + state.length * detmath::sinf(state.heading)
         };
         if (c != 'G') { // G = move without drawing
           branches.push_back({
@@ -141,8 +141,8 @@ LSystemInterpreter::Network LSystemInterpreter::interpretNetwork(
       case 'F':
       case 'G': {
         Vec2f endPos = {
-          state.pos.x + state.length * std::cos(state.heading),
-          state.pos.y + state.length * std::sin(state.heading)
+          state.pos.x + state.length * detmath::cosf(state.heading),
+          state.pos.y + state.length * detmath::sinf(state.heading)
         };
         int newNodeIdx = static_cast<int>(net.nodes.size());
         net.nodes.push_back(endPos);

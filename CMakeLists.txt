@@ -11,5 +11,9 @@ endif()
 
 add_compile_options(-Wall -Wextra)
 
+# Disable FP contraction (FMA) so native and WASM builds execute identical IEEE
+# arithmetic — required for bit-exact native/WASM parity (see core/detmath).
+add_compile_options(-ffp-contract=off)
+
 add_subdirectory(src)
 add_subdirectory(tests)

@@ -3,6 +3,7 @@ add_library(eidolon_core STATIC
   core/log.cpp
   core/serialize.cpp
   core/json.cpp
+  core/detmath.cpp
   core/clock.hpp
   world/world.cpp
   world/wildlife.cpp
@@ -18,7 +19,6 @@ add_library(eidolon_core STATIC
   body/ode_tests.cpp
   body/skill.cpp
   body/crafting.cpp
-  body/affordance.cpp
   body/affordance.cpp
   body/construction.cpp
   mind/memory.cpp
@@ -75,3 +75,9 @@ target_include_directories(eidolon_server PRIVATE ${CMAKE_SOURCE_DIR}/third_part
 add_executable(eidolon-server tools/eidolon-server.cpp)
 target_link_libraries(eidolon-server PRIVATE eidolon_server eidolon_llm)
 set_target_properties(eidolon-server PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+# Phase 12 parity harness (native side). The same source is compiled to WASM via
+# src/CMakeLists.wasm.txt so digests can be compared across backends.
+add_executable(eidolon-parity-dump ${CMAKE_CURRENT_LIST_DIR}/../tools/eidolon-parity-dump.cpp)
+target_link_libraries(eidolon-parity-dump PRIVATE eidolon_core)
+set_target_properties(eidolon-parity-dump PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)

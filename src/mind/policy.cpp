@@ -1,7 +1,8 @@
 #include "mind/policy.hpp"
 
+#include "core/detmath.hpp"
+
 #include <algorithm>
-#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -57,7 +58,7 @@ PolicyAction Policy::choose(const float* feats, float temperature, Rng& r, float
   float sum = 0.0f;
   const float invT = 1.0f / std::max(0.05f, temperature);
   for (int a = 0; a < kActions; ++a) {
-    scores[a] = std::exp((scores[a] - maxS) * invT);
+    scores[a] = detmath::expf((scores[a] - maxS) * invT);
     sum += scores[a];
   }
   double roll = r.unit() * sum;

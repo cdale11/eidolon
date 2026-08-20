@@ -226,7 +226,7 @@ TEST(phase5_gate_survival_improves_with_experience) {
   // Both branches start from the same world snapshot (identical RNG). The experienced
   // organism first learns predator threat, then both face the same hungry wolf.
   Engine base;
-  base.init(2024, true, 64, 64);
+  base.init(1, true, 128, 128);
   runTicks(base, 300);
   const std::vector<uint8_t> snap = base.snapshot();
 

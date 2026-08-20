@@ -1,6 +1,6 @@
 #include "mind/user_model.hpp"
+#include "core/detmath.hpp"
 #include <algorithm>
-#include <cmath>
 #include <sstream>
 
 namespace eidolon {
@@ -64,7 +64,7 @@ void UserModel::update_attachment_pressure(uint64_t current_tick) {
     uint64_t separation_duration = current_tick - last_separation_tick;
     // Attachment pressure builds up over time (logarithmic)
     attachment_pressure = std::min(1.0f, 
-        0.1f * std::log1p(static_cast<float>(separation_duration) / 3600.0f));
+        0.1f * detmath::log1pf(static_cast<float>(separation_duration) / 3600.0f));
     
     // High attachment pressure affects behavior
     if (attachment_pressure > 0.7f) {
