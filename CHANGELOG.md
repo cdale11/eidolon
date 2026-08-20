@@ -127,7 +127,10 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 - **Safety**: results flow through normal memory/learning pipeline as "read content" —
   never injected as prompt text or live-mind backdoor.
 - **Graceful degradation**: search/fetch errors return structured JSON; CAPTCHA/blocking
-  detected and reported; HTTPS handled via fallback when SSL unavailable.
+  detected and reported; HTTPS handled via OpenSSL-linked httplib.
+- **Current limitation**: DuckDuckGo HTML scraping is CAPTCHA-blocked on html.duckduckgo.com.
+  For production use, configure `--search-endpoint` with a proper search API (SerpAPI, Brave, etc.)
+  and implement the corresponding parser in `src/llm/web_browser.cpp`.
 
 ### Phase 11 — Portable WASM client compute (in progress)
 - **WASM compilation** (`cmake/Modules/Platform/Emscripten.cmake`, `src/CMakeLists.wasm.txt`): Eidolon ReplicaCore compiles to WebAssembly via Emscripten

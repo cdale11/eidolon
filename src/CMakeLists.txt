@@ -54,7 +54,7 @@ target_include_directories(eidolon_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 add_library(eidolon_llm STATIC
   llm/bridge.cpp
   llm/web_browser.cpp)
-target_link_libraries(eidolon_llm PRIVATE eidolon_core)
+target_link_libraries(eidolon_llm PRIVATE eidolon_core OpenSSL::SSL OpenSSL::Crypto)
 target_include_directories(eidolon_llm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(eidolon_llm PRIVATE ${CMAKE_SOURCE_DIR}/third_party)
 
@@ -69,7 +69,7 @@ set_target_properties(eidolon-sim PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BI
 
 add_library(eidolon_server STATIC
   server/server.cpp)
-target_link_libraries(eidolon_server PRIVATE eidolon_core eidolon_store eidolon_llm)
+target_link_libraries(eidolon_server PRIVATE eidolon_core eidolon_store eidolon_llm OpenSSL::SSL OpenSSL::Crypto)
 target_include_directories(eidolon_server PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(eidolon_server PRIVATE ${CMAKE_SOURCE_DIR}/third_party)
 

@@ -1017,6 +1017,8 @@ std::string Server::browseSearchJson(const std::string& jsonBody, std::string& e
     arr.push(std::move(item));
   }
   root.set("results", std::move(arr));
+  // Note: DuckDuckGo HTML scraping is currently limited by CAPTCHA on html.duckduckgo.com
+  // For production use, configure --search-endpoint with a proper search API (SerpAPI, Brave, etc.)
   return root.dump();
 }
 

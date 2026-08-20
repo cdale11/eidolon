@@ -51,18 +51,19 @@ std::string extractTextFromHtml(const std::string& html) {
   return text.substr(start, end - start + 1);
 }
 
-// Simple search using DuckDuckGo Lite (HTML) - handles CAPTCHA gracefully
+// Simple search using DuckDuckGo HTML (more reliable than Lite)
 bool duckduckgoSearch(const std::string& query, uint32_t maxResults,
                       std::vector<WebSearchResult>& out, std::string& err,
                       uint32_t timeoutMs) {
-  httplib::Client cli("https://lite.duckduckgo.com");
+  httplib::Client cli("https://duckduckgo.com");
   cli.set_connection_timeout(timeoutMs / 1000, timeoutMs % 1000);
   cli.set_read_timeout(timeoutMs / 1000, timeoutMs % 1000);
+  cli.set_follow_location(true); // Follow redirects (302)
 
   std::string encoded = urlEncode(query);
-  std::string path = "/lite/?q=" + encoded;
+  std::string path = "/html/?q=" + encoded + "&kl=us-en";
   auto res = cli.Get(path.c_str());
-  if (!res || res->status != 200) {
+  if (!res || (res->status != 200 && res->status != 202)) {
     err = "search request failed: HTTP " + std::to_string(res ? res->status : 0);
     return false;
   }
@@ -76,27 +77,34 @@ bool duckduckgoSearch(const std::string& query, uint32_t maxResults,
     return false;
   }
 
-  // Parse Lite results: table rows with links
-  // Format: <table>...<tr><td><a href="URL">Title</a></td><td>Snippet</td></tr>...
+  // Parse HTML results: result links with class "result__snippet" and "result__url"
+  // Format: <a class="result__snippet" ...>Snippet</a>...<a class="result__url" ...>URL</a>
   std::regex resultRe(
-      "<td[^>]*>\\s*<a\\s+href=\"([^\"]+)\"[^>]*>([^<]+)</a>\\s*</td>\\s*"
-      "<td[^>]*>([^<]*)</td>",
+      "class=\"result__snippet\"[^>]*>([^<]+)</a>.*?"
+      "class=\"result__url\"[^>]*>([^<]+)</a>",
       std::regex::icase | std::regex::ECMAScript);
 
   std::smatch match;
   std::string::const_iterator searchStart(html.cbegin());
   while (std::regex_search(searchStart, html.cend(), match, resultRe) && out.size() < maxResults) {
     WebSearchResult r;
-    r.url = match[1].str();
-    r.title = match[2].str();
-    r.snippet = match[3].str();
-    // Clean up
-    r.title = std::regex_replace(r.title, std::regex("&[a-z]+;"), " ");
+    r.snippet = match[1].str();
+    r.url = match[2].str();
+    // Clean up HTML entities
     r.snippet = std::regex_replace(r.snippet, std::regex("&[a-z]+;"), " ");
-    // Only keep http(s) URLs
-    if (r.url.rfind("http", 0) == 0) {
-      out.push_back(std::move(r));
+    r.url = std::regex_replace(r.url, std::regex("&[a-z]+;"), "");
+    // Title from snippet (first part before dash or colon)
+    size_t dashPos = r.snippet.find(" - ");
+    if (dashPos != std::string::npos) {
+      r.title = r.snippet.substr(0, dashPos);
+    } else {
+      r.title = r.snippet.substr(0, std::min<size_t>(r.snippet.size(), 80));
     }
+    // Ensure URL has protocol
+    if (!r.url.empty() && r.url.find("http") != 0) {
+      r.url = "https://" + r.url;
+    }
+    out.push_back(std::move(r));
     searchStart = match.suffix().first;
   }
   return !out.empty();
