@@ -352,6 +352,20 @@ and "client does the maximum work" invariants apply to all of them.
   always as *content it reads and learns from*, never as a live-mind backdoor.
 - **Client-side offload**: migrate most compute to the client per DESIGN §17 (Phases 11-12)
   to free the server; headless fallback continues life when the client is away.
+- **Learning from the user's actual speech**: the organism understands and acts on what the
+  user says — spoken/typed instructions ("eat", "sleep", "go to the river", "avoid wolves")
+  become validated, structured goals the organism pursues through its normal planning loop
+  (never injected as prompt text, never mutating world state directly). Instruction
+  following improves with repetition; instructions that prove harmful lower the organism's
+  trust in the user's advice (ties into Phase 8 user model). Requires speech-to-text /
+  intent parsing in the language bridge, then grounding into the existing goal system.
+- **Organism-driven self-improvement**: the organism proposes its own improvements — to
+  itself (skills to rehearse, habits to form, memory to consolidate, survival strategies to
+  try) and to the game (from a performance perspective: "I spend most ticks wandering —
+  better pathfinding to water would save energy"; and from an emergence/consciousness
+  perspective: "I avoid the cold meadow, so I never see the berries there"). Suggestions
+  come from its own planner/metacognition inspecting its metrics and are offered in
+  conversation as *proposals* the user may adopt, not as code changes.
 
 ---
 
