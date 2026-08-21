@@ -40,8 +40,9 @@ public:
   void reset(Rng& r, float scale);
 
   // Load a teacher-baked "wisdom prior": bandit weights from a linear-softmax fit over
-  // labeled experience (magic "EPRP", version 1, nFeatures, kActions, then
-  // kActions*(nFeatures+1) f32 row-major, bias last). Online updates continue on top, so
+  // labeled experience (magic "EPRP", version, nFeatures, nActions, then
+  // nActions*(nFeatures+1) f32 row-major, bias last). Accepted versions: see
+  // Policy::loadPrior in policy.cpp (current: 1, 2). Online updates continue on top, so
   // this only changes the initialization.
   bool loadPrior(const std::string& path);
 

@@ -5,6 +5,34 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 
 ## [Unreleased]
 
+### Teacher pipeline — .eprp schema versioning + stale test fixes
+- **Versioned the `.eprp` schema** (`python/teacher/fit_prior.py`,
+  `src/mind/policy.cpp`): `PRIOR_VERSION = 2` is now the canonical constant; writer
+  defaults to v2, reader refuses anything ≠ v2, C++ loader accepts `{1, 2}` and
+  verifies `(nFeatures, nActions)` matches the live policy tuple. The header layout
+  is byte-identical to v1; the version bump only exists so the loader can refuse
+  priors baked against a stale feature/action layout.
+- **Centralised magic numbers** in `fit_prior.py`: `PRIOR_MAGIC`, `PRIOR_VERSION`,
+  `PRIOR_N_FEATURES`, `PRIOR_N_ACTIONS`, and `expected_prior_bytes(nf, na)` (4 +
+  12 + nA*(nF+1)*4). Test assertions now read these constants instead of hardcoded
+  `43` / `6 * 44 * 4`, so the next feature-vector bump fails loudly in CI rather
+  than silently drifting.
+- **Stale integration tests fixed**: `test_dump_and_dataset` and
+  `test_prior_fit_and_roundtrip` previously hardcoded `(43,)` features and
+  `4 + 12 + 6 * 44 * 4` header size (stale since the Phase 5 wildlife + Phase 7
+  planning feature-vector bump to 45 dims and action-set expansion to 12). Now use
+  `N_FEATURES` + `expected_prior_bytes()`.
+- **New tests**: `test_prior_version_marker_present` (Python, asserts the raw bytes
+  carry the current magic + version) and `policy_prior_rejects_bad_version` (C++,
+  asserts the loader refuses future version, wrong magic, and pre-Phase-5 tuple).
+- **Result**: all 8 Python teacher tests pass, all 114 C++ unit tests pass, full
+  `run_integration.sh` green (was 2 pre-existing failures — see MISTAKES 2026-08-22).
+- **Rule for future bumps**: when the C++ feature vector or action set grows, bump
+  `PRIOR_VERSION` AND extend the C++ loader's accepted-version list AND regenerate
+  every prior on disk. The single source of truth (`expected_prior_bytes()`) makes
+  the test side fail first, not the loader side — a load failure mid-run would
+  silently fall back to random init (MISTAKES 2026-08-19).
+
 ### Future Directions (partial) — Time-of-day awareness in chat
 - **Circadian state in `CognitiveSnapshot`** (`src/llm/bridge.hpp/.cpp`): six new fields
   derived deterministically from existing snapshot state — no new persistent state, no

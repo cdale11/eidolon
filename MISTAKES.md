@@ -261,3 +261,42 @@ bump the teacher pipeline's `.eprp` schema version (currently unversioned — a 
 risk that any feature-vector change silently invalidates existing priors on disk; see
 MISTAKES entry 2026-08-19 "Policy priors incompatible with current feature set" for the
 prior version of this lesson).
+
+**Resolved in the next commit**: see entry 2026-08-22 below.
+
+### 2026-08-22 — Fix-as-you-go: stale teacher tests + unversioned .eprp schema
+Context: Follow-up to the 2026-08-22 entry above. Implementation:
+1. **Centralised magic numbers** in `python/teacher/fit_prior.py`:
+   `PRIOR_MAGIC = b"EPRP"`, `PRIOR_VERSION = 2`, `PRIOR_N_FEATURES = N_FEATURES`,
+   `PRIOR_N_ACTIONS = len(ACTION_NAMES)`, plus `expected_prior_bytes(nf, na)`. The
+   test assertions now read these constants instead of hardcoding `43` / `6 * 44 * 4`,
+   so the next feature-vector bump fails LOUDLY in CI rather than silently drifting.
+2. **Versioned the `.eprp` schema** (was hardcoded `version == 1` everywhere):
+   - Writer (`fit_prior.write_prior`) defaults to `PRIOR_VERSION = 2`; an explicit
+     `version=1` arg is kept for the Python `read_prior` round-trip test only.
+   - Reader (`fit_prior.read_prior`) refuses anything ≠ `PRIOR_VERSION`.
+   - C++ loader (`src/mind/policy.cpp::loadPrior`) accepts `{1, 2}` and verifies
+     `(nFeatures, nActions)` matches the live policy tuple. A prior whose tuple
+     matches by coincidence (which can't happen because the feature vector and action
+     set have unique sizes — but the check is explicit anyway) is still loaded.
+3. **Updated both stale tests** (`test_dump_and_dataset`,
+   `test_prior_fit_and_roundtrip`) to use `N_FEATURES` and `expected_prior_bytes()`.
+4. **Added 1 new Python test** (`test_prior_version_marker_present`) that reads the
+   raw bytes of a freshly-written prior and asserts magic + version match the
+   constants — catches any drift between writer and reader.
+5. **Added 1 new C++ test** (`policy_prior_rejects_bad_version` in
+   `tests/test_learn.cpp`) that verifies the C++ loader refuses: future version
+   (`v99`), wrong magic (`"NOPE"`), and the pre-Phase-5 (43 features, 6 actions)
+   tuple baked under the current version.
+Mistake avoided: writing the tests first against the constants and then seeing CI
+fail when the constants changed (defence-in-depth: writer, reader, C++ loader, and
+tests all consult the same single source of truth).
+Fix / rule: **Whenever the C++ feature vector or action set grows, you must bump
+`PRIOR_VERSION` in `python/teacher/fit_prior.py` AND extend the accepted-version
+list in `src/mind/policy.cpp::loadPrior` AND regenerate every prior on disk.** The
+`expected_prior_bytes()` helper guarantees the test side fails first, not the loader
+side (a load failure mid-run would silently fall back to random init — see
+MISTAKES 2026-08-19 for what that looks like in practice). Verified: 8/8 Python
+teacher tests pass, 114/114 C++ unit tests pass, full `run_integration.sh` green;
+sim smoke run `eidolon-sim --days 1 --seed 42 --deterministic` survives (energy
+99.8, no errors).

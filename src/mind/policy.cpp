@@ -20,12 +20,27 @@ bool Policy::loadPrior(const std::string& path) {
   if (!f) return false;
   char magic[4];
   uint32_t version = 0, nf = 0, na = 0;
+  // Accepted .eprp schema versions. The (nFeatures, nActions) tuple in the header is
+  // checked against the live policy's tuple below, so accepting multiple versions
+  // can't silently let a stale prior through. v1 is retained for backward-compat with
+  // any priors already on disk that happen to match the current tuple by coincidence;
+  // the Python writer (fit_prior.py::PRIOR_VERSION) and this list must be bumped
+  // together whenever the feature vector or action set changes.
+  constexpr uint32_t kAcceptedPriorVersions[] = {1, 2};
   const bool hdr = std::fread(magic, 1, 4, f) == 4 &&
                    std::memcmp(magic, "EPRP", 4) == 0 &&
-                   std::fread(&version, sizeof(version), 1, f) == 1 && version == 1 &&
+                   std::fread(&version, sizeof(version), 1, f) == 1 &&
                    std::fread(&nf, sizeof(nf), 1, f) == 1 &&
                    std::fread(&na, sizeof(na), 1, f) == 1;
-  if (!hdr || nf != static_cast<uint32_t>(nFeatures_) ||
+  if (!hdr) {
+    std::fclose(f);
+    return false;
+  }
+  bool versionOk = false;
+  for (uint32_t v : kAcceptedPriorVersions) {
+    if (version == v) { versionOk = true; break; }
+  }
+  if (!versionOk || nf != static_cast<uint32_t>(nFeatures_) ||
       na != static_cast<uint32_t>(kActions)) {
     std::fclose(f);
     return false;

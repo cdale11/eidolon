@@ -289,6 +289,74 @@ TEST(policy_loads_prior_and_retrains_online) {
   std::remove(outbuf);
 }
 
+TEST(policy_prior_rejects_bad_version) {
+  // Stale or future .eprp priors must be refused by the loader so a teacher pipeline
+  // trained against an old feature/action layout cannot silently inject a broken
+  // prior. See python/teacher/fit_prior.py PRIOR_VERSION and the accepted list in
+  // src/mind/policy.cpp::loadPrior.
+  char pathbuf[128];
+  std::snprintf(pathbuf, sizeof(pathbuf), "/tmp/eidolon_test_prior_badver_%d.eprp",
+                static_cast<int>(::getpid()));
+  const char* path = pathbuf;
+  auto writeAtVersion = [&](uint32_t version) {
+    std::FILE* f = std::fopen(path, "wb");
+    CHECK(f != nullptr);
+    std::fwrite("EPRP", 1, 4, f);
+    uint32_t nf = LearnSystem::kFeatures, na = 12;
+    std::fwrite(&version, 4, 1, f);
+    std::fwrite(&nf, 4, 1, f);
+    std::fwrite(&na, 4, 1, f);
+    const size_t N = static_cast<size_t>(12) * (LearnSystem::kFeatures + 1);
+    std::vector<float> w(N, 0.0f);
+    std::fwrite(w.data(), sizeof(float), N, f);
+    std::fclose(f);
+  };
+
+  // Future / stale version must be refused.
+  writeAtVersion(99);
+  Engine e;
+  e.init(7, true, 64, 64);
+  CHECK(!e.loadPolicyPrior(path));
+
+  // Wrong magic must be refused.
+  {
+    std::FILE* f = std::fopen(path, "wb");
+    CHECK(f != nullptr);
+    std::fwrite("NOPE", 1, 4, f);
+    uint32_t v = 2, nf = LearnSystem::kFeatures, na = 12;
+    std::fwrite(&v, 4, 1, f);
+    std::fwrite(&nf, 4, 1, f);
+    std::fwrite(&na, 4, 1, f);
+    const size_t N = static_cast<size_t>(12) * (LearnSystem::kFeatures + 1);
+    std::vector<float> w(N, 0.0f);
+    std::fwrite(w.data(), sizeof(float), N, f);
+    std::fclose(f);
+  }
+  CHECK(!e.loadPolicyPrior(path));
+
+  // Mismatched (nFeatures, nActions) tuple at the current version must also be refused.
+  {
+    std::FILE* f = std::fopen(path, "wb");
+    CHECK(f != nullptr);
+    std::fwrite("EPRP", 1, 4, f);
+    uint32_t v = 2, nf = 43, na = 6; // pre-Phase-5 layout
+    std::fwrite(&v, 4, 1, f);
+    std::fwrite(&nf, 4, 1, f);
+    std::fwrite(&na, 4, 1, f);
+    const size_t N = static_cast<size_t>(12) * (LearnSystem::kFeatures + 1);
+    std::vector<float> w(N, 0.0f);
+    std::fwrite(w.data(), sizeof(float), N, f);
+    std::fclose(f);
+  }
+  CHECK(!e.loadPolicyPrior(path));
+
+  // Current version + matching tuple must load (sanity).
+  writeAtVersion(2);
+  CHECK(e.loadPolicyPrior(path));
+
+  std::remove(path);
+}
+
 TEST(engine_survives_days_with_learning) {
   Engine e;
   e.init(7, true, 128, 128);

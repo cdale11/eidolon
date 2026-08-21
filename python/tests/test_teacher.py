@@ -43,19 +43,23 @@ def dump_experiences(tmp):
 
 
 def test_dump_and_dataset(tmp):
+    from teacher.dataset import N_FEATURES  # single source of truth, see fit_prior
     path = dump_experiences(tmp)
     exp = load_experiences(path)
     assert len(exp) > 1000, f"dump too small: {len(exp)}"
     names = {e.action for e in exp}
     assert names <= set(ACTION_NAMES), f"unexpected actions: {names}"
-    # interpretable context is non-empty and feats are 43 floats
+    # interpretable context is non-empty and feats have the canonical N_FEATURES floats
+    # (single source of truth in teacher.dataset.N_FEATURES — see MISTAKES 2026-08-22).
     assert exp[0].interpretable_text()
-    assert exp[0].feats.shape == (43,)
+    assert exp[0].feats.shape == (N_FEATURES,), (
+        f"feature vector shape mismatch: ({exp[0].feats.shape[0]},) vs N_FEATURES={N_FEATURES}")
 
 
 def test_prior_fit_and_roundtrip(tmp):
-    from teacher.dataset import feature_matrix, labels, reward_best_labels
-    from teacher.fit_prior import fit_prior
+    from teacher.dataset import N_FEATURES, feature_matrix, reward_best_labels
+    from teacher.fit_prior import (expected_prior_bytes, fit_prior,
+                                   PRIOR_N_ACTIONS, PRIOR_VERSION)
 
     path = dump_experiences(tmp)
     exp = load_experiences(path)
@@ -65,10 +69,41 @@ def test_prior_fit_and_roundtrip(tmp):
     assert 0.0 <= res["acc"] <= 1.0
     prior = f"{tmp}/prior.eprp"
     write_prior(prior, res["weights"], res["bias"])
-    assert os.path.getsize(prior) == 4 + 12 + 6 * 44 * 4  # header + 6 rows of (43+1) f32
+    # Header: magic(4) + version/u32(4) + nFeatures/u32(4) + nActions/u32(4) = 16 bytes,
+    # then nActions * (nFeatures + 1) float32s. expected_prior_bytes is the single
+    # source of truth (also used by the writer and by the C++ loader's schema
+    # documentation) so a future feature-vector bump fails LOUDLY here instead of
+    # silently invalidating every prior on disk.
+    assert os.path.getsize(prior) == expected_prior_bytes(), (
+        f"prior size mismatch: got {os.path.getsize(prior)}, "
+        f"expected {expected_prior_bytes()} "
+        f"(version={PRIOR_VERSION}, N_FEATURES={N_FEATURES}, "
+        f"n_actions={PRIOR_N_ACTIONS})")
     W, b = read_prior(prior)
-    assert W.shape == (6, 43) and b.shape == (6,)
+    assert W.shape == (PRIOR_N_ACTIONS, N_FEATURES) and b.shape == (PRIOR_N_ACTIONS,)
     assert (W == res["weights"]).all() and (b == res["bias"]).all()
+
+
+def test_prior_version_marker_present(tmp):
+    """The .eprp header must carry the current schema version so a stale prior baked
+    against an older (nFeatures, nActions) pair is refused by both the Python reader
+    and the C++ loader. Bump PRIOR_VERSION in fit_prior.py and the accepted list in
+    src/mind/policy.cpp::loadPrior together."""
+    from teacher.dataset import feature_matrix, reward_best_labels
+    from teacher.fit_prior import (expected_prior_bytes, fit_prior, PRIOR_VERSION,
+                                   PRIOR_MAGIC)
+    path = dump_experiences(tmp)
+    exp = load_experiences(path)
+    res = fit_prior(feature_matrix(exp), reward_best_labels(exp), epochs=4, val_frac=0.0)
+    prior = f"{tmp}/prior.eprp"
+    write_prior(prior, res["weights"], res["bias"])
+    with open(prior, "rb") as f:
+        raw = f.read(expected_prior_bytes())
+    assert raw[:4] == PRIOR_MAGIC, f"bad magic: {raw[:4]!r}"
+    version = int.from_bytes(raw[4:8], "little")
+    assert version == PRIOR_VERSION, (
+        f"prior version mismatch: file={version}, expected={PRIOR_VERSION} "
+        "(bump the C++ loader's accepted-version list too)")
 
 
 def test_sim_loads_prior_and_retrains(tmp):
