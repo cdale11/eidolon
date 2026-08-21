@@ -298,9 +298,10 @@ int Wildlife::predatorCount(Vec2i pos, int radius) const {
 void Wildlife::update(World& w, int64_t now, int64_t dt, bool organismAlive,
                       Vec2i organismPos, WorldUpdate& out) {
   accum_ += dt;
-  if (accum_ < kInterval) return;
-  accum_ -= kInterval;
-  step(w, now, organismAlive, organismPos, out);
+  while (accum_ >= kInterval) {
+    accum_ -= kInterval;
+    step(w, now, organismAlive, organismPos, out);
+  }
 }
 
 namespace {

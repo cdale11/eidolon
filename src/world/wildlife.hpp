@@ -77,6 +77,9 @@ public:
   int preyCount(Vec2i pos, int radius) const;
   int predatorCount(Vec2i pos, int radius) const;
 
+  // Rebuild spatial hash after external agent position changes (e.g., test teleports).
+  void rebuildHashForDebug() { rebuildHash(); }
+
   void serialize(BinaryWriter& w) const;
   bool deserialize(BinaryReader& r);
 

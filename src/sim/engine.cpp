@@ -236,6 +236,7 @@ Action Engine::tick() noexcept {
       std::string cause = determineCauseOfDeath();
       saveHeredity(clock_.now(), cause);
     }
+    incrementRebirthCount();
   }
   scheduler_.recordTick(WorkerDomain::NeuralMl,
                         std::chrono::duration<double, std::micro>(Clock::now() - tPhysio).count());
@@ -507,7 +508,7 @@ Action Engine::decide() noexcept {
   // hunger~81 from drinking forever while starving.
   if (body_.thirst() > 55.0 && body_.hunger() < 80.0) return Action::Drink;
   if (body_.hunger() > 80.0) return Action::Forage;
-  if (body_.pain() > 40.0) return Action::Rest;
+  if (body_.pain() > 40.0 && !world_.nearestPredator(world_.organismPos(), Perception::kSightRadius)) return Action::Rest;
   // Learned policy proposes an agentic action from the state features.
   // Get habit strengths from instruction learning to bias policy
   float habit_strength[Policy::kActions] = {0.0f};

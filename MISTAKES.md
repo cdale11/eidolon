@@ -178,3 +178,63 @@ sustained 16-tick directional walk (pick random heading, hold until blocked or e
 rotate 90° on obstacle, fall through to any walkable step). Replaces all four
 single-tile jitter sites. Verified: v2 prior 2-day survival 3/5→6/7; seed 33 now
 traverses >100 distinct tiles vs 5 before.
+
+### 2026-08-21 — Wildlife accumulator (`accum_`) grew unbounded during sleep ticks, causing
+excessive wildlife steps and predator starvation during training
+Context: Phase 5 gate test `phase5_gate_survival_improves_with_experience` failed because the
+trained wolf died of starvation during the 120-tick survival comparison.
+Mistake: `Wildlife::update` used `if (accum_ >= kInterval) { accum_ -= kInterval; step(); }`.
+When the organism sleeps (`dt=30`), `accum_` increases by 30 per tick but only 5 is subtracted,
+netting +25 per sleep tick. After many sleep ticks, `accum_` reached thousands. During
+training (active organism, `dt=1`), the huge `accum_` caused wildlife steps to run EVERY TICK
+(instead of every 5 ticks), making wolf hunger increase 5x faster (0.6 per tick instead of
+0.6 per 5 ticks). Wolves starved in ~75 ticks instead of surviving 120+ ticks.
+Fix / rule: **Use a `while` loop to drain the accumulator fully each update**:
+`while (accum_ >= kInterval) { accum_ -= kInterval; step(); }`. This ensures that a large `dt`
+(e.g., 30 for sleep) runs multiple steps immediately and `accum_` returns to `< kInterval`,
+preventing unbounded growth. Verified: training wolf survives full 120-tick comparison.
+
+### 2026-08-21 — Pain valve forced Rest even when predator in sight, blocking threat veto
+Context: After 15 wolf attacks during training, the organism accumulated high pain (>40).
+The pain valve `if (body_.pain() > 40.0) return Action::Rest;` forced Rest regardless of
+predator presence. This ran BEFORE the threat veto (which would force Flee when threat > 0.65
+and predator in sight radius). The trained organism with high threat (0.997) rested instead
+of fleeing, maintaining lower average distance from the predator than the naive organism.
+Mistake: Survival valves (thirst/hunger/pain) were ordered before the threat veto and didn't
+check for predator presence. The pain valve forced Rest even when a predator was in sight
+radius, preventing the threat veto from forcing Flee.
+Fix / rule: **Survival valves must respect predator presence**. Modified pain valve to:
+`if (body_.pain() > 40.0 && !world_.nearestPredator(world_.organismPos(), Perception::kSightRadius)) return Action::Rest;`
+This allows the threat veto to force Flee when a predator is in sight, while still forcing
+Rest from pain when no predator is visible. Verified: trained organism now flees and
+maintains greater average distance from predator than naive organism.
+
+### 2026-08-21 — Spatial hash not rebuilt after test teleports wolf, causing predator
+detection failure
+Context: Phase 5 gate test placed a wolf at distance 6 via `placeWolfAtDist`, but the
+organism's `nearestPredator` check (used by emergency valves and threat veto) failed to
+detect it.
+Mistake: `parkHungryWolf` and `placeWolfAtDist` teleported the wolf to a new position but
+did not rebuild the wildlife spatial hash. The spatial hash is only rebuilt at the start of
+each `Wildlife::step` (every 5 sim-seconds). During the first 4 ticks, the organism's
+`decide()` used a stale hash where the wolf was at its old position, so `nearestPredator`
+returned null. The organism didn't flee, slept instead, and the wolf's hunger accumulated
+unchecked.
+Fix / rule: **Always rebuild spatial hash after externally modifying agent positions**.
+Added `Wildlife::rebuildHashForDebug()` public method and call it after `parkHungryWolf` and
+`placeWolfAtDist`. This ensures `nearestPredator` sees the wolf at its new position
+immediately.
+
+### 2026-08-21 — Test wolf died of hunger during survival comparison due to suboptimal
+initial hunger
+Context: Phase 5 gate test `phase5_gate_survival_improves_with_experience` failed because
+the test wolf died of hunger at tick 75 (of 120) during the survival comparison.
+Mistake: `placeWolfAtDist` set the wolf's initial hunger to 90 and placed it at distance 6.
+The wolf took ~3 wildlife steps (15 sim-seconds) to reach the organism and attack. During
+that time, hunger increased by 0.6 per wildlife step. After ~15 wildlife steps (75 ticks),
+hunger reached 100 and the wolf starved. The test only counted distance while the wolf was
+alive, biasing the comparison (naive wolf dead at tick 75, exp wolf alive all 120 ticks).
+Fix / rule: **Set test wolf initial hunger to attack threshold (55) so it attacks
+immediately and hunger drops to ~10, giving >750 ticks before starvation**. Changed
+`placeWolfAtDist` hunger from 90 to 55. Verified: both wolves survive full 120 ticks,
+test passes.

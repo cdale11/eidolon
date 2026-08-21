@@ -133,6 +133,7 @@ async function refreshStatus() {
       `Day ${s.day} · hour ${s.hour.toFixed(1)} · ${s.awake ? 'awake' : 'asleep'} · ` +
       `energy ${s.energy.toFixed(0)} · hunger ${s.hunger.toFixed(0)} · ` +
       `thirst ${s.thirst.toFixed(0)} · health ${s.health.toFixed(0)} · ` +
+      `rebirths ${s.rebirths} · ` +
       `${s.weather} ${s.tempC.toFixed(1)}C`;
   } catch (e) {}
 }
@@ -409,6 +410,16 @@ void Server::simLoop() {
         std::fprintf(stderr, "policy prior loaded from %s (online learning continues)\n",
                      opts_.policyPriorPath.c_str());
       }
+      if (!opts_.heredityPath.empty()) {
+        engine_.setHeredityPath(opts_.heredityPath, opts_.heredityWeight);
+        if (!engine_.loadHeredity()) {
+          std::fprintf(stderr, "warning: could not load heredity from %s (starting fresh)\n",
+                       opts_.heredityPath.c_str());
+        } else {
+          std::fprintf(stderr, "heredity loaded from %s (weight %.2f)\n",
+                       opts_.heredityPath.c_str(), opts_.heredityWeight);
+        }
+      }
       std::fprintf(stderr, "fresh organism: seed=%llu world=%dx%d\n",
                    static_cast<unsigned long long>(engine_.masterSeed()),
                    opts_.worldW, opts_.worldH);
@@ -443,6 +454,41 @@ void Server::simLoop() {
       // mutex; holding it across the pacing sleep below would starve them out.
       std::lock_guard<std::mutex> lock(engineMu_);
       engine_.tickAndLog(log_);
+      if (!engine_.isAlive()) {
+        // Auto-rebirth: fresh organism inherits the world, optionally with heredity
+        log_.line(engine_.clock().now(), "death", "organism died; auto-rebirth");
+        std::string err;
+        if (!engine_.saveFile(savePath, err)) {
+          std::fprintf(stderr, "warning: death save failed: %s\n", err.c_str());
+        }
+        log_.flush();
+
+        // Generate new seed for fresh organism (entropy if not deterministic)
+        const uint64_t newSeed = opts_.deterministic ? (opts_.seed != 0 ? opts_.seed : entropySeed())
+                                                     : entropySeed();
+        engine_.init(newSeed, opts_.deterministic, opts_.worldW, opts_.worldH);
+        if (!opts_.policyPriorPath.empty() &&
+            !engine_.loadPolicyPrior(opts_.policyPriorPath)) {
+          std::fprintf(stderr, "warning: cannot load policy prior %s; using random init\n",
+                       opts_.policyPriorPath.c_str());
+        }
+        if (!opts_.heredityPath.empty()) {
+          engine_.setHeredityPath(opts_.heredityPath, opts_.heredityWeight);
+          if (!engine_.loadHeredity()) {
+            std::fprintf(stderr, "warning: could not load heredity from %s (starting fresh)\n",
+                         opts_.heredityPath.c_str());
+          } else {
+            std::fprintf(stderr, "heredity loaded from %s (weight %.2f)\n",
+                         opts_.heredityPath.c_str(), opts_.heredityWeight);
+          }
+        }
+        engine_.setArchive(archive_.get());
+        log_.line(engine_.clock().now(), "birth",
+                  "auto-rebirth seed=%llu", static_cast<unsigned long long>(newSeed));
+        lastAutosave = engine_.clock().now();
+        std::fprintf(stderr, "auto-rebirth: new organism seed=%llu\n",
+                     static_cast<unsigned long long>(newSeed));
+      }
       if (engine_.clock().now() - lastAutosave >= 600) { // autosave every 10 sim-minutes
         lastAutosave = engine_.clock().now();
         std::string err;
@@ -490,7 +536,8 @@ std::string Server::statusJson() {
                 "\"energy\":%.1f,\"hunger\":%.1f,\"thirst\":%.1f,\"fatigue\":%.1f,"
                 "\"sleepP\":%.1f,\"health\":%.1f,\"bodyTemp\":%.1f,\"weather\":\"%s\","
                 "\"tempC\":%.1f,\"simTime\":%lld,"
-                "\"preyNear\":%d,\"predatorsNear\":%d,\"predatorDist\":%d}",
+                "\"preyNear\":%d,\"predatorsNear\":%d,\"predatorDist\":%d,"
+                "\"rebirths\":%u}",
                 static_cast<long long>(engine_.clock().day()),
                 engine_.clock().hourOfDay(),
                 b.isSleeping() ? "false" : "true",
@@ -504,7 +551,8 @@ std::string Server::statusJson() {
                   const WildlifeAgent* pr = engine_.world().nearestPredator(
                       p, Perception::kSightRadius);
                   return pr ? distCheb(pr->pos, p) : -1;
-                }());
+                }(),
+                engine_.rebirthCount());
   return buf;
 }
 

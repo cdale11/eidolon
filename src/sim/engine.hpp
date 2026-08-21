@@ -173,6 +173,10 @@ bool loadPolicyPrior(const std::string& path);
   // Save current organism's genome as heredity for future inheritance
   // Called automatically on death if heredityPath_ is set.
   bool saveHeredity(uint64_t deathTick, const std::string& causeOfDeath) const;
+
+  // Rebirth tracking
+  uint32_t rebirthCount() const { return rebirthCount_; }
+  void incrementRebirthCount() { ++rebirthCount_; }
   
   // Optional offline experience dump (teacher training data): when set, each tick appends
   // one JSONL record (features, action, reward, interpretable context). Used only by the
@@ -256,6 +260,9 @@ private:
   std::string heredityPath_; // path to heredity file for inheritance
   bool heredityLoaded_ = false;
   float heredityInheritanceWeight_ = 0.7f; // 0.0 = fresh, 1.0 = full inheritance
+
+  // Rebirth tracking
+  uint32_t rebirthCount_ = 0;
 
   // Crafting system for tools, structures, food processing
   CraftingSystem crafting_;

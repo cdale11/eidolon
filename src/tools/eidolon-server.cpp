@@ -68,6 +68,9 @@ int main(int argc, char** argv) {
       opts.worldW = w;
       opts.worldH = h;
     } else if (a == "--policy-prior") opts.policyPriorPath = need("FILE");
+    else if (a == "--heredity") opts.heredityPath = need("FILE");
+    else if (a == "--heredity-weight") opts.heredityWeight = std::atof(need("FLOAT"));
+    else if (a == "--dump-experiences") opts.dumpExperiencesPath = need("FILE");
     else if (a == "--llm") opts.llmEndpoint = need("URL");
     else if (a == "--llm-timeout") opts.llmTimeoutMs = std::atoi(need("MS"));
     else if (a == "--fidelity") {

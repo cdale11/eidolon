@@ -30,6 +30,9 @@ public:
     bool deterministic = false;
     int worldW = 128, worldH = 128;
     std::string policyPriorPath; // optional teacher-baked policy prior for fresh organisms
+    std::string heredityPath;    // optional heredity file for inheritance across deaths
+    float heredityWeight = 0.7f; // inheritance weight 0.0..1.0
+    std::string dumpExperiencesPath; // optional path to dump teacher-training records (JSONL)
     std::string llmEndpoint; // empty = offline
     int llmTimeoutMs = 10000;
     // Adaptive fidelity (Phase 11): 0 = auto (from compute profile), else explicit level

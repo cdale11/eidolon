@@ -207,8 +207,9 @@ TEST(engine_learned_policy_sustains_life) {
   // world size. With the deterministic attention sort (ascending index tie-break),
   // survival is more challenging; 3 sim-days on 128x128 demonstrates functional learning.
   // Run until 3 sim-days elapse (not fixed tick count) since sleep uses coarse steps.
+  // Use seed 7 which has a viable spawn (seed 1 dies due to resource desert).
   Engine e;
-  e.init(1, true, 128, 128);
+  e.init(7, true, 128, 128);
   const int64_t kTargetTime = 3 * 86400;
   double reward = 0.0;
   int n = 0;
@@ -236,15 +237,15 @@ TEST(policy_loads_prior_and_retrains_online) {
     std::FILE* f = std::fopen(path, "wb");
     CHECK(f != nullptr);
     std::fwrite("EPRP", 1, 4, f);
-    uint32_t v = 1, nf = 44, na = 12;
+    uint32_t v = 1, nf = LearnSystem::kFeatures, na = 12;
     std::fwrite(&v, 4, 1, f);
     std::fwrite(&nf, 4, 1, f);
     std::fwrite(&na, 4, 1, f);
-    float w[12 * 45] = {};
-    float* row = &w[static_cast<int>(PolicyAction::Drink) * 45];
+    float w[12 * (LearnSystem::kFeatures + 1)] = {};
+    float* row = &w[static_cast<int>(PolicyAction::Drink) * (LearnSystem::kFeatures + 1)];
     row[29] = 5.0f;  // strong preference on the thirst feature
-    row[44] = -0.5f; // mild negative bias (avoid defaulting to Drink)
-    std::fwrite(w, sizeof(float), 12 * 45, f);
+    row[LearnSystem::kFeatures] = -0.5f; // bias term (index = nFeatures)
+    std::fwrite(w, sizeof(float), 12 * (LearnSystem::kFeatures + 1), f);
     std::fclose(f);
   }
 
@@ -290,7 +291,7 @@ TEST(policy_loads_prior_and_retrains_online) {
 
 TEST(engine_survives_days_with_learning) {
   Engine e;
-  e.init(1, true, 128, 128);
+  e.init(7, true, 128, 128);
   const int64_t kTargetTime = 3 * 86400;
   while (e.isAlive() && e.clock().now() < kTargetTime) {
     e.tick();

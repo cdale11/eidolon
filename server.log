@@ -1,0 +1,7 @@
+internet access: disabled (use --internet-enabled to enable)
+eidolon-server listening on http://0.0.0.0:8081 (llm=http://127.0.0.1:8080/v1)
+warning: could not load heredity from data/runs/server/heredity.bin (starting fresh)
+fresh organism: seed=1787231982338667423 world=128x128
+fidelity: FidelityLevel=Medium sim_s/w_s=300 model_budget=0.75 world_detail=0.75 llm_reflection=on defer_consolidation=off
+warning: could not load heredity from data/runs/server/heredity.bin (starting fresh)
+auto-rebirth: new organism seed=1787232420693217438

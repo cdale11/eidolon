@@ -62,10 +62,12 @@ void parkHungryWolf(Engine& e) {
     }
   }
   CHECK(spot.x >= 0); // Must find a valid nearby walkable tile near the organism.
-  wolf->pos = spot;
-  wolf->hunger = 90.0;
-  wolf->state = AnimalState::Hunt;
-  wolf->attackCooldownUntil = 0;
+wolf->pos = spot;
+    wolf->hunger = 55.0;
+    wolf->energy = 1000.0;
+    wolf->state = AnimalState::Hunt;
+    wolf->attackCooldownUntil = 0;
+    e.world().wildlife().rebuildHashForDebug();
 }
 
 } // namespace
@@ -243,12 +245,12 @@ TEST(phase5_gate_survival_improves_with_experience) {
     std::string err;
     CHECK(exp.restore(snap, err));
   }
-  // Training: repeated predator bites (every wildlife step) build pain past the
-  // aversive threshold; ThreatNet sensitization takes ~5-10 bites (fast with pain>
-  // 25 accumulating between steps since each bite heals slowly).
-  for (int i = 0; i < 40; ++i) {
+  // Training: repeated predator bites build pain past the aversive threshold;
+  // ThreatNet sensitization takes ~5-10 bites. Wolf attacks every 60s (cooldown),
+  // so run ~60 ticks (60s at 1s/tick) per cycle to get one attack per cycle.
+  for (int i = 0; i < 15; ++i) { // 15 attacks should be enough for sensitization
     parkHungryWolf(exp);
-    runTicks(exp, 5); // one wildlife update (bite) per cycle
+    runTicks(exp, 60); // ~60s = one wolf attack (cooldown = 60s)
     if (exp.body().health() < 40.0) exp.resetBody(); // keep organism alive to learn
   }
   CHECK(exp.learn().threatEstimate() > 0.6f); // durable threat signal after training
@@ -260,7 +262,7 @@ TEST(phase5_gate_survival_improves_with_experience) {
   // causing it to flee at sight; the naive organism only reacts when the wolf closes
   // to 3 tiles. Over 120 ticks this produces a clearly larger average distance for
   // the trained branch (verified empirically: avg distance ~2x).
-  auto placeWolfAtDist = [](Engine& e, int desired) {
+auto placeWolfAtDist = [](Engine& e, int desired) {
     WildlifeAgent* wolf = nullptr;
     for (WildlifeAgent& a : e.world().wildlife().agents()) {
       if (a.species == Species::Wolf && a.alive) { wolf = &a; break; }
@@ -290,8 +292,10 @@ TEST(phase5_gate_survival_improves_with_experience) {
     CHECK(spot.x >= 0);
     wolf->pos = spot;
     wolf->hunger = 90.0;
+    wolf->energy = 1000.0;
     wolf->state = AnimalState::Hunt;
     wolf->attackCooldownUntil = 0;
+    e.world().wildlife().rebuildHashForDebug();
   };
   placeWolfAtDist(naive, 6);
   placeWolfAtDist(exp, 6);

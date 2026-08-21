@@ -25,6 +25,26 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   Used whenever no resource is in perception range. v2 prior 2-day survival improves from
   3/5 to 6/7 seeds; baseline 3-day survival 72/100 seeds.
 
+### Bugfix — survival valves & threat veto ordering
+- **Pain valve forced Rest even when predator in sight**: The pain valve (`pain > 40 → Rest`)
+  ran before the threat veto and didn't check for predator presence. Trained organisms with
+  high pain (>40) and high threat (>0.65) rested instead of fleeing, maintaining lower
+  average distance from predators than naive organisms. Fixed: pain valve now checks
+  `!nearestPredator(sightRadius)` before forcing Rest, allowing threat veto to force Flee.
+- **Wildlife accumulator unbounded growth**: `Wildlife::update` used `if (accum_ >= kInterval)`
+  instead of `while (accum_ >= kInterval)`. During sleep (`dt=30`), `accum_` grew by +25/tick
+  (net). During training (`dt=1`), huge `accum_` caused wildlife steps every tick (5× normal
+  rate), making wolf hunger increase 5× faster. Wolves starved in ~75 ticks instead of
+  surviving 120+ ticks. Fixed: `while (accum_ >= kInterval) { accum_ -= kInterval; step(); }`
+- **Spatial hash stale after test teleports**: `parkHungryWolf`/`placeWolfAtDist` moved wolves
+  but didn't rebuild spatial hash. Organism's `nearestPredator` used stale hash for 4 ticks,
+  failed to detect wolf at distance 6. Fixed: added `Wildlife::rebuildHashForDebug()` and
+  call it after test teleports.
+- **Test wolf hunger too high**: `placeWolfAtDist` set hunger=90 at distance 6. Wolf took 3
+  wildlife steps to reach organism; hunger reached 100 and starved at tick 75 (of 120).
+  Changed initial hunger to 55 (attack threshold) so wolf attacks immediately, hunger drops
+  to ~10, survives >750 ticks. Both wolves now survive full 120-tick comparison.
+
 ### Phase 5 — Rich world & wildlife (world generation + ecology)
 - Noise-field world generation (simplex fbm): elevation, temperature, humidity per tile;
   biomes (temperate plains/forest, boreal, tundra, desert, savannah, jungle, mountain,
