@@ -462,6 +462,38 @@ relationship summaries, concise self/world summary. Sized to stay small (target 
 tokens). The LLM is instructed to answer only from the snapshot and to admit uncertainty;
 the runtime checks responses for consistency.
 
+### Time-of-day awareness in chat (circadian snapshot fields)
+The snapshot is extended with six **deterministic, derived** fields — no new persistent
+state, no extra LLM calls, no hot-path cost. They let the language bridge ground every
+reply (LLM or fallback) in the organism's actual circadian + drive state right now, so a
+3am ping does not get a generic answer:
+
+| Field | Domain | Examples |
+|---|---|---|
+| `phaseOfDay` | hour + awake | `deep_night` / `dawn` / `day` / `dusk` / `night` / `asleep` |
+| `timeOfDayPhrase` | hour | `deep night` / `just before dawn` / `early morning` / `mid-morning` / `midday` / `afternoon` / `late afternoon` / `evening` / `night` |
+| `seasonName` | sim-day + `Weather::season()` | `spring` / `summer` / `autumn` / `winter` |
+| `physiologicalState` | sleep pressure, fatigue, pain, sickness | `rested` / `drowsy` / `tired` / `exhausted` / `asleep` / `pained` / `sick` / `fine` |
+| `primaryNeed` | drives | `thirsty` / `hungry` / `tired` / `fine` |
+| `circadianTone` | composed (circadian + drives + threat) | one-word tone hint: `groggy` / `calm` / `alert` / `tense` / `agitated` / `peaceful` / `weary` / `terrified` / `restless` / `drowsy` / `unconscious` |
+
+**Rules** (enforced in code, documented so they aren't accidentally weakened):
+1. Every field is a **pure function of the existing snapshot fields** plus `hourOfDay()`
+   and `Weather::season()`. No RNG, no wall-clock input, no extra LLM call.
+2. **Determinism preserved**: the snapshot is still a fixed-layout struct; the six new
+   fields are appended in a stable order so any external consumer stays compatible.
+3. The `respond` system prompt explicitly tells the LLM to set tone from these fields.
+4. The **offline fallback reply** (no-LLM path) must carry the time of day in every
+   branch — asleep replies name the time + season; threat / thirst / hunger / tired /
+   sick / pained replies prefix their message with the time of day; healthy replies
+   open with a greeting slot ("Good morning/afternoon/evening/night").
+5. None of these fields persist in the snapshot; they are recomputed every time
+   `makeSnapshot()` runs.
+
+This is the first slice of the **time-of-day awareness in chat** future direction
+(ROADMAP). It does NOT yet add UI circadian indicators, audio cues, or timezone-aware
+chat scheduling — those stay deferred.
+
 ### Grounding & safety
 - LLM output is **parsed and validated**; any world mutation must come as a structured action
   request executed by the runtime. The LLM can never directly modify world state.

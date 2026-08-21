@@ -400,10 +400,25 @@ and "client does the maximum work" invariants apply to all of them.
   perspective: "I avoid the cold meadow, so I never see the berries there"). Suggestions
   come from its own planner/metacognition inspecting its metrics and are offered in
   conversation as *proposals* the user may adopt, not as code changes.
-- **Time-of-day awareness in chat**: the organism's replies reflect its circadian state —
-  whether it is awake/asleep, drowsy, tired, hungry or thirsty at the moment of speaking.
-  Grounded in the same snapshot that powers `respond` (no new LLM dependence), so a
-  question at 3am gets a groggy answer.
+- **Time-of-day awareness in chat** *(slice 1 implemented)*: the organism's replies
+  reflect its circadian state — whether it is awake/asleep, drowsy, tired, hungry or
+  thirsty at the moment of speaking. Grounded in the same snapshot that powers
+  `respond` (no new LLM dependence), so a question at 3am gets a groggy answer.
+  - [x] **Slice 1 — circadian snapshot + tone-aware replies** (`src/llm/bridge.hpp/.cpp`):
+        6 deterministic derived fields (`phaseOfDay`, `timeOfDayPhrase`, `seasonName`,
+        `physiologicalState`, `primaryNeed`, `circadianTone`) appended to
+        `CognitiveSnapshot`. `respond` prompt instructs the LLM to set tone from them;
+        `fallbackReply` opens with a "Good morning/afternoon/evening/night" greeting
+        and carries the time-of-day phrase in every branch (asleep / threat / thirsty /
+        hungry / tired / sick / pained / healthy). 8 C++ unit tests + integration test
+        updated; verified live (3am → "peaceful in the deep night"; midday → "I'm awake
+        at midday in spring"; tired at night → "drowsy in the deep night"). Pure
+        functions of existing snapshot state — no new persistent state, no extra LLM
+        calls, determinism preserved.
+  - [ ] UI circadian indicators (avatar / mood / weather-worn appearance).
+  - [ ] Audio cues for key states (alert / calm / distress) — light non-blocking layer.
+  - [ ] Timezone-aware chat scheduling (e.g. "good morning" greeting only fires in the
+        user's local morning, not the organism's sim morning).
 - **Wildlife domestication / pets**: repeated non-threatening contact with individual prey
   (feeding, no hunting nearby) lowers their fear of the organism over time; a tamed
   individual follows the organism, warns of predators, and can be kept as a companion.

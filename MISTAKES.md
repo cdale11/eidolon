@@ -251,10 +251,13 @@ showed two pre-existing failures unrelated to the changes:
 Mistake: Easily mistaken for breakage from the change under test. Caught by `git stash`
 + re-run on master HEAD — both failures reproduce with zero local modifications.
 Fix / rule: When a previously-passing integration test starts failing, **always re-run
-on the parent commit (or `git stash`) before assuming your change broke it**. Track the
-stale hardcoded feature count and `.eprp` size as a follow-up ticket: update
-`test_dump_and_dataset` / `test_prior_fit_and_roundtrip` to expect `(45,)` features
-and recompute the magic header size as `4 + 12 + 6 * 46 * 4`. The agent that grows the
-feature vector in the future must update both the dump layout AND the test in the
-same commit (and bump the teacher pipeline's `.eprp` schema version, which is currently
-unversioned).
+on the parent commit (or `git stash`) before assuming your change broke it**.
+
+Follow-up (open, NOT fixed in this entry): update `test_dump_and_dataset` /
+`test_prior_fit_and_roundtrip` to expect `(45,)` features and recompute the `.eprp`
+header size as `4 + 12 + 6 * 46 * 4`. The agent that grows the feature vector in the
+future must update **both** the dump layout **and** the test in the same commit, AND
+bump the teacher pipeline's `.eprp` schema version (currently unversioned — a latent
+risk that any feature-vector change silently invalidates existing priors on disk; see
+MISTAKES entry 2026-08-19 "Policy priors incompatible with current feature set" for the
+prior version of this lesson).
