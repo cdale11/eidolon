@@ -6,9 +6,16 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "core/json.hpp"
 #include "mind/memory.hpp"
+#include "mind/goal_emergence.hpp"
+#include "mind/user_model.hpp"
+#include "mind/wildlife_social.hpp"
+#include "body/physiology.hpp"
+#include "world/world.hpp"
+#include "sim/engine.hpp"
 
 namespace eidolon {
 
@@ -20,26 +27,69 @@ struct ParsedMessage {
 };
 
 struct CognitiveSnapshot {
+  // Core identity & time
   int64_t simTime = 0;
   bool alive = true;
   bool awake = true;
-  double energy = 0, hunger = 0, thirst = 0, fatigue = 0;
-  double sleepPressure = 0, bodyTemp = 0, health = 0;
   int day = 0;
   double hour = 0;
-  std::string weather;  // "clear"/"rain"/"storm"/"snow"
+
+  // Physiology (drives)
+  double energy = 0, hunger = 0, thirst = 0, fatigue = 0;
+  double sleepPressure = 0, bodyTemp = 0, health = 0;
+  double pain = 0;
+
+  // Position & environment
+  int posX = 0, posY = 0;
   std::string terrain;  // underfoot
+  std::string weather;  // "clear"/"rain"/"storm"/"snow"
   double ambientTempC = 0;
-  std::string recentMemorySummary; // last few episodes, compact
+
+  // Nearby threats (within sight radius = 8 tiles)
+  int predatorsNear = 0;
+  int predatorDist = -1;  // -1 = none in sight
+  int preyNear = 0;
+
+  // Nearby resources (within sight radius)
+  int waterDist = -1;     // -1 = none in sight
+  int plantDist = -1;     // -1 = none in sight
+  std::string plantType;  // "edible"/"toxic"/"medicinal"/"wood"/empty
+
+  // Inventory & waterskin
+  uint8_t waterCarried = 0;
+  uint8_t waterCapacity = 0;
+
+  // Current action/activity
+  std::string currentAction;  // "wander"/"forage"/"drink"/"rest"/"sleep"/"flee"/"observe"/"farm"/"cook"/"craft"/"build"/"collectwater"/"preserve"
+
+  // Threat level (0..1)
+  double threatLevel = 0.0;
+
+  // Active goals (from GoalEmergence)
+  std::vector<std::string> activeGoals;
+
+  // Personality & drives (summary)
+  std::string personalitySummary;  // e.g. "cautious, curious, attached to user"
+  std::string driveSummary;        // e.g. "hunger>thirst>safety>curiosity"
+
+  // Social - User model
+  double userTrust = 0.0;
+  double userFamiliarity = 0.0;
+  double userAffection = 0.0;
+  bool userExpectsReturn = false;
+
+  // Social - Wildlife
+  std::string wildlifeSummary;  // e.g. "wolf familiar=0.2 fear=0.8"
+
+  // Recent memories (last 6 episodes, compact)
+  std::string recentMemorySummary;
+
+  // Skills/competence
+  std::string skillSummary;  // e.g. "forage=0.8, drink=0.6, craft=0.1"
 };
 
-// Builds the compact cognitive snapshot from engine state (1–2 k tokens target).
-CognitiveSnapshot makeSnapshot(int64_t simTime, bool alive, bool awake, double energy,
-                               double hunger, double thirst, double fatigue,
-                               double sleepPressure, double bodyTemp, double health,
-                               int day, double hour, const char* weather,
-                               const char* terrain, double ambientTempC,
-                               const MemoryRing& memory);
+// Builds the comprehensive cognitive snapshot from engine state (~2-4 k tokens target).
+CognitiveSnapshot makeSnapshot(const Engine& engine);
 
 // Deterministic fallback reply generated purely from state (LLM down/garbage).
 std::string fallbackReply(const CognitiveSnapshot& s, const std::string& userText);

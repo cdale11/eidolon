@@ -4,6 +4,12 @@
 #include <cstring>
 
 #include "httplib.h"
+#include "sim/engine.hpp"
+#include "mind/goal_emergence.hpp"
+#include "mind/user_model.hpp"
+#include "mind/wildlife_social.hpp"
+#include "body/physiology.hpp"
+#include "world/world.hpp"
 
 namespace eidolon {
 
@@ -78,32 +84,169 @@ std::string assistantContent(const JsonValue& message) {
   if (!c || c->type() != JsonValue::Type::String) return "";
   return trim(c->asString());
 }
+
+// Helper: format action name
+const char* actionName(Action a) {
+  switch (a) {
+    case Action::Wander: return "wander";
+    case Action::Rest: return "rest";
+    case Action::Sleep: return "sleep";
+    case Action::Observe: return "observe";
+    case Action::Forage: return "forage";
+    case Action::Drink: return "drink";
+    case Action::Flee: return "flee";
+    case Action::Farm: return "farm";
+    case Action::Cook: return "cook";
+    case Action::Craft: return "craft";
+    case Action::Build: return "build";
+    case Action::CollectWater: return "collect water";
+    case Action::Preserve: return "preserve";
+  }
+  return "unknown";
+}
+
+// Helper: format goal name
+const char* goalName(GoalType g) {
+  switch (g) {
+    case GoalType::Survive: return "survive";
+    case GoalType::FindFood: return "find food";
+    case GoalType::FindWater: return "find water";
+    case GoalType::Rest: return "rest";
+    case GoalType::FleeThreat: return "flee threat";
+    case GoalType::Explore: return "explore";
+    case GoalType::BuildShelter: return "build shelter";
+    case GoalType::CraftTool: return "craft tool";
+    default: return "none";
+  }
+}
+
+// Helper: format plant type
+const char* plantTypeName(PlantType t) {
+  switch (t) {
+    case PlantType::Edible: return "edible";
+    case PlantType::Toxic: return "toxic";
+    case PlantType::Medicinal: return "medicinal";
+    case PlantType::Wood: return "wood";
+    default: return "unknown";
+  }
+}
+
 } // namespace
 
-CognitiveSnapshot makeSnapshot(int64_t simTime, bool alive, bool awake, double energy,
-                               double hunger, double thirst, double fatigue,
-                               double sleepPressure, double bodyTemp, double health,
-                               int day, double hour, const char* weather,
-                               const char* terrain, double ambientTempC,
-                               const MemoryRing& memory) {
+CognitiveSnapshot makeSnapshot(const Engine& engine) {
   CognitiveSnapshot s;
-  s.simTime = simTime;
-  s.alive = alive;
-  s.awake = awake;
-  s.energy = energy;
-  s.hunger = hunger;
-  s.thirst = thirst;
-  s.fatigue = fatigue;
-  s.sleepPressure = sleepPressure;
-  s.bodyTemp = bodyTemp;
-  s.health = health;
-  s.day = day;
-  s.hour = hour;
-  s.weather = weather ? weather : "clear";
-  s.terrain = terrain ? terrain : "plains";
-  s.ambientTempC = ambientTempC;
+  const auto& b = engine.body();
+  const auto& w = engine.world().weather();
+  const auto& mem = engine.memory();
+  const Vec2i pos = engine.world().organismPos();
+  const auto& grid = engine.world().grid();
 
-  const auto& eps = memory.episodes();
+  // Core identity & time
+  s.simTime = engine.clock().now();
+  s.alive = engine.isAlive();
+  s.awake = !b.isSleeping();
+  s.day = static_cast<int>(engine.clock().day());
+  s.hour = engine.clock().hourOfDay();
+
+  // Physiology
+  s.energy = b.energy();
+  s.hunger = b.hunger();
+  s.thirst = b.thirst();
+  s.fatigue = b.fatigue();
+  s.sleepPressure = b.sleepPressure();
+  s.bodyTemp = b.bodyTemp();
+  s.health = b.health();
+  s.pain = b.pain();
+
+  // Position & environment
+  s.posX = pos.x;
+  s.posY = pos.y;
+  s.terrain = std::to_string(static_cast<int>(grid.at(pos.x, pos.y)));
+  s.weather = w.describe();
+  s.ambientTempC = w.ambientTempC(engine.clock());
+
+  // Nearby threats (within sight radius = 8 tiles)
+  const int sightRadius = 8;
+  s.predatorsNear = engine.world().predatorCount(pos, sightRadius);
+  const WildlifeAgent* predator = engine.world().nearestPredator(pos, sightRadius);
+  s.predatorDist = predator ? distCheb(predator->pos, pos) : -1;
+  s.preyNear = engine.world().preyCount(pos, sightRadius);
+
+  // Nearby resources
+  const WaterSource* water = engine.world().nearestWaterSource(pos, sightRadius);
+  s.waterDist = water ? distCheb(water->pos, pos) : -1;
+  const Plant* plant = engine.world().nearestEdiblePlant(pos, sightRadius);
+  s.plantDist = plant ? distCheb(plant->pos, pos) : -1;
+  s.plantType = plant ? plantTypeName(plant->type) : "";
+
+  // Inventory & waterskin
+  s.waterCarried = b.waterCarried();
+  s.waterCapacity = b.waterCapacity();
+
+  // Current action (from last tick's decision)
+  // We can infer from recent behavior or use a placeholder
+  s.currentAction = "active"; // placeholder
+
+  // Threat level
+  s.threatLevel = engine.learn().threatEstimate();
+
+  // Active goals (from GoalEmergence)
+  const auto& goals = engine.goalEmergence().active_goals();
+  for (const auto& goal : goals) {
+    if (goal.priority > 0.1f) { // Only significant goals
+      s.activeGoals.push_back(goalName(goal.type));
+    }
+  }
+
+  // Personality & drives (summary)
+  const auto& latent = engine.learn().personality();
+  const auto& drives = engine.learn().driveWeights();
+  
+  // Personality summary from latent vector
+  char persBuf[256];
+  std::snprintf(persBuf, sizeof(persBuf),
+    "rewardSens=%.2f threatSens=%.2f noveltySens=%.2f socialSens=%.2f impulsivity=%.2f persistence=%.2f",
+    latent.value(PersonalityLatent::kRewardSensitivity),
+    latent.value(PersonalityLatent::kThreatSensitivity),
+    latent.value(PersonalityLatent::kNoveltySensitivity),
+    latent.value(PersonalityLatent::kSocialSensitivity),
+    latent.value(PersonalityLatent::kImpulsivity),
+    latent.value(PersonalityLatent::kPersistence));
+  s.personalitySummary = persBuf;
+
+  // Drive summary
+  char driveBuf[256];
+  std::snprintf(driveBuf, sizeof(driveBuf),
+    "hunger=%.2f thirst=%.2f rest=%.2f energy=%.2f curiosity=%.2f",
+    drives.hunger, drives.thirst, drives.rest, drives.energy, drives.curiosity);
+  s.driveSummary = driveBuf;
+
+  // Social - User model
+  const auto& userModel = engine.userModel();
+  s.userTrust = userModel.trust;
+  s.userFamiliarity = userModel.familiarity;
+  s.userAffection = userModel.affection;
+  s.userExpectsReturn = false; // placeholder
+
+  // Social - Wildlife
+  char wildBuf[256];
+  // Find nearest wildlife agent for summary
+  const WildlifeAgent* nearestWolf = engine.world().nearestPredator(pos, 16);
+  if (nearestWolf) {
+    const auto* ws = engine.wildlifeSocial().get_profile(nearestWolf->id);
+    if (ws) {
+      std::snprintf(wildBuf, sizeof(wildBuf), "wolf familiar=%.2f fear=%.2f threat=%.2f",
+                    ws->familiarity, ws->fear, ws->threat_level);
+    } else {
+      std::snprintf(wildBuf, sizeof(wildBuf), "wolf no social profile");
+    }
+  } else {
+    std::snprintf(wildBuf, sizeof(wildBuf), "no nearby wildlife tracked");
+  }
+  s.wildlifeSummary = wildBuf;
+
+  // Recent memories (last 6 episodes, compact)
+  const auto& eps = mem.episodes();
   const size_t from = eps.size() > 6 ? eps.size() - 6 : 0;
   std::string summary;
   for (size_t i = from; i < eps.size(); ++i) {
@@ -111,6 +254,11 @@ CognitiveSnapshot makeSnapshot(int64_t simTime, bool alive, bool awake, double e
     summary += episodeText(eps[i]);
   }
   s.recentMemorySummary = summary;
+
+  // Skills/competence
+  // TODO: Add skill summary when skill system exposes it
+  s.skillSummary = "forage=0.8 drink=0.6 craft=0.1"; // placeholder
+
   return s;
 }
 
@@ -145,9 +293,15 @@ std::string fallbackReply(const CognitiveSnapshot& s, const std::string& userTex
                   s.fatigue);
     return buf;
   }
+  if (s.predatorDist >= 0 && s.predatorDist <= 3) {
+    std::snprintf(buf, sizeof(buf), "There's a predator %d tiles away! I need to flee!",
+                  s.predatorDist);
+    return buf;
+  }
   std::snprintf(buf, sizeof(buf),
-                "Day %d, hour %.1f. Weather is %s, %.1f C. Energy %.0f, health %.0f.",
-                s.day, s.hour, s.weather.c_str(), s.ambientTempC, s.energy, s.health);
+                "Day %d, hour %.1f. Weather %s, %.1f C. Pos (%d,%d). Energy %.0f, health %.0f, hunger %.0f, thirst %.0f. Water %d/%d.",
+                s.day, s.hour, s.weather.c_str(), s.ambientTempC, s.posX, s.posY,
+                s.energy, s.health, s.hunger, s.thirst, s.waterCarried, s.waterCapacity);
   return buf;
 }
 
@@ -197,7 +351,7 @@ bool LLMBridge::chatComplete(const JsonValue& messages, int maxTokens, JsonValue
 }
 
 bool LLMBridge::parse(const std::string& userText, const CognitiveSnapshot& s,
-                      ParsedMessage& out, std::string& raw) {
+                       ParsedMessage& out, std::string& raw) {
   JsonValue sys = JsonValue::makeObject();
   sys.setString("role", "system");
   sys.setString(
@@ -211,7 +365,20 @@ bool LLMBridge::parse(const std::string& userText, const CognitiveSnapshot& s,
   JsonValue user = JsonValue::makeObject();
   user.setString("role", "user");
   JsonValue payload = JsonValue::makeObject();
-  payload.setString("time", std::to_string(s.simTime));
+  
+  char stateBuf[2048];
+  std::snprintf(stateBuf, sizeof(stateBuf),
+    "time=%lld day=%d hour=%.1f awake=%s "
+    "energy=%.0f hunger=%.0f thirst=%.0f fatigue=%.0f health=%.0f "
+    "threatLevel=%.2f predatorDist=%d waterDist=%d "
+    "currentAction=%s",
+    static_cast<long long>(s.simTime), s.day, s.hour, s.awake ? "yes" : "no",
+    s.energy, s.hunger, s.thirst, s.fatigue, s.health,
+    s.threatLevel, s.predatorDist, s.waterDist,
+    s.currentAction.c_str()
+  );
+  
+  payload.setString("state", stateBuf);
   payload.setString("message", userText);
   user.setString("content", payload.dump());
   JsonValue msgs = JsonValue::makeArray();
@@ -236,8 +403,8 @@ bool LLMBridge::parse(const std::string& userText, const CognitiveSnapshot& s,
 }
 
 bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
-                        const ParsedMessage& parsed, std::string& reply,
-                        std::string& raw) {
+                         const ParsedMessage& parsed, std::string& reply,
+                         std::string& raw) {
   JsonValue sys = JsonValue::makeObject();
   sys.setString("role", "system");
   sys.setString(
@@ -249,20 +416,43 @@ bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
   JsonValue user = JsonValue::makeObject();
   user.setString("role", "user");
   JsonValue payload = JsonValue::makeObject();
-  payload.setString("state",
-                    "time=" + std::to_string(s.simTime) +
-                        " day=" + std::to_string(s.day) +
-                        " hour=" + std::to_string(s.hour) +
-                        " awake=" + (s.awake ? "yes" : "no") +
-                        " energy=" + std::to_string(static_cast<int>(s.energy)) +
-                        " hunger=" + std::to_string(static_cast<int>(s.hunger)) +
-                        " thirst=" + std::to_string(static_cast<int>(s.thirst)) +
-                        " fatigue=" + std::to_string(static_cast<int>(s.fatigue)) +
-                        " health=" + std::to_string(static_cast<int>(s.health)) +
-                        " weather=" + s.weather + " temp=" +
-                        std::to_string(s.ambientTempC) +
-                        " terrain=" + s.terrain +
-                        " recent_memories=[" + s.recentMemorySummary + "]");
+  
+  // Build comprehensive state string
+  char stateBuf[4096];
+  std::snprintf(stateBuf, sizeof(stateBuf),
+    "time=%lld day=%d hour=%.1f awake=%s "
+    "pos=(%d,%d) terrain=%s weather=%s temp=%.1fC "
+    "energy=%.0f hunger=%.0f thirst=%.0f fatigue=%.0f health=%.0f pain=%.0f sleepP=%.0f "
+    "water=%d/%d "
+    "threatLevel=%.2f "
+    "predatorsNear=%d predatorDist=%d preyNear=%d "
+    "waterDist=%d plantDist=%d plantType=%s "
+    "currentAction=%s "
+    "activeGoals=%s "
+    "personality=[%s] "
+    "drives=[%s] "
+    "userTrust=%.2f userFamiliarity=%.2f userAffection=%.2f userExpectsReturn=%s "
+    "wildlife=[%s] "
+    "skills=[%s] "
+    "recentMemories=[%s]",
+    static_cast<long long>(s.simTime), s.day, s.hour, s.awake ? "yes" : "no",
+    s.posX, s.posY, s.terrain.c_str(), s.weather.c_str(), s.ambientTempC,
+    s.energy, s.hunger, s.thirst, s.fatigue, s.health, s.pain, s.sleepPressure,
+    s.waterCarried, s.waterCapacity,
+    s.threatLevel,
+    s.predatorsNear, s.predatorDist, s.preyNear,
+    s.waterDist, s.plantDist, s.plantType.c_str(),
+    s.currentAction.c_str(),
+    s.activeGoals.empty() ? "none" : s.activeGoals[0].c_str(), // first goal
+    s.personalitySummary.c_str(),
+    s.driveSummary.c_str(),
+    s.userTrust, s.userFamiliarity, s.userAffection, s.userExpectsReturn ? "yes" : "no",
+    s.wildlifeSummary.c_str(),
+    s.skillSummary.c_str(),
+    s.recentMemorySummary.c_str()
+  );
+  
+  payload.setString("state", stateBuf);
   payload.setString("user_intent", parsed.intent);
   payload.setString("user_topic", parsed.topic);
   payload.setString("message", userText);

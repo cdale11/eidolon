@@ -18,6 +18,7 @@
 #include "mind/memory.hpp"
 #include "mind/memory_system.hpp"
 #include "mind/heredity.hpp"
+#include "mind/wildlife_social.hpp"
 #include "body/crafting.hpp"
 #include "body/construction.hpp"
 #include "llm/instruction_learning.hpp"
@@ -192,6 +193,15 @@ bool loadPolicyPrior(const std::string& path);
   InstructionLearningSystem& instructionLearning() { return instructionLearning_; }
   const InstructionLearningSystem& instructionLearning() const { return instructionLearning_; };
 
+  GoalEmergence& goalEmergence() { return goal_emergence_; }
+  const GoalEmergence& goalEmergence() const { return goal_emergence_; }
+
+  UserModel& userModel() { return userModel_; }
+  const UserModel& userModel() const { return userModel_; }
+
+  WildlifeSocialSystem& wildlifeSocial() { return wildlife_social_; }
+  const WildlifeSocialSystem& wildlifeSocial() const { return wildlife_social_; }
+
   // Process a user text instruction: parse, validate, update trust/habits, and
   // optionally inject as a goal/policy bias. Returns whether instruction was valid.
   bool processUserInstruction(const std::string& text, uint64_t tick);
@@ -255,6 +265,7 @@ private:
   GoalEmergence goal_emergence_;
   // User model for tracking relationship with the user
   UserModel userModel_;
+  WildlifeSocialSystem wildlife_social_;
 
   // Heredity (organism inheritance across generations)
   std::string heredityPath_; // path to heredity file for inheritance

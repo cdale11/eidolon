@@ -638,18 +638,9 @@ std::string Server::sendMessage(const std::string& conversationIdStr,
 
   // Snapshot the current state for the reply (grounded in real state).
   CognitiveSnapshot snap;
-  MemoryRing memCopy;
   {
     std::lock_guard<std::mutex> lock(engineMu_);
-    const auto& b = engine_.body();
-    const auto& w = engine_.world().weather();
-    memCopy = engine_.memory(); // copy hot memory (bounded, small)
-    snap = makeSnapshot(engine_.clock().now(), engine_.isAlive(), !b.isSleeping(),
-                        b.energy(), b.hunger(), b.thirst(), b.fatigue(),
-                        b.sleepPressure(), b.bodyTemp(), b.health(),
-                        static_cast<int>(engine_.clock().day()),
-                        engine_.clock().hourOfDay(), w.describe(),
-                        "plains", w.ambientTempC(engine_.clock()), memCopy);
+    snap = makeSnapshot(engine_);
   }
 
   if (archive_) {

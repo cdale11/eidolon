@@ -1,9 +1,35 @@
-0.00.320.782 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
-0.00.321.346 W srv  llama_server: -----------------
-0.00.321.348 W srv  llama_server: CORS is set to allow all origins ('*') and no API key is set
-0.00.321.349 W srv  llama_server: this can be a security risk (cross-origin attacks)
-0.00.321.349 W srv  llama_server: more info: https://github.com/ggml-org/llama.cpp/pull/25655
-0.00.321.349 W srv  llama_server: -----------------
-0.00.321.514 E srv         start: couldn't bind HTTP server socket, hostname: 127.0.0.1, port: 8080
-0.00.321.515 I srv    operator(): operator(): cleaning up before exit...
-0.00.321.973 E srv  llama_server: exiting due to HTTP server error
+0.00.273.034 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+0.00.282.839 W srv  llama_server: -----------------
+0.00.282.841 W srv  llama_server: CORS is set to allow all origins ('*') and no API key is set
+0.00.282.842 W srv  llama_server: this can be a security risk (cross-origin attacks)
+0.00.282.842 W srv  llama_server: more info: https://github.com/ggml-org/llama.cpp/pull/25655
+0.00.282.842 W srv  llama_server: -----------------
+0.00.284.120 I srv    load_model: loading model '/home/umang/llama.cpp/NVIDIA-Nemotron3-Nano-4B-Q4_K_M.gguf'
+0.01.703.195 W resolve_fused_ops: layer 32 is assigned to device Vulkan0 but Flash Attention is assigned to device CPU (usually due to missing support)
+0.01.703.205 W resolve_fused_ops: Flash Attention not supported, set to disabled
+0.02.673.500 I srv    load_model: initializing, n_slots = 4, n_ctx_slot = 2048, kv_unified = 'true'
+0.02.703.659 I srv          init: chat template supports preserving reasoning, consider enabling it via --reasoning-preserve
+0.02.703.692 I srv  llama_server: model loaded
+0.02.703.696 I srv  llama_server: listening on http://127.0.0.1:8080
+23.31.522.849 I slot get_availabl: id  3 | task -1 | selected slot by LRU, t_last = -1
+23.31.524.106 I slot launch_slot_: id  3 | task 0 | processing task, is_child = 0
+23.35.018.409 I slot print_timing: id  3 | task 0 | prompt processing, n_tokens =     94, progress = 0.54, t =   3.49 s / 26.91 tokens per second
+23.37.689.959 I slot print_timing: id  3 | task 0 | prompt processing, n_tokens =    170, progress = 0.98, t =   6.17 s / 27.57 tokens per second
+23.41.524.120 W srv          stop: cancel task, id_task = 0
+23.41.620.359 I slot      release: id  3 | task 0 | stop processing: n_tokens = 186, truncated = 0
+24.13.469.023 I slot get_availabl: id  3 | task -1 | selected slot by LCP similarity, sim_best = 0.578 (> 0.100 thold), f_keep = 0.538
+24.13.469.102 I slot launch_slot_: id  3 | task 17 | processing task, is_child = 0
+24.23.470.168 W srv          stop: cancel task, id_task = 17
+24.23.606.775 I slot      release: id  3 | task 17 | stop processing: n_tokens = 198, truncated = 0
+24.27.693.219 I slot get_availabl: id  3 | task -1 | selected slot by LCP similarity, sim_best = 0.571 (> 0.100 thold), f_keep = 0.505
+24.27.693.293 I slot launch_slot_: id  3 | task 46 | processing task, is_child = 0
+24.37.696.006 W srv          stop: cancel task, id_task = 46
+24.37.720.765 I slot      release: id  3 | task 46 | stop processing: n_tokens = 199, truncated = 0
+24.46.688.545 I slot get_availabl: id  3 | task -1 | selected slot by LCP similarity, sim_best = 0.575 (> 0.100 thold), f_keep = 0.503
+24.46.688.636 I slot launch_slot_: id  3 | task 74 | processing task, is_child = 0
+24.56.693.089 W srv          stop: cancel task, id_task = 74
+24.56.974.504 I slot      release: id  3 | task 74 | stop processing: n_tokens = 199, truncated = 0
+27.40.718.384 I slot get_availabl: id  3 | task -1 | selected slot by LCP similarity, sim_best = 0.581 (> 0.100 thold), f_keep = 0.503
+27.40.718.452 I slot launch_slot_: id  3 | task 103 | processing task, is_child = 0
+27.50.720.300 W srv          stop: cancel task, id_task = 103
+27.50.992.438 I slot      release: id  3 | task 103 | stop processing: n_tokens = 197, truncated = 0

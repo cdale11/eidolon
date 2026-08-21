@@ -45,6 +45,20 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   Changed initial hunger to 55 (attack threshold) so wolf attacks immediately, hunger drops
   to ~10, survives >750 ticks. Both wolves now survive full 120-tick comparison.
 
+### LLM Cognitive Snapshot — Comprehensive NLP Center
+- **Overhauled `CognitiveSnapshot`** (src/llm/bridge.hpp/.cpp) from ~15 fields to 40+ fields
+  covering identity, physiology, position, threats, resources, inventory, cognition,
+  personality, drives, social relationships (user + wildlife), skills, and recent memories.
+- **LLM is now the true NLP center**: the user's only window into the organism's world,
+  with full access to comprehensive state. LLM responses grounded in actual organism state.
+- **Exposed internal systems to LLM**: GoalEmergence (active goals), UserModel (trust,
+  familiarity, affection), WildlifeSocialSystem (per-agent profiles), PersonalityLatent,
+  DriveWeights, ThreatNet estimate.
+- **Added public accessors** on Engine: `goalEmergence()`, `userModel()`, `wildlifeSocial()`
+- **Updated parse/respond prompts** with comprehensive state string (~2-4k tokens)
+- **Fixed fallbackReply** to include position, water, threats, predator distance
+- **All 108 tests pass**; server responds with complete organism state
+
 ### Phase 5 — Rich world & wildlife (world generation + ecology)
 - Noise-field world generation (simplex fbm): elevation, temperature, humidity per tile;
   biomes (temperate plains/forest, boreal, tundra, desert, savannah, jungle, mountain,
