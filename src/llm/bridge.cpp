@@ -307,12 +307,30 @@ std::string fallbackReply(const CognitiveSnapshot& s, const std::string& userTex
 
 bool LLMBridge::post(const std::string& body, std::string& response) {
   if (endpoint_.empty()) return false;
-  httplib::Client cli(endpoint_.c_str());
+  // httplib expects base URL without path; handle /v1 suffix correctly
+  std::string baseUrl = endpoint_;
+  std::string path = "/v1/chat/completions";
+  if (baseUrl.size() >= 3 && baseUrl.substr(baseUrl.size() - 3) == "/v1") {
+    baseUrl = baseUrl.substr(0, baseUrl.size() - 3);
+    path = "/chat/completions";
+  }
+  std::fprintf(stderr, "LLMBridge: POST to %s%s\n", baseUrl.c_str(), path.c_str());
+  std::fflush(stderr);
+  httplib::Client cli(baseUrl.c_str());
   cli.set_connection_timeout(timeoutMs_ / 1000, timeoutMs_ % 1000);
   cli.set_read_timeout(timeoutMs_ / 1000, timeoutMs_ % 1000);
   httplib::Headers headers = {{"Content-Type", "application/json"}};
-  auto res = cli.Post("/chat/completions", headers, body, "application/json");
-  if (!res || res->status != 200) return false;
+  auto res = cli.Post(path.c_str(), headers, body, "application/json");
+  if (!res) {
+    std::fprintf(stderr, "LLMBridge: POST failed - no response (error: %d)\n", static_cast<int>(res.error()));
+    std::fflush(stderr);
+    return false;
+  }
+  if (res->status != 200) {
+    std::fprintf(stderr, "LLMBridge: POST failed - status %d: %s\n", res->status, res->body.c_str());
+    std::fflush(stderr);
+    return false;
+  }
   response = res->body;
   return true;
 }
@@ -320,7 +338,8 @@ bool LLMBridge::post(const std::string& body, std::string& response) {
 bool LLMBridge::chatComplete(const JsonValue& messages, int maxTokens, JsonValue& out) {
   ++calls_;
   JsonValue req = JsonValue::makeObject();
-  req.setString("model", "local");
+  // Use actual model name for Qwen3-4B (llama.cpp server returns full path as model ID)
+  req.setString("model", "/home/umang/llama.cpp/Qwen3-4B-Instruct-Q4_K_M.gguf");
   req.set("messages", messages);
   req.setNumber("max_tokens", maxTokens);
   req.setNumber("temperature", 0.7);
@@ -332,17 +351,23 @@ bool LLMBridge::chatComplete(const JsonValue& messages, int maxTokens, JsonValue
   req.set("chat_template_kwargs", kwargs);
   std::string respBody;
   if (!post(req.dump(), respBody)) {
+    std::fprintf(stderr, "LLMBridge: POST failed\n");
+    std::fflush(stderr);
     ++failures_;
     return false;
   }
   JsonValue parsed;
   if (!jsonParse(respBody, parsed)) {
+    std::fprintf(stderr, "LLMBridge: JSON parse failed: %s\n", respBody.c_str());
+    std::fflush(stderr);
     ++failures_;
     return false;
   }
   const JsonValue* choices = parsed.find("choices");
   if (!choices || choices->type() != JsonValue::Type::Array ||
       choices->asArray().empty()) {
+    std::fprintf(stderr, "LLMBridge: No choices in response\n");
+    std::fflush(stderr);
     ++failures_;
     return false;
   }
@@ -462,11 +487,20 @@ bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
   msgs.push(std::move(user));
 
   JsonValue choice;
-  if (!chatComplete(msgs, 1024, choice)) return false;
+  if (!chatComplete(msgs, 1024, choice)) {
+    std::fprintf(stderr, "LLMBridge: chatComplete failed in respond\n");
+    return false;
+  }
   const JsonValue* msg = choice.find("message");
-  if (!msg) return false;
+  if (!msg) {
+    std::fprintf(stderr, "LLMBridge: No message in choice\n");
+    return false;
+  }
   raw = assistantContent(*msg);
-  if (raw.empty()) return false;
+  if (raw.empty()) {
+    std::fprintf(stderr, "LLMBridge: Empty raw response\n");
+    return false;
+  }
   // If the reply hides reasoning before the answer (some servers stream it into content),
   // keep only the trailing prose: drop leading '...' thinking blocks and code fences.
   const size_t fenceA = raw.find("```");
@@ -475,6 +509,7 @@ bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
     if (fenceB > fenceA) raw = raw.substr(fenceA + 3, fenceB - fenceA - 3);
   }
   reply = trim(raw).substr(0, kMaxReplyChars);
+  std::fprintf(stderr, "LLMBridge: Reply: %s\n", reply.c_str());
   return !reply.empty();
 }
 
