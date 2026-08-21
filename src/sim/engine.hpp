@@ -18,6 +18,8 @@
 #include "mind/memory.hpp"
 #include "mind/memory_system.hpp"
 #include "mind/heredity.hpp"
+#include "body/crafting.hpp"
+#include "body/construction.hpp"
 #include "llm/instruction_learning.hpp"
 #include "mind/goal_emergence.hpp"
 #include "world/world.hpp"
@@ -32,11 +34,18 @@ enum class Action : uint8_t {
   Forage = 4,
   Drink = 5,
   Flee = 6,
+  // New survival actions
+  Farm = 7,       // Plant/harvest crops on farm plots
+  Cook = 8,       // Process raw food into cooked meals
+  Craft = 9,      // Craft tools, containers, structures
+  Build = 10,     // Build structures (farm plots, wells, storage, shelter)
+  CollectWater = 11, // Collect rainwater, dew
+  Preserve = 12,  // Preserve food (drying, smoking, fermenting)
 };
 
 class Engine {
 public:
-  struct Stats {
+struct Stats {
     uint64_t ticksFine = 0;
     uint64_t ticksCoarse = 0;
     uint64_t ticksSleep = 0;
@@ -47,14 +56,26 @@ public:
     uint64_t actionsForage = 0;
     uint64_t actionsDrink = 0;
     uint64_t actionsFlee = 0;
+    uint64_t actionsFarm = 0;
+    uint64_t actionsCook = 0;
+    uint64_t actionsCraft = 0;
+    uint64_t actionsBuild = 0;
+    uint64_t actionsCollectWater = 0;
+    uint64_t actionsPreserve = 0;
     uint64_t predatorAttacks = 0;
     uint64_t berriesEaten = 0;
     uint64_t drinks = 0;
-    uint64_t fallsTaken = 0;        // steep descents that caused damage
-    uint64_t woundsSustained = 0;   // predator/fall wounds created
-    uint64_t infections = 0;        // times a wound turned infected
-    uint64_t waterskinFills = 0;   // times the waterskin was topped up at a water source
-    uint64_t waterskinDrinks = 0;  // times the organism drank from the waterskin
+    uint64_t fallsTaken = 0;
+    uint64_t woundsSustained = 0;
+    uint64_t infections = 0;
+    uint64_t waterskinFills = 0;
+    uint64_t waterskinDrinks = 0;
+    uint64_t cropsHarvested = 0;
+    uint64_t mealsCooked = 0;
+    uint64_t itemsCrafted = 0;
+    uint64_t structuresBuilt = 0;
+    uint64_t waterCollected = 0;
+    uint64_t foodPreserved = 0;
   };
 
   Engine() = default;
@@ -235,6 +256,23 @@ private:
   std::string heredityPath_; // path to heredity file for inheritance
   bool heredityLoaded_ = false;
   float heredityInheritanceWeight_ = 0.7f; // 0.0 = fresh, 1.0 = full inheritance
+
+  // Crafting system for tools, structures, food processing
+  CraftingSystem crafting_;
+
+  // Survival helper functions
+  bool hasMaterialsForFarmPlot() const noexcept;
+  bool hasSeeds() const noexcept;
+  void plantCrop(const Structure* farmPlot) noexcept;
+  void harvestCrop(const Structure* farmPlot) noexcept;
+  void tendCrop(const Structure* farmPlot) noexcept;
+  bool cookFood() noexcept;
+  bool craftItem() noexcept;
+  bool buildStructure(StructureType type = StructureType::None) noexcept;
+  bool buildStructure() noexcept; // Generic build (chooses based on needs)
+  bool collectWater() noexcept;
+  bool preserveFood() noexcept;
+  bool hasMaterialsForStructure(StructureType type) const noexcept;
 };
 
 } // namespace eidolon

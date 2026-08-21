@@ -14,6 +14,7 @@
 #include "world/noise.hpp"
 #include "world/wildlife.hpp"
 #include "world/cellular_automata.hpp"
+#include "body/crafting.hpp"
 
 namespace eidolon {
 
@@ -251,6 +252,22 @@ public:
   void serialize(BinaryWriter& w) const;
   bool deserialize(BinaryReader& r);
 
+  // Simple structures for survival mechanics (farm plots, wells, shelters, etc.)
+  struct SimpleStructure {
+    uint32_t id = 0;
+    StructureType type = StructureType::None;
+    Vec2i pos;
+    uint32_t health = 100;
+    // Farm plot specific
+    MaterialType cropType = MaterialType::None;
+    float growth = 0.0f;
+  };
+  
+  const std::vector<SimpleStructure>& structures() const { return structures_; }
+  std::vector<SimpleStructure>& structures() { return structures_; }
+  uint32_t addStructure(StructureType type, Vec2i pos);
+  bool hasStructureAt(Vec2i pos, StructureType type) const;
+
 private:
   Grid grid_;
   Weather weather_;
@@ -263,6 +280,8 @@ private:
   bool alive_ = true;
   std::vector<Plant> plants_;
   std::vector<WaterSource> waterSources_;
+  std::vector<SimpleStructure> structures_;
+  uint32_t nextStructureId_ = 1;
 };
 
 } // namespace eidolon

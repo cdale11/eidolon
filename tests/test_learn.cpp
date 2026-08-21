@@ -236,15 +236,15 @@ TEST(policy_loads_prior_and_retrains_online) {
     std::FILE* f = std::fopen(path, "wb");
     CHECK(f != nullptr);
     std::fwrite("EPRP", 1, 4, f);
-    uint32_t v = 1, nf = 44, na = 6;
+    uint32_t v = 1, nf = 44, na = 12;
     std::fwrite(&v, 4, 1, f);
     std::fwrite(&nf, 4, 1, f);
     std::fwrite(&na, 4, 1, f);
-    float w[6 * 45] = {};
+    float w[12 * 45] = {};
     float* row = &w[static_cast<int>(PolicyAction::Drink) * 45];
     row[29] = 5.0f;  // strong preference on the thirst feature
     row[44] = -0.5f; // mild negative bias (avoid defaulting to Drink)
-    std::fwrite(w, sizeof(float), 6 * 45, f);
+    std::fwrite(w, sizeof(float), 12 * 45, f);
     std::fclose(f);
   }
 

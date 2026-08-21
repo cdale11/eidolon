@@ -865,6 +865,85 @@ void Engine::execute(Action a) noexcept {
       }
       break;
     }
+    case Action::Farm: {
+      ++stats_.actionsFarm;
+      // Farm: simple planting/harvesting on farm plots
+      // For now, just explore toward farm plots
+      exploreStep();
+      break;
+    }
+    case Action::Cook: {
+      ++stats_.actionsCook;
+      // Cook: process raw food into cooked meals
+      // Requires campfire - explore to find one
+      exploreStep();
+      break;
+    }
+    case Action::Craft: {
+      ++stats_.actionsCraft;
+      // Craft: make tools, containers
+      exploreStep();
+      break;
+    }
+    case Action::Build: {
+      ++stats_.actionsBuild;
+      // Build: construct farm plots, wells, shelters
+      exploreStep();
+      break;
+    }
+    case Action::CollectWater: {
+      ++stats_.actionsCollectWater;
+      // CollectWater: gather rainwater, dew
+      const Vec2i p = world_.organismPos();
+      const Weather& weather = world_.weather();
+      bool collected = false;
+      // Rain collection
+      if (weather.raining() || weather.storming()) {
+        if (body_.waterCarried() < body_.waterCapacity()) {
+          body_.refillWater();
+          ++stats_.waterCollected;
+          collected = true;
+        }
+      }
+      // Dew collection (morning)
+      if (!collected && weather.humidity() > 0.7 && clock_.hourOfDay() >= 5 && clock_.hourOfDay() <= 8) {
+        if (body_.waterCarried() < body_.waterCapacity()) {
+          body_.refillWater();
+          ++stats_.waterCollected;
+          collected = true;
+        }
+      }
+      // Well collection
+      if (!collected) {
+        for (const auto& s : world_.structures()) {
+          if (s.type == StructureType::Well && s.pos == world_.organismPos()) {
+            if (body_.waterCarried() < body_.waterCapacity()) {
+              body_.refillWater();
+              ++stats_.waterCollected;
+              collected = true;
+            }
+            break;
+          }
+        }
+      }
+      if (!collected) exploreStep();
+      break;
+    }
+    case Action::Preserve: {
+      ++stats_.actionsPreserve;
+      // Preserve: dry, smoke, ferment food
+      // Requires campfire
+      bool hasCampfire = false;
+      for (const auto& s : world_.structures()) {
+        if (s.type == StructureType::Campfire) { hasCampfire = true; break; }
+      }
+      if (hasCampfire) {
+        ++stats_.foodPreserved;
+      } else {
+        exploreStep();
+      }
+      break;
+    }
   }
 }
 

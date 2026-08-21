@@ -20,11 +20,17 @@ enum class PolicyAction : uint8_t {
   Wander = 3,
   Observe = 4,
   Flee = 5,
+  Farm = 6,
+  Cook = 7,
+  Craft = 8,
+  Build = 9,
+  CollectWater = 10,
+  Preserve = 11,
 };
 
 class Policy : public Learner {
 public:
-  static constexpr int kActions = 6;
+  static constexpr int kActions = 12;
 
   Policy() = default;
   Policy(int nFeatures);

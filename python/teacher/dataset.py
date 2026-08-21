@@ -7,11 +7,12 @@ from typing import Any, Iterator
 import numpy as np
 
 # Policy action index layout, must match src/mind/policy.hpp (kActions + order).
-ACTION_NAMES: list[str] = ["Forage", "Drink", "Rest", "Wander", "Observe", "Flee"]
+ACTION_NAMES: list[str] = ["Forage", "Drink", "Rest", "Wander", "Observe", "Flee",
+                           "Farm", "Cook", "Craft", "Build", "CollectWater", "Preserve"]
 ACTION_INDEX: dict[str, int] = {name: i for i, name in enumerate(ACTION_NAMES)}
 
 # Feature-vector length, must match src/mind/learn.hpp (kFeatures).
-N_FEATURES = 44
+N_FEATURES = 45
 
 
 class Experience:
