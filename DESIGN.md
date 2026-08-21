@@ -421,6 +421,13 @@ strictly below the entry-block threshold — earlier code used 85 for both, crea
 loop where a sleeping organism at rising thirst simply never woke. The same survival
 valves (`thirst > 55`, `hunger > 80`, `pain > 40`) also break the organism out of Rest.
 
+**Directed exploration** (in `Engine::execute`): when no resource is in perception range,
+Wander, Forage, Drink, and Flee no longer use 1-tile random walks (which trap organisms
+in corners with >75% return probability). Instead `exploreStep()` walks in a fixed
+direction for ~16 ticks, rotates 90° on obstacles, and falls through to any step — this
+actually traverses terrain and escapes resource deserts. State (`exploreDir_`,
+`exploreTicks_`) is serialised for bit-exact resume.
+
 ---
 
 ## 14. Language (LLM Bridge)

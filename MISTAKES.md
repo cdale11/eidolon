@@ -163,3 +163,18 @@ branch behind an `else`. Refactored to a `drank_from_source` flag so a source-dr
 Drink falls through to `drinkFromSkin`, and only seeks water once the skin is empty. Audit
 other `adjacentTo*` / `nearest*` pairs in the engine for the same terrain-vs-instance
 mismatch (forage/plant, gather/resource).
+
+### 2026-08-21 — 1-tile random walk traps organism in corners until death
+Context: Multiple seeds (1, 15, 33, 42, 71...) died at map edges with full waterskin and/or
+high hunger/thirst. Organism bounced 1-tile random walks in a 4-tile zone (e.g. (90,2)
+→ (88,0) → (90,2)...) for tens of thousands of ticks while energy drained to 0.
+Mistake: Wander, Forage (no plant in sight), Drink (no source in hearing), and Flee
+(no predator) all used single-tile random steps (`rngCognition_.irange(-1,1)`). In a
+corner/edge, the return probability of a 1-step random walk is >75% per tick — the
+organism effectively never escapes. Policy chose Drink/Forage 50k+ times, each tick
+burning energy, but execute() just jittered in place.
+Fix / rule: **Never use 1-tile random walks for exploration**. Added `exploreStep()`:
+sustained 16-tick directional walk (pick random heading, hold until blocked or expired,
+rotate 90° on obstacle, fall through to any walkable step). Replaces all four
+single-tile jitter sites. Verified: v2 prior 2-day survival 3/5→6/7; seed 33 now
+traverses >100 distinct tiles vs 5 before.

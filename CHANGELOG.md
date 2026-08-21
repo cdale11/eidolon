@@ -5,7 +5,7 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 
 ## [Unreleased]
 
-### Bugfix — survival decision logic (sleep + waterskin)
+### Bugfix — survival decision logic (sleep + waterskin + exploration)
 - A sleeping organism with rising thirst stayed asleep until it died: the wake-from-sleep
   threshold (`thirst > 85`) matched the sleep-entry block (`thirst < 85`), so at thirst=79
   the organism neither woke nor was blocked from re-entering sleep — a death loop. Wake
@@ -19,6 +19,11 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   organism could call Drink 33k+ times with a full waterskin and die of thirst. Now a
   source-dry adjacent Drink falls through to the emergency waterskin reserve, and only
   seeks water (gradient/wander) once the skin is empty.
+- **Directed exploration**: 1-tile random walks in Wander/Forage/Drink/Flee caused organisms
+  to bounce in corners until starvation/dehydration. Added `exploreStep()` — a sustained
+  16-tick directional walk that rotates on obstacles, replacing ineffective random jitter.
+  Used whenever no resource is in perception range. v2 prior 2-day survival improves from
+  3/5 to 6/7 seeds; baseline 3-day survival 72/100 seeds.
 
 ### Phase 5 — Rich world & wildlife (world generation + ecology)
 - Noise-field world generation (simplex fbm): elevation, temperature, humidity per tile;
