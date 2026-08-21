@@ -68,6 +68,8 @@ void Engine::init(uint64_t masterSeed, bool deterministic, int worldW, int world
   world_.generate(worldW > 0 ? worldW : kDefaultWorldW,
                   worldH > 0 ? worldH : kDefaultWorldH, rngWorld_);
   body_.reset();
+  body_.setWaterCapacity(Physiology::kInnateWaterskinCapacity);
+  body_.refillWater();
   learn_.init(rngLearn_);
   recordEpisode(EventKind::Birth, 0, 0.5, 255, Participant::Self, Outcome::Success, 0.0f, 0.0f, 0.0f, 0.0f, Relevance::Rewarding);
 }
@@ -305,17 +307,21 @@ void Engine::dumpExperience(PolicyAction pa, bool agentic, float reward, float n
                "{\"t\":%lld,\"agentic\":%d,\"action\":\"%s\",\"reward\":%.4f,"
                "\"novelty\":%.4f,\"threat\":%.4f,\"aversive\":%d,\"safe\":%d,"
                "\"body\":{\"h\":%.1f,\"t\":%.1f,\"f\":%.1f,\"e\":%.1f,\"hp\":%.1f,"
-               "\"p\":%.1f,\"s\":%.1f,\"temp\":%.1f},\"wx\":{\"tempC\":%.1f,\"desc\":\"%s\"},"
-               "\"bushDist\":%d,\"waterDist\":%d,\"eaten\":%.1f,\"drank\":%d,"
-               "\"value\":%.4f,\"temp\":%.4f,\"scores\":[",
-               static_cast<long long>(clock_.now()), agentic ? 1 : 0,
-               kActionNames[static_cast<int>(pa)], static_cast<double>(reward),
-               static_cast<double>(novelty), static_cast<double>(learn_.threatEstimate()),
-               aversive ? 1 : 0, safe ? 1 : 0, body_.hunger(), body_.thirst(),
-               body_.fatigue(), body_.energy(), body_.health(), body_.pain(),
-               body_.sleepPressure(), body_.bodyTemp(), world_.weather().ambientTempC(clock_),
-               world_.weather().describe(), bushDist, waterDist, eaten, drank ? 1 : 0,
-               static_cast<double>(value), static_cast<double>(temperature));
+                "\"p\":%.1f,\"s\":%.1f,\"temp\":%.1f,\"wsc\":%u,\"wsk\":%u},"
+                "\"wx\":{\"tempC\":%.1f,\"desc\":\"%s\"},"
+                "\"bushDist\":%d,\"waterDist\":%d,\"eaten\":%.1f,\"drank\":%d,"
+                "\"value\":%.4f,\"temp\":%.4f,\"scores\":[",
+                static_cast<long long>(clock_.now()), agentic ? 1 : 0,
+                kActionNames[static_cast<int>(pa)], static_cast<double>(reward),
+                static_cast<double>(novelty), static_cast<double>(learn_.threatEstimate()),
+                aversive ? 1 : 0, safe ? 1 : 0, body_.hunger(), body_.thirst(),
+                body_.fatigue(), body_.energy(), body_.health(), body_.pain(),
+                body_.sleepPressure(), body_.bodyTemp(),
+                static_cast<unsigned>(body_.waterCapacity()),
+                static_cast<unsigned>(body_.waterCarried()),
+                world_.weather().ambientTempC(clock_),
+                world_.weather().describe(), bushDist, waterDist, eaten, drank ? 1 : 0,
+                static_cast<double>(value), static_cast<double>(temperature));
   for (int a = 0; a < Policy::kActions; ++a) {
     std::fprintf(f, "%s%.4f", a ? "," : "", static_cast<double>(scores[a]));
   }
@@ -396,12 +402,12 @@ PolicyAction Engine::actionToPolicy(Action a) noexcept {
 
 Action Engine::decide() noexcept {
   if (body_.isSleeping()) {
-    // Survival overrides sleep: a predator at the door, or critical thirst/hunger.
+    // Survival overrides sleep: a predator at the door, or rising thirst/hunger.
     if (world_.nearestPredator(world_.organismPos(), 2)) {
       body_.setSleeping(false);
       return Action::Flee;
     }
-    if (body_.thirst() > 85.0 || body_.hunger() > 85.0) {
+    if (body_.thirst() > 55.0 || body_.hunger() > 80.0) {
       body_.setSleeping(false); // wake to drink/eat, then re-sleep
     } else if (body_.sleepPressure() < 12.0 && body_.fatigue() < 15.0) {
       body_.setSleeping(false);
@@ -410,8 +416,9 @@ Action Engine::decide() noexcept {
     }
     return Action::Sleep;
   }
-  // Don't sleep while critically thirsty/hungry: the active branch will drink/eat.
-  if (body_.needsSleep() && body_.thirst() < 85.0 && body_.hunger() < 85.0) {
+  // Don't sleep while thirst/hunger are climbing — the active branch will drink/eat.
+  // Thirst at 55 is already in the "must Drink" zone; sleeping lets it climb to death.
+  if (body_.needsSleep() && body_.thirst() < 55.0 && body_.hunger() < 75.0) {
     body_.setSleeping(true);
     resting_ = false;
     recordEpisode(EventKind::Sleep, 0, 0.15, 255, Participant::Self, Outcome::Success, 0.0f, 0.0f, 0.0f, 0.0f, Relevance::None);
@@ -421,7 +428,7 @@ Action Engine::decide() noexcept {
   // trigger, so the organism doesn't oscillate around the fatigue boundary.
   // Critical thirst/hunger break out of rest — they kill faster than fatigue.
   if (resting_) {
-    if (body_.thirst() > 80.0 || body_.hunger() > 80.0 || body_.pain() > 40.0)
+    if (body_.thirst() > 55.0 || body_.hunger() > 80.0 || body_.pain() > 40.0)
       resting_ = false;
     else if (body_.fatigue() < 25.0) resting_ = false;
     else return Action::Rest;
@@ -432,7 +439,10 @@ Action Engine::decide() noexcept {
   // Emergency safety valves override the learned policy (deterministic survival).
   // A predator within a few tiles outranks everything: flee first.
   if (world_.nearestPredator(world_.organismPos(), 3)) return Action::Flee;
-  if (body_.thirst() > 80.0) return Action::Drink;
+  // Critical thirst first (with guard against hunger being even more critical), then
+  // hunger. The hunger<80 guard on Drink prevents an organism with both thirst~56 and
+  // hunger~81 from drinking forever while starving.
+  if (body_.thirst() > 55.0 && body_.hunger() < 80.0) return Action::Drink;
   if (body_.hunger() > 80.0) return Action::Forage;
   if (body_.pain() > 40.0) return Action::Rest;
   // Learned policy proposes an agentic action from the state features.
@@ -647,51 +657,78 @@ void Engine::execute(Action a) noexcept {
     case Action::Drink: {
       ++stats_.actionsDrink;
       const Vec2i p = world_.organismPos();
+      bool drank_from_source = false;
       if (world_.adjacentToWater(p)) {
+        // Drink from the source AND refill the waterskin (implicit refill — guarantees
+        // the skin is topped up every time the organism drinks at water, so wandering
+        // away from water never strands the organism with an empty skin).
         double drank = world_.drinkFromSource(p, 8.0);
         if (drank > 0.0) {
           body_.drink(drank);
+          if (body_.waterCarried() < body_.waterCapacity()) {
+            body_.refillWater();
+            ++stats_.waterskinFills;
+          }
           ++stats_.drinks;
+          drank_from_source = true;
           events_.push({clock_.now(), 3, 0});
           recordEpisode(EventKind::Drink, 0, 0.25, static_cast<uint8_t>(Action::Drink),
                           Participant::Self, Outcome::Success, 0.0f, 0.0f, 0.2f, 0.0f,
                           Relevance::Rewarding | Relevance::GoalRelated);
         }
-      } else {
-        // Walk toward the nearest water source in hearing range.
-        const WaterSource* water = world_.nearestWaterSource(p, Perception::kHearingRadius);
-        if (water) {
-          moveToward(water->pos);
+      }
+      if (!drank_from_source) {
+        // Either not adjacent to water, or adjacent-to-terrain-but-source-depleted: fall
+        // through to the emergency waterskin reserve, or seek water.
+        if (body_.thirst() > 55.0 && body_.waterCarried() > 0) {
+          // Away from water, high thirst (>55), and the waterskin has water: drink from
+          // the skin. This is an EMERGENCY reserve — the organism doesn't burn sips at
+          // moderate thirst, only in the danger zone, so the skin lasts through long
+          // excursions and gets refilled before the next emergency.
+          if (body_.drinkFromSkin()) {
+            ++stats_.drinks;
+            ++stats_.waterskinDrinks;
+            events_.push({clock_.now(), 3, 1});
+            recordEpisode(EventKind::Drink, 1, 0.25, static_cast<uint8_t>(Action::Drink),
+                            Participant::Self, Outcome::Success, 0.0f, 0.0f, 0.2f, 0.0f,
+                            Relevance::Rewarding | Relevance::GoalRelated);
+          }
         } else {
-          // No water in sight: walk up the local water gradient (toward a tile whose
-          // 8-neighborhood touches water) instead of wandering randomly into a desert.
-          static constexpr int kGradOff[9][2] = {
-              {0, 0}, {-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}};
-          Vec2i best = {-1, -1};
-          int bestScore = -1;
-          for (const auto& off : kGradOff) {
-            const Vec2i q{p.x + off[0], p.y + off[1]};
-            if (!world_.grid().inBounds(q.x, q.y) || !world_.grid().walkable(q.x, q.y)) continue;
-            int score = 0;
-            for (int dy = -1; dy <= 1; ++dy) {
-              for (int dx = -1; dx <= 1; ++dx) {
-                const Terrain t = world_.grid().at(q.x + dx, q.y + dy);
-                if (t == Terrain::Water || t == Terrain::River) ++score;
+          // Walk toward the nearest water source in hearing range.
+          const WaterSource* water = world_.nearestWaterSource(p, Perception::kHearingRadius);
+          if (water) {
+            moveToward(water->pos);
+          } else {
+            // No water in sight: walk up the local water gradient (toward a tile whose
+            // 8-neighborhood touches water) instead of wandering randomly into a desert.
+            static constexpr int kGradOff[9][2] = {
+                {0, 0}, {-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}};
+            Vec2i best = {-1, -1};
+            int bestScore = -1;
+            for (const auto& off : kGradOff) {
+              const Vec2i q{p.x + off[0], p.y + off[1]};
+              if (!world_.grid().inBounds(q.x, q.y) || !world_.grid().walkable(q.x, q.y)) continue;
+              int score = 0;
+              for (int dy = -1; dy <= 1; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                  const Terrain t = world_.grid().at(q.x + dx, q.y + dy);
+                  if (t == Terrain::Water || t == Terrain::River) ++score;
+                }
+              }
+              if (score > bestScore) {
+                bestScore = score;
+                best = q;
               }
             }
-            if (score > bestScore) {
-              bestScore = score;
-              best = q;
+            if (best.x >= 0 && best != p) {
+              stepTo(best);
+              break;
             }
+            // No water gradient here: wander.
+            const int dx = rngCognition_.irange(-1, 1);
+            const int dy = rngCognition_.irange(-1, 1);
+            stepTo({p.x + dx, p.y + dy});
           }
-          if (best.x >= 0 && best != p) {
-            stepTo(best);
-            break;
-          }
-          // No water gradient here: wander.
-          const int dx = rngCognition_.irange(-1, 1);
-          const int dy = rngCognition_.irange(-1, 1);
-          stepTo({p.x + dx, p.y + dy});
         }
       }
       break;
@@ -819,6 +856,8 @@ void Engine::serializeState(BinaryWriter& w) const {
   w.u64(stats_.fallsTaken);
   w.u64(stats_.woundsSustained);
   w.u64(stats_.infections);
+  w.u64(stats_.waterskinFills);
+  w.u64(stats_.waterskinDrinks);
   w.u8(resting_ ? 1 : 0);
 }
 
@@ -861,7 +900,8 @@ bool Engine::deserializeState(BinaryReader& r, std::string& err) {
       !r.u64(stats_.actionsDrink) || !r.u64(stats_.actionsFlee) ||
       !r.u64(stats_.predatorAttacks) || !r.u64(stats_.berriesEaten) ||
       !r.u64(stats_.drinks) || !r.u64(stats_.fallsTaken) ||
-      !r.u64(stats_.woundsSustained) || !r.u64(stats_.infections)) {
+       !r.u64(stats_.woundsSustained) || !r.u64(stats_.infections) ||
+       !r.u64(stats_.waterskinFills) || !r.u64(stats_.waterskinDrinks)) {
     err = "snapshot stats corrupt";
     return false;
   }
