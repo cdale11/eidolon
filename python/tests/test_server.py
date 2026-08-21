@@ -113,10 +113,15 @@ def test_offline_llm_fallback(work):
     try:
         r = http(port, "/api/send", {"message": "hello"})
         assert r["reply"].strip()
-        # reply must be grounded in state: one of the known fallback shapes
+        # reply must be grounded in state: one of the known fallback shapes.
+        # Time-of-day awareness added (DESIGN future direction): healthy replies now
+        # open with "Good morning/afternoon/evening/night" — covered by the time-of-day
+        # slot words and circadian phrases.
         assert any(k in r["reply"] for k in ("thirsty", "hungry", "tired", "asleep",
+                                             "morning", "afternoon", "evening", "night",
                                              "Day ", "no longer alive",
-                                             "critical condition"))
+                                             "critical condition", "well-rested",
+                                             "steady", "fever"))
     finally:
         proc.kill()
         proc.wait()

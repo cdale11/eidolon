@@ -86,6 +86,21 @@ struct CognitiveSnapshot {
 
   // Skills/competence
   std::string skillSummary;  // e.g. "forage=0.8, drink=0.6, craft=0.1"
+
+  // Circadian & physiological tone (DESIGN future-direction: time-of-day awareness).
+  // All fields are derived deterministically from the existing snapshot fields above;
+  // no new persistent state, no extra LLM calls. They let the LLM (and the deterministic
+  // fallback) ground the reply in the organism's actual circadian / drive state right now
+  // — a 3am reply is groggy, a 3pm reply after a meal is calm, etc.
+  std::string phaseOfDay;     // "deep_night"/"dawn"/"day"/"dusk"
+  std::string timeOfDayPhrase; // "just before dawn", "early morning", "midday",
+                              // "late afternoon", "evening", "night", "deep night"
+  std::string seasonName;     // "spring"/"summer"/"autumn"/"winter"
+  std::string physiologicalState; // "rested"/"drowsy"/"tired"/"exhausted"/"asleep"/
+                                  // "pained"/"sick"/"fine"
+  std::string primaryNeed;    // "thirsty"/"hungry"/"tired"/"fine" — most pressing need
+  std::string circadianTone;  // one-word tone hint: "groggy"/"calm"/"alert"/"tense"/
+                              // "agitated"/"peaceful"/"weary"
 };
 
 // Builds the comprehensive cognitive snapshot from engine state (~2-4 k tokens target).

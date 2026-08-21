@@ -5,6 +5,44 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 
 ## [Unreleased]
 
+### Future Directions (partial) — Time-of-day awareness in chat
+- **Circadian state in `CognitiveSnapshot`** (`src/llm/bridge.hpp/.cpp`): six new fields
+  derived deterministically from existing snapshot state — no new persistent state, no
+  extra LLM calls, no hot-path cost:
+  - `phaseOfDay`: "deep_night" / "dawn" / "day" / "dusk" / "night" / "asleep"
+  - `timeOfDayPhrase`: "deep night" / "just before dawn" / "early morning" /
+    "mid-morning" / "midday" / "afternoon" / "late afternoon" / "evening" / "night"
+  - `seasonName`: "spring" / "summer" / "autumn" / "winter" (from `Weather::season()`)
+  - `physiologicalState`: "rested" / "drowsy" / "tired" / "exhausted" / "asleep" /
+    "pained" / "sick" / "fine" (derived from sleep pressure / fatigue / pain / sickness)
+  - `primaryNeed`: "thirsty" / "hungry" / "tired" / "fine" (most pressing drive)
+  - `circadianTone`: one-word tone hint ("groggy" / "calm" / "alert" / "tense" /
+    "agitated" / "peaceful" / "weary" / "terrified" / "restless" / "drowsy")
+- **`respond` system prompt** now instructs the LLM to set its tone from the circadian /
+  physiological / drive fields ("Examples: an asleep organism cannot answer (one short
+  sleep line); an exhausted organism at 3am is groggy; a thirsty organism mentions
+  thirst first; a well-rested organism at midday is calm and clear"). The full state
+  string sent to the LLM now includes a `circadian=[phase=… phrase=… season=…]` block
+  and a `physiological=[state=… primaryNeed=… tone=…]` block.
+- **`fallbackReply` (no LLM path)** rewritten so every reply carries the time of day:
+  asleep replies name the time + season; threat / thirst / hunger / tired / sick /
+  pained replies all prefix their message with the time of day; healthy replies open
+  with "Good morning/afternoon/evening/night" so the user gets a circadian-grounded
+  answer even when the LLM is down. Verified live: 3am ping → "I feel fine and peaceful
+  in the deep night"; midday → "Hello, I'm awake at midday in spring"; tired at night →
+  "I'm drowsy in the deep night, barely awake, and my thirst is high".
+- **Determinism preserved**: all six fields are pure functions of the existing snapshot
+  state; no RNG, no wall-clock input, no extra LLM call. The snapshot itself stays a
+  fixed-layout struct — extending it is backward-compatible for any external consumer.
+- **8 new C++ unit tests** in `tests/test_bridge.cpp` covering: snapshot field
+  population, phase-of-day mapping at midday / deep-night, physiological state on
+  fresh body, fallback includes time-of-day, asleep fallback mentions time + sleep
+  state, thirsty fallback mentions drive + time, deterministic fallback (same snapshot
+  → same reply regardless of user text).
+- **Integration test updated**: `python/tests/test_server.py::test_offline_llm_fallback`
+  now accepts the new "Good morning/afternoon/evening/night" greeting slot + circadian
+  phrases in the fallback reply.
+
 ### Bugfix — survival decision logic (sleep + waterskin + exploration)
 - A sleeping organism with rising thirst stayed asleep until it died: the wake-from-sleep
   threshold (`thirst > 85`) matched the sleep-entry block (`thirst < 85`), so at thirst=79

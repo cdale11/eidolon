@@ -131,6 +131,16 @@ const char* plantTypeName(PlantType t) {
   }
 }
 
+// Time-of-day greeting slot for the fallback reply. The LLM is free to vary the wording;
+// this is only used when the LLM is unavailable, so it must stay grounded and short.
+const char* hSlot(double hour) {
+  if (hour < 5.0) return "night";
+  if (hour < 12.0) return "morning";
+  if (hour < 17.0) return "afternoon";
+  if (hour < 21.0) return "evening";
+  return "night";
+}
+
 } // namespace
 
 CognitiveSnapshot makeSnapshot(const Engine& engine) {
@@ -259,49 +269,162 @@ CognitiveSnapshot makeSnapshot(const Engine& engine) {
   // TODO: Add skill summary when skill system exposes it
   s.skillSummary = "forage=0.8 drink=0.6 craft=0.1"; // placeholder
 
+  // --- Circadian & physiological tone (DESIGN future direction: time-of-day awareness) ---
+  // All deterministic, derived from the snapshot fields above. No new state, no extra LLM.
+  const double h = s.hour;
+  if (!s.awake) {
+    s.phaseOfDay = "asleep";
+  } else if (h < 5.0) {
+    s.phaseOfDay = "deep_night";
+  } else if (h < 7.5) {
+    s.phaseOfDay = "dawn";
+  } else if (h < 18.0) {
+    s.phaseOfDay = "day";
+  } else if (h < 20.5) {
+    s.phaseOfDay = "dusk";
+  } else {
+    s.phaseOfDay = "night";
+  }
+  if (h < 4.0) s.timeOfDayPhrase = "deep night";
+  else if (h < 6.0) s.timeOfDayPhrase = "just before dawn";
+  else if (h < 8.0) s.timeOfDayPhrase = "early morning";
+  else if (h < 11.0) s.timeOfDayPhrase = "mid-morning";
+  else if (h < 14.0) s.timeOfDayPhrase = "midday";
+  else if (h < 17.0) s.timeOfDayPhrase = "afternoon";
+  else if (h < 19.0) s.timeOfDayPhrase = "late afternoon";
+  else if (h < 21.0) s.timeOfDayPhrase = "evening";
+  else s.timeOfDayPhrase = "night";
+  switch (w.season()) {
+    case 0: s.seasonName = "spring"; break;
+    case 1: s.seasonName = "summer"; break;
+    case 2: s.seasonName = "autumn"; break;
+    case 3: s.seasonName = "winter"; break;
+    default: s.seasonName = "spring"; break;
+  }
+
+  // Physiological state — the salient aspect of how the body feels right now.
+  if (!s.awake) {
+    s.physiologicalState = "asleep";
+  } else if (b.sick()) {
+    s.physiologicalState = "sick";
+  } else if (s.pain > 40.0) {
+    s.physiologicalState = "pained";
+  } else if (s.sleepPressure >= 85.0) {
+    s.physiologicalState = "exhausted";
+  } else if (s.sleepPressure >= 55.0 || s.fatigue >= 60.0) {
+    s.physiologicalState = "tired";
+  } else if (s.sleepPressure >= 30.0 || s.fatigue >= 40.0) {
+    s.physiologicalState = "drowsy";
+  } else if (s.energy >= 80.0 && s.sleepPressure < 10.0) {
+    s.physiologicalState = "rested";
+  } else {
+    s.physiologicalState = "fine";
+  }
+
+  // Primary need — whichever drive is closest to its critical threshold right now.
+  if (s.thirst > 55.0) s.primaryNeed = "thirsty";
+  else if (s.hunger > 50.0) s.primaryNeed = "hungry";
+  else if (s.fatigue > 60.0 || s.sleepPressure > 55.0) s.primaryNeed = "tired";
+  else s.primaryNeed = "fine";
+
+  // One-word tone hint derived from circadian + drive state + threat.
+  // The LLM is asked to mirror this tone in 1-3 sentences.
+  if (!s.awake) {
+    s.circadianTone = "unconscious";
+  } else if (s.predatorDist >= 0 && s.predatorDist <= 3) {
+    s.circadianTone = "terrified";
+  } else if (s.threatLevel >= 0.65 && s.predatorDist >= 0) {
+    s.circadianTone = "tense";
+  } else if (s.primaryNeed == "thirsty" || s.primaryNeed == "hungry") {
+    s.circadianTone = "restless";
+  } else if (s.physiologicalState == "sick" || s.physiologicalState == "pained") {
+    s.circadianTone = "weary";
+  } else if (s.physiologicalState == "exhausted" || s.physiologicalState == "tired") {
+    s.circadianTone = (h >= 5.0 && h < 8.0) ? "groggy" : "weary";
+  } else if (s.physiologicalState == "drowsy") {
+    s.circadianTone = (h >= 22.0 || h < 5.0) ? "drowsy" : "calm";
+  } else if (s.phaseOfDay == "deep_night") {
+    s.circadianTone = "peaceful";
+  } else if (s.phaseOfDay == "dawn" || s.phaseOfDay == "dusk") {
+    s.circadianTone = "alert";
+  } else if (s.physiologicalState == "rested") {
+    s.circadianTone = "calm";
+  } else {
+    s.circadianTone = "alert";
+  }
+
   return s;
 }
 
 std::string fallbackReply(const CognitiveSnapshot& s, const std::string& userText) {
   (void)userText;
-  char buf[512];
+  char buf[768];
   if (!s.alive) return "I am no longer alive. My last memory is my death.";
   if (!s.awake) {
+    // Circadian awareness: an asleep reply should reflect the time of day, not just a
+    // generic "I'm asleep". Late-night replies feel different from late-afternoon naps.
     std::snprintf(buf, sizeof(buf),
-                  "I am asleep right now (sleep pressure %.0f). I cannot answer until I "
-                  "wake.",
-                  s.sleepPressure);
+                  "It is %s and I am asleep (%s, sleep pressure %.0f). I cannot answer "
+                  "until I wake.",
+                  s.timeOfDayPhrase.c_str(), s.seasonName.c_str(), s.sleepPressure);
     return buf;
   }
   if (s.health < 20.0) {
-    std::snprintf(buf, sizeof(buf), "I am in critical condition (health %.0f).",
-                  s.health);
-    return buf;
-  }
-  if (s.thirst > 55.0) {
-    std::snprintf(buf, sizeof(buf), "I am very thirsty (%.0f) and need water.",
-                  s.thirst);
-    return buf;
-  }
-  if (s.hunger > 50.0) {
-    std::snprintf(buf, sizeof(buf), "I am hungry (%.0f) and should look for berries.",
-                  s.hunger);
-    return buf;
-  }
-  if (s.fatigue > 60.0) {
-    std::snprintf(buf, sizeof(buf), "I am tired (fatigue %.0f) and need to rest.",
-                  s.fatigue);
+    std::snprintf(buf, sizeof(buf),
+                  "I am in critical condition this %s (health %.0f). I can barely hold a "
+                  "thought.",
+                  s.timeOfDayPhrase.c_str(), s.health);
     return buf;
   }
   if (s.predatorDist >= 0 && s.predatorDist <= 3) {
-    std::snprintf(buf, sizeof(buf), "There's a predator %d tiles away! I need to flee!",
-                  s.predatorDist);
+    std::snprintf(buf, sizeof(buf),
+                  "There is a predator %d tiles away in this %s %s — I have to flee!",
+                  s.predatorDist, s.timeOfDayPhrase.c_str(), s.seasonName.c_str());
     return buf;
   }
+  if (s.thirst > 55.0) {
+    std::snprintf(buf, sizeof(buf),
+                  "I am very thirsty (%.0f) this %s. I need to find water before anything "
+                  "else.",
+                  s.thirst, s.timeOfDayPhrase.c_str());
+    return buf;
+  }
+  if (s.hunger > 50.0) {
+    std::snprintf(buf, sizeof(buf),
+                  "I am hungry (%.0f) this %s. I should look for berries.",
+                  s.hunger, s.timeOfDayPhrase.c_str());
+    return buf;
+  }
+  if (s.fatigue > 60.0 || s.sleepPressure >= 55.0) {
+    std::snprintf(buf, sizeof(buf),
+                  "I am tired (%s, fatigue %.0f, sleep pressure %.0f). I need to rest.",
+                  s.physiologicalState.c_str(), s.fatigue, s.sleepPressure);
+    return buf;
+  }
+  if (s.physiologicalState == "sick") {
+    std::snprintf(buf, sizeof(buf),
+                  "I am unwell this %s (a fever I think). My thoughts are slow.",
+                  s.timeOfDayPhrase.c_str());
+    return buf;
+  }
+  if (s.physiologicalState == "pained") {
+    std::snprintf(buf, sizeof(buf),
+                  "I am in pain this %s (%.0f). It is hard to focus.",
+                  s.timeOfDayPhrase.c_str(), s.pain);
+    return buf;
+  }
+  // Healthy + awake — open with a circadian phrase so the reply carries the time of day.
+  const char* opening = "alert";
+  if (s.physiologicalState == "drowsy") opening = "a little drowsy";
+  else if (s.physiologicalState == "rested") opening = "well-rested";
+  else if (s.physiologicalState == "fine") opening = "steady";
   std::snprintf(buf, sizeof(buf),
-                "Day %d, hour %.1f. Weather %s, %.1f C. Pos (%d,%d). Energy %.0f, health %.0f, hunger %.0f, thirst %.0f. Water %d/%d.",
-                s.day, s.hour, s.weather.c_str(), s.ambientTempC, s.posX, s.posY,
-                s.energy, s.health, s.hunger, s.thirst, s.waterCarried, s.waterCapacity);
+                "Good %s. It is %s in %s, weather %s (%.1f C). I am %s at (%d,%d). "
+                "Energy %.0f, health %.0f, hunger %.0f, thirst %.0f, water %d/%d.",
+                (hSlot(s.hour)), s.timeOfDayPhrase.c_str(), s.seasonName.c_str(),
+                s.weather.c_str(), s.ambientTempC, opening, s.posX, s.posY,
+                s.energy, s.health, s.hunger, s.thirst,
+                s.waterCarried, s.waterCapacity);
   return buf;
 }
 
@@ -439,7 +562,15 @@ bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
       "You are the language interface of an autonomous simulated organism. You may "
       "only speak from the provided state snapshot. Never invent events, memories, "
       "goals or relationships. If asked about something not in the snapshot or "
-      "memories, say you do not remember it. Keep replies short (1-3 sentences).");
+      "memories, say you do not remember it. Keep replies short (1-3 sentences).\n"
+      "TIME-OF-DAY AWARENESS: your reply must reflect the organism's circadian and "
+      "physiological state. Use the phaseOfDay, timeOfDayPhrase, seasonName, "
+      "physiologicalState, primaryNeed and circadianTone fields to set the tone. "
+      "Examples: an asleep organism cannot answer (one short sleep line); an exhausted "
+      "organism at 3am is groggy; a thirsty organism mentions thirst first; a "
+      "well-rested organism at midday is calm and clear. The tone is more important "
+      "than the words — speak as the organism feels RIGHT NOW, not as a generic "
+      "assistant.");
   JsonValue user = JsonValue::makeObject();
   user.setString("role", "user");
   JsonValue payload = JsonValue::makeObject();
@@ -461,7 +592,9 @@ bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
     "userTrust=%.2f userFamiliarity=%.2f userAffection=%.2f userExpectsReturn=%s "
     "wildlife=[%s] "
     "skills=[%s] "
-    "recentMemories=[%s]",
+    "recentMemories=[%s] "
+    "circadian=[phase=%s phrase=\"%s\" season=%s] "
+    "physiological=[state=%s primaryNeed=%s tone=%s]",
     static_cast<long long>(s.simTime), s.day, s.hour, s.awake ? "yes" : "no",
     s.posX, s.posY, s.terrain.c_str(), s.weather.c_str(), s.ambientTempC,
     s.energy, s.hunger, s.thirst, s.fatigue, s.health, s.pain, s.sleepPressure,
@@ -476,7 +609,9 @@ bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
     s.userTrust, s.userFamiliarity, s.userAffection, s.userExpectsReturn ? "yes" : "no",
     s.wildlifeSummary.c_str(),
     s.skillSummary.c_str(),
-    s.recentMemorySummary.c_str()
+    s.recentMemorySummary.c_str(),
+    s.phaseOfDay.c_str(), s.timeOfDayPhrase.c_str(), s.seasonName.c_str(),
+    s.physiologicalState.c_str(), s.primaryNeed.c_str(), s.circadianTone.c_str()
   );
   
   payload.setString("state", stateBuf);
