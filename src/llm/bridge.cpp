@@ -326,6 +326,8 @@ bool LLMBridge::post(const std::string& body, std::string& response) {
     std::fflush(stderr);
     return false;
   }
+  std::fprintf(stderr, "LLMBridge: POST status: %d\n", res->status);
+  std::fflush(stderr);
   if (res->status != 200) {
     std::fprintf(stderr, "LLMBridge: POST failed - status %d: %s\n", res->status, res->body.c_str());
     std::fflush(stderr);
@@ -338,8 +340,8 @@ bool LLMBridge::post(const std::string& body, std::string& response) {
 bool LLMBridge::chatComplete(const JsonValue& messages, int maxTokens, JsonValue& out) {
   ++calls_;
   JsonValue req = JsonValue::makeObject();
-  // Use actual model name for Qwen3-4B (llama.cpp server returns full path as model ID)
-  req.setString("model", "/home/umang/llama.cpp/Qwen3-4B-Instruct-Q4_K_M.gguf");
+  // Use actual model name for Nemotron 3 Nano (llama.cpp server returns full path as model ID)
+  req.setString("model", "/home/umang/llama.cpp/NVIDIA-Nemotron3-Nano-4B-Q4_K_M.gguf");
   req.set("messages", messages);
   req.setNumber("max_tokens", maxTokens);
   req.setNumber("temperature", 0.7);
