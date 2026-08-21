@@ -593,37 +593,76 @@ bool Engine::moveAwayFrom(Vec2i threat) noexcept {
 }
 
 bool Engine::exploreStep() noexcept {
-  // 16-tick sustained walk in a fixed direction. This actually crosses terrain — a random
-  // 1-tile walk has high return probability, so an organism that enters a corner with no
-  // food/water in perception range bounces there until it dies. Picks a fresh direction
-  // via rngCognition_ when the run expires or hits a wall (90° rotations first, then any
-  // walkable step, then a fall step as last resort — keeps it deterministic).
-  static constexpr int kExploreRun = 16;
+  // Sustained directional walk: pick a heading and hold it for ~16 ticks, rotating on
+  // obstacles. At map edges/corners, STRONGLY bias direction toward the interior —
+  // this prevents the corner/edge-trap death spiral where organisms bounce along the
+  // boundary and never find inland water/food sources.
+  static constexpr int kExploreRunEdge = 32;
+  static constexpr int kExploreRunInterior = 16;
   static constexpr int kDirs[8][2] = {
       {1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}, {0, -1}, {1, -1}};
   const Vec2i p = world_.organismPos();
+  const int w = world_.grid().width();
+  const int h = world_.grid().height();
+  const bool atWestEdge = p.x <= 2;
+  const bool atEastEdge = p.x >= w - 3;
+  const bool atNorthEdge = p.y <= 2;
+  const bool atSouthEdge = p.y >= h - 3;
+  const bool atEdge = atWestEdge || atEastEdge || atNorthEdge || atSouthEdge;
+
   if (exploreTicks_ <= 0) {
-    const int idx = rngCognition_.irange(0, 7);
+    int idx = rngCognition_.irange(0, 7);
+    // Corner/edge bias: pick directions that move AWAY from the nearest wall.
+    if (atWestEdge && atNorthEdge) {
+      // NW corner: strongly prefer E, SE, S (into map)
+      static constexpr int cornerDirs[3] = {0, 1, 7};
+      idx = cornerDirs[rngCognition_.irange(0, 2)];
+    } else if (atEastEdge && atNorthEdge) {
+      // NE corner: strongly prefer W, SW, S
+      static constexpr int cornerDirs[3] = {2, 3, 4};
+      idx = cornerDirs[rngCognition_.irange(0, 2)];
+    } else if (atEastEdge && atSouthEdge) {
+      // SE corner: strongly prefer W, NW, N
+      static constexpr int cornerDirs[3] = {4, 5, 6};
+      idx = cornerDirs[rngCognition_.irange(0, 2)];
+    } else if (atWestEdge && atSouthEdge) {
+      // SW corner: strongly prefer E, NE, N
+      static constexpr int cornerDirs[3] = {6, 7, 0};
+      idx = cornerDirs[rngCognition_.irange(0, 2)];
+    } else if (atWestEdge) {
+      // West edge: strongly prefer E, NE, SE
+      static constexpr int edgeDirs[3] = {0, 1, 7};
+      idx = edgeDirs[rngCognition_.irange(0, 2)];
+    } else if (atEastEdge) {
+      // East edge: strongly prefer W, NW, SW
+      static constexpr int edgeDirs[3] = {2, 3, 4};
+      idx = edgeDirs[rngCognition_.irange(0, 2)];
+    } else if (atNorthEdge) {
+      // North edge: strongly prefer S, SW, SE (into map)
+      static constexpr int edgeDirs[3] = {4, 3, 5};
+      idx = edgeDirs[rngCognition_.irange(0, 2)];
+    } else if (atSouthEdge) {
+      // South edge: strongly prefer N, NE, NW (into map)
+      static constexpr int edgeDirs[3] = {6, 7, 5};
+      idx = edgeDirs[rngCognition_.irange(0, 2)];
+    }
     exploreDir_ = {kDirs[idx][0], kDirs[idx][1]};
-    exploreTicks_ = kExploreRun;
+    exploreTicks_ = atEdge ? kExploreRunEdge : kExploreRunInterior;
   }
   --exploreTicks_;
   if (stepTo({p.x + exploreDir_.x, p.y + exploreDir_.y})) return true;
-  // Blocked: rotate 90 degrees CCW, then CW, then the reverse, trying each.
+  // Blocked: rotate 90° CCW, CW, 180°; then any walkable step.
   int dx = exploreDir_.x, dy = exploreDir_.y;
   for (int i = 0; i < 3; ++i) {
     const int ndy = dx, ndx = -dy;
-    dx = ndx;
-    dy = ndy;
+    dx = ndx; dy = ndy;
     if (stepTo({p.x + dx, p.y + dy})) {
       exploreDir_ = {dx, dy};
-      exploreTicks_ = kExploreRun;
+      exploreTicks_ = atEdge ? kExploreRunEdge : kExploreRunInterior;
       return true;
     }
   }
-  // Genuinely trapped (water/cliffs on the chosen faces): take any walkable step. A fall
-  // is preferable to starving in place.
-  for (int attempt = 0; attempt < 6; ++attempt) {
+  for (int attempt = 0; attempt < 16; ++attempt) {
     const Vec2i q{p.x + rngCognition_.irange(-1, 1), p.y + rngCognition_.irange(-1, 1)};
     if (q != p && stepTo(q, true)) return true;
   }
