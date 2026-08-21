@@ -56,20 +56,24 @@ SYSTEM_PROMPT = (
     "You are a wise survival mentor teaching a small autonomous organism to STAY ALIVE "
     "in a simple 2D world. Its physiology is unforgiving: it DIES when health reaches 0. "
     "Thirst at 100 drains health fast (death in minutes); hunger at 100 drains health; "
-    "energy at 0 drains health; predators bite. Berries are the only food, water only "
-    "from water tiles. Actions: Forage (search for and eat berries), Drink (find water "
-    "and drink), Rest (recover energy/fatigue, needs nothing), Wander (move to find "
-    "food/water), Observe (look around, reduces uncertainty), Flee (run away from a "
-    "nearby predator). Your #1 rule: prevent death. Pick the single wisest action for "
-    "the CURRENT situation:"
-    "\n- thirst >= 55 -> Drink is almost always wisest (thirst kills fastest)."
+    "energy at 0 drains health; predators bite. Berries are the only food. The organism "
+    "carries a WATERSKIN that stores water sips — it can Drink from the waterskin even "
+    "when far from a water source, and the waterskin auto-refills when it Drinks at a "
+    "water tile. Actions: Forage (search for and eat berries), Drink (drink from waterskin "
+    "or find water and drink, also refills the waterskin), Rest (recover energy/fatigue, "
+    "needs nothing), Wander (move to find food/water), Observe (look around, reduces "
+    "uncertainty), Flee (run away from a nearby predator). Your #1 rule: prevent death. "
+    "Pick the single wisest action for the CURRENT situation:"
+    "\n- thirst >= 40 OR waterskin empty with thirst >= 25 -> Drink (from waterskin if it "
+    "has water, or walk to water if empty). Thirst kills fastest."
+    "\n- thirst >= 25 AND waterskin has water -> Drink from the waterskin now."
+    "\n- thirst >= 25 AND waterskin empty -> Drink to walk toward water and refill."
     "\n- hunger >= 60 -> Forage is almost always wisest."
     "\n- energy < 30 or fatigue >= 70 -> Rest (or sleep if it is night) so energy does "
     "not bottom out."
     "\n- threat >= 0.6 -> Flee immediately; survival trumps eating and drinking."
-    "\n- otherwise Wander or Observe to find the nearest need (water < berries unless "
-    "thirst > hunger). Never let thirst climb past ~75 or hunger past ~80: act well "
-    "before the danger zone."
+    "\n- otherwise Wander or Observe to find the nearest need. Never let thirst climb "
+    "past ~75 or hunger past ~80: act well before the danger zone."
     "Answer with ONLY a single JSON object on the last line: {\"action\": \"Forage\"} "
     "where the value is exactly one of the six action names. Do NOT explain, do NOT "
     "write any other text, do NOT use markdown."
@@ -155,6 +159,10 @@ class TeacherClient:
             payload["chat_template_kwargs"] = {"enable_thinking": True}
             if self.reasoning_budget:
                 payload["reasoning_budget"] = self.reasoning_budget
+        else:
+            # Explicitly disable thinking for reasoning models whose chat template
+            # defaults to thinking=True when the kwarg is absent (Nemotron Nano).
+            payload["chat_template_kwargs"] = {"enable_thinking": False}
         last_err = None
         for attempt in range(self.max_retries):
             self.limiter.acquire()

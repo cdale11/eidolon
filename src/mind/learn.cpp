@@ -22,6 +22,7 @@ constexpr int kNmArousal = 39;
 constexpr int kNmValence = 40;
 constexpr int kNmUncertainty = 41;
 constexpr int kThreat = 42;
+constexpr int kWaterskinFill = 43;
 
 float clampf(float v, float lo, float hi) { return std::max(lo, std::min(hi, v)); }
 } // namespace
@@ -89,6 +90,12 @@ void LearnSystem::buildFeatures(const Perception& p, const Physiology& b, float*
   out[kNmUncertainty] = neuromod_.uncertainty;
 
   out[kThreat] = lastThreat_;
+
+  // Waterskin fill ratio in [0,1]; 0 when no waterskin. Lets the policy learn to
+  // also Drink opportunistically to refill when near water, not only when thirsty.
+  out[kWaterskinFill] = b.waterCapacity() > 0
+      ? static_cast<float>(b.waterCarried()) / static_cast<float>(b.waterCapacity())
+      : 0.0f;
 }
 
 PolicyAction LearnSystem::chooseAction(const float* feats, Rng& r) {

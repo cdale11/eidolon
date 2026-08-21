@@ -221,6 +221,8 @@ void Physiology::serialize(BinaryWriter& w) const {
   w.f64(exposure_);
   w.u32(static_cast<uint32_t>(wounds_.size()));
   for (const Wound& wo : wounds_) wo.serialize(w);
+  w.u8(waterCarried_);
+  w.u8(waterCapacity_);
 }
 
 bool Physiology::deserialize(BinaryReader& r) {
@@ -243,6 +245,8 @@ bool Physiology::deserialize(BinaryReader& r) {
     if (!wo.deserialize(r)) return false;
     wounds_.push_back(wo);
   }
+  if (!r.u8(waterCarried_) || !r.u8(waterCapacity_)) return false;
+  if (waterCarried_ > waterCapacity_) waterCarried_ = waterCapacity_;
   clamp();
   return true;
 }

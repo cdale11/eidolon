@@ -395,6 +395,11 @@ int main(int argc, char** argv) {
                  static_cast<unsigned long long>(engine.stats().actionsDrink),
                  static_cast<unsigned long long>(engine.stats().actionsFlee),
                  static_cast<unsigned long long>(engine.stats().predatorAttacks));
+    std::fprintf(m, "waterskinFills=%llu\nwaterskinDrinks=%llu\nwaterCarried=%u\nwaterCapacity=%u\n",
+                 static_cast<unsigned long long>(engine.stats().waterskinFills),
+                 static_cast<unsigned long long>(engine.stats().waterskinDrinks),
+                 static_cast<unsigned>(engine.body().waterCarried()),
+                 static_cast<unsigned>(engine.body().waterCapacity()));
     std::fprintf(m, "energy=%.1f\nhunger=%.1f\nthirst=%.1f\nfatigue=%.1f\nsleepP=%.1f\nbodyTemp=%.1f\nhealth=%.1f\n",
                  engine.body().energy(), engine.body().hunger(), engine.body().thirst(),
                  engine.body().fatigue(), engine.body().sleepPressure(),

@@ -40,6 +40,10 @@ public:
   // Bounds.
   static constexpr double kMax = 100.0;
   static constexpr double kBodyTempC = 36.6;
+  // Source-Drink water amount (one sip from a water source / waterskin).
+  static constexpr double kSourceDrinkWater = 8.0;
+  // Innate waterskin capacity (sips); a fresh organism starts with this.
+  static constexpr uint8_t kInnateWaterskinCapacity = 5;
 
   void reset();
 
@@ -57,6 +61,22 @@ public:
   }
   void drink(double water) {
     thirst_ = std::max(0.0, thirst_ - water * 0.7);
+  }
+
+  // Carried water (waterskin). Capacity 0 = no waterskin owned. Each "sip" is one full
+  // source-Drink equivalent (8 water -> 5.6 thirst relief). Set/owned via crafting once
+  // the crafting system is wired into the engine; for now every fresh organism starts
+  // with a basic waterskin of capacity kInnateWaterskinCapacity (see Engine).
+  uint8_t waterCapacity() const { return waterCapacity_; }
+  uint8_t waterCarried() const { return waterCarried_; }
+  void setWaterCapacity(uint8_t cap) { waterCapacity_ = cap; if (waterCarried_ > cap) waterCarried_ = cap; }
+  void refillWater() { if (waterCapacity_ > 0) waterCarried_ = waterCapacity_; }
+  // Drink one sip from the waterskin. Returns true if a sip was consumed.
+  bool drinkFromSkin() {
+    if (waterCarried_ == 0 || waterCapacity_ == 0) return false;
+    thirst_ = std::max(0.0, thirst_ - kSourceDrinkWater * 0.7);
+    --waterCarried_;
+    return true;
   }
 
   // Take predator/environment damage: health loss + pain (both clamped). Feeds the
@@ -126,6 +146,9 @@ private:
   double immunity_ = 0.5;  // 0..1 immune strength (nutrition/rest), fights infection
   double exposure_ = 0.0;  // 0..1 disease-vector exposure accumulator
   std::vector<Wound> wounds_;
+  // Carried water (waterskin). capacity=0 means no waterskin; carried is in [0,capacity].
+  uint8_t waterCarried_ = 0;
+  uint8_t waterCapacity_ = 0;
 };
 
 } // namespace eidolon

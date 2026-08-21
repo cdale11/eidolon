@@ -11,7 +11,7 @@ ACTION_NAMES: list[str] = ["Forage", "Drink", "Rest", "Wander", "Observe", "Flee
 ACTION_INDEX: dict[str, int] = {name: i for i, name in enumerate(ACTION_NAMES)}
 
 # Feature-vector length, must match src/mind/learn.hpp (kFeatures).
-N_FEATURES = 43
+N_FEATURES = 44
 
 
 class Experience:
@@ -19,7 +19,8 @@ class Experience:
                  "safe", "body", "wx", "bush_dist", "water_dist", "eaten", "drank",
                  "feats", "action_index", "teacher_label_index",
                  "value", "temperature", "scores", "probs", "neuromod", "personality",
-                 "drives", "life", "metrics", "attention")
+                 "drives", "life", "metrics", "attention",
+                 "water_capacity", "water_carried")
 
     def __init__(self, rec: dict[str, Any]):
         self.t: int = int(rec["t"])
@@ -36,6 +37,8 @@ class Experience:
         self.water_dist: int = int(rec.get("waterDist", -1))
         self.eaten: float = float(rec.get("eaten", 0.0))
         self.drank: bool = bool(rec.get("drank", 0))
+        self.water_capacity: int = int(rec.get("body", {}).get("wsc", 0))
+        self.water_carried: int = int(rec.get("body", {}).get("wsk", 0))
         feats = rec.get("feats")
         if not feats or len(feats) != N_FEATURES:
             raise ValueError(f"record t={self.t}: expected {N_FEATURES} features, got "
@@ -78,7 +81,9 @@ class Experience:
             f"pain={b.get('p', 0):.0f}, sleep-pressure={b.get('s', 0):.0f}, "
             f"body-temp={b.get('temp', 36.6):.1f}C; weather: {self.wx.get('desc', 'clear')} "
             f"at {self.wx.get('tempC', 0):.1f}C; nearest berry bush {self.bush_dist} tiles, "
-            f"nearest water {self.water_dist} tiles; threat={self.threat:.2f} "
+            f"nearest water {self.water_dist} tiles; "
+            f"waterskin {self.water_carried}/{self.water_capacity} sips; "
+            f"threat={self.threat:.2f} "
             f"({'predator nearby' if self.threat >= 0.6 else 'calm'})"
         )
 

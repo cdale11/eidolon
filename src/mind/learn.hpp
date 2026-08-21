@@ -30,7 +30,8 @@ public:
   //           sleepPressure, bodyTemp deviation
   //   36..41 neuromod: novelty, curiosity, stress, arousal, valence, uncertainty
   //   42     last ThreatNet estimate (feedback channel)
-  static constexpr int kFeatures = 43;
+  //   43     waterskin fill ratio (waterCarried / waterCapacity), 0 if no waterskin
+  static constexpr int kFeatures = 44;
 
   void init(Rng& r);
 
