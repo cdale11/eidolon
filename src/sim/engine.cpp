@@ -592,14 +592,49 @@ bool Engine::moveAwayFrom(Vec2i threat) noexcept {
   return false;
 }
 
+bool Engine::exploreStep() noexcept {
+  // 16-tick sustained walk in a fixed direction. This actually crosses terrain — a random
+  // 1-tile walk has high return probability, so an organism that enters a corner with no
+  // food/water in perception range bounces there until it dies. Picks a fresh direction
+  // via rngCognition_ when the run expires or hits a wall (90° rotations first, then any
+  // walkable step, then a fall step as last resort — keeps it deterministic).
+  static constexpr int kExploreRun = 16;
+  static constexpr int kDirs[8][2] = {
+      {1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}, {0, -1}, {1, -1}};
+  const Vec2i p = world_.organismPos();
+  if (exploreTicks_ <= 0) {
+    const int idx = rngCognition_.irange(0, 7);
+    exploreDir_ = {kDirs[idx][0], kDirs[idx][1]};
+    exploreTicks_ = kExploreRun;
+  }
+  --exploreTicks_;
+  if (stepTo({p.x + exploreDir_.x, p.y + exploreDir_.y})) return true;
+  // Blocked: rotate 90 degrees CCW, then CW, then the reverse, trying each.
+  int dx = exploreDir_.x, dy = exploreDir_.y;
+  for (int i = 0; i < 3; ++i) {
+    const int ndy = dx, ndx = -dy;
+    dx = ndx;
+    dy = ndy;
+    if (stepTo({p.x + dx, p.y + dy})) {
+      exploreDir_ = {dx, dy};
+      exploreTicks_ = kExploreRun;
+      return true;
+    }
+  }
+  // Genuinely trapped (water/cliffs on the chosen faces): take any walkable step. A fall
+  // is preferable to starving in place.
+  for (int attempt = 0; attempt < 6; ++attempt) {
+    const Vec2i q{p.x + rngCognition_.irange(-1, 1), p.y + rngCognition_.irange(-1, 1)};
+    if (q != p && stepTo(q, true)) return true;
+  }
+  return false;
+}
+
 void Engine::execute(Action a) noexcept {
   switch (a) {
     case Action::Wander: {
-      const Vec2i p = world_.organismPos();
-      const int dx = rngCognition_.irange(-1, 1);
-      const int dy = rngCognition_.irange(-1, 1);
-      stepTo({p.x + dx, p.y + dy});
       ++stats_.actionsWander;
+      exploreStep();
       break;
     }
     case Action::Rest:
@@ -616,10 +651,9 @@ void Engine::execute(Action a) noexcept {
       const Vec2i p = world_.organismPos();
       const Plant* plant = world_.nearestEdiblePlant(p, Perception::kSightRadius);
       if (!plant) {
-        // No food in sight: wander to look for some.
-        const int dx = rngCognition_.irange(-1, 1);
-        const int dy = rngCognition_.irange(-1, 1);
-        stepTo({p.x + dx, p.y + dy});
+        // No food in sight: sustained directed exploration — random 1-tile walks bounce
+        // the organism in a corner until hunger kills it.
+        exploreStep();
         break;
       }
       if (plant->pos == p) {
@@ -647,10 +681,8 @@ void Engine::execute(Action a) noexcept {
       if (predator) {
         moveAwayFrom(predator->pos);
       } else {
-        // No visible predator: defensive wander.
-        const int dx = rngCognition_.irange(-1, 1);
-        const int dy = rngCognition_.irange(-1, 1);
-        stepTo({p.x + dx, p.y + dy});
+        // No visible predator: defensive directed walk away from last known direction.
+        exploreStep();
       }
       break;
     }
@@ -724,10 +756,8 @@ void Engine::execute(Action a) noexcept {
               stepTo(best);
               break;
             }
-            // No water gradient here: wander.
-            const int dx = rngCognition_.irange(-1, 1);
-            const int dy = rngCognition_.irange(-1, 1);
-            stepTo({p.x + dx, p.y + dy});
+            // No water gradient here: sustained directed exploration to escape the area.
+            exploreStep();
           }
         }
       }
@@ -859,6 +889,9 @@ void Engine::serializeState(BinaryWriter& w) const {
   w.u64(stats_.waterskinFills);
   w.u64(stats_.waterskinDrinks);
   w.u8(resting_ ? 1 : 0);
+  w.i64(static_cast<int64_t>(exploreDir_.x));
+  w.i64(static_cast<int64_t>(exploreDir_.y));
+  w.i64(static_cast<int64_t>(exploreTicks_));
 }
 
 bool Engine::deserializeState(BinaryReader& r, std::string& err) {
@@ -911,6 +944,13 @@ bool Engine::deserializeState(BinaryReader& r, std::string& err) {
     return false;
   }
   resting_ = resting != 0;
+  int64_t edx, edy, eticks;
+  if (!r.i64(edx) || !r.i64(edy) || !r.i64(eticks)) {
+    err = "snapshot explore-state corrupt";
+    return false;
+  }
+  exploreDir_ = {static_cast<int>(edx), static_cast<int>(edy)};
+  exploreTicks_ = static_cast<int>(eticks);
   return r.done();
 }
 

@@ -16,7 +16,10 @@ constexpr uint32_t kSnapshotMagic = 0x4549444C; // "EIDL"
 // v5: Phase 5 wildlife (world + perception/learn layout + Flee action + attack stats).
 // v6: Grid climate arrays (elevation/temperature/humidity) round-trip at full fidelity.
 // v7: Phase 5 hazards (wounds/infection/immunity/exposure in body + hazard stats).
-constexpr uint32_t kSnapshotVersion = 7;
+// v8: Phase 8 instruction learning + habit-biased action choice.
+// v9: Directed-exploration state (exploreDir_/exploreTicks_) — organisms no longer
+//      bounce in a corner to death when no food/water is in perception range.
+constexpr uint32_t kSnapshotVersion = 9;
 
 struct BinaryWriter {
 public:

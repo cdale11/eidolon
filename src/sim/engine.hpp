@@ -52,6 +52,8 @@ public:
     uint64_t fallsTaken = 0;        // steep descents that caused damage
     uint64_t woundsSustained = 0;   // predator/fall wounds created
     uint64_t infections = 0;        // times a wound turned infected
+    uint64_t waterskinFills = 0;   // times the waterskin was topped up at a water source
+    uint64_t waterskinDrinks = 0;  // times the organism drank from the waterskin
   };
 
   Engine() = default;
@@ -118,6 +120,11 @@ public:
 // `allowFall` (fleeing / trapped): normal movement routes around them, so falls happen
 // only when forced and stay a rare, survivable hazard. A taken fall deals damage.
 bool stepTo(Vec2i q, bool allowFall = false) noexcept;
+
+  // Sustained directional walk used when no resource is in perception range: walk in
+  // `exploreDir_` for ~16 ticks, rotate 90 on obstacle. Replaces 1-tile random walks
+  // that bounce the organism in a corner until it starves/dehydrates.
+  bool exploreStep() noexcept;
 
   // Learning-core access (tests + metrics).
   const LearnSystem& learn() const { return learn_; }
@@ -189,6 +196,11 @@ private:
   int64_t statusInterval_ = 600; // sim-seconds between status lines
   int prevMode_ = 0; // last logged life mode: 0=active,1=rest,2=sleep
   bool resting_ = false; // hysteresis for rest mode (prevents boundary oscillation)
+  // Directed-exploration state: when no food/water is in perception range, the organism
+  // walks in a fixed `exploreDir_` for up to `exploreTicks_` ticks then re-rolls — this
+  // actually traverses terrain instead of bouncing randomly in a corner. Serialised.
+  Vec2i exploreDir_{1, 0};
+  int exploreTicks_ = 0;
   Archive* archive_ = nullptr; // optional durable sink; never owned
   std::FILE* experienceOut_ = nullptr; // optional offline teacher-data dump (CLI only)
   // Feature buffers (decision + TD learning; fixed size, no heap churn).
