@@ -125,3 +125,41 @@ re-fit needs no regen. (4) Before any multi-hour LLM/teacher run, verify the out
 disk filesystem (`df -h <path>` — tmpfs shows `tmpfs`), and `nohup`/`setsid` the process so a shell
 disconnect can't SIGTERM it. (5) Power on this box is not guaranteed — treat >1h compute as
 non-recoverable unless its artifacts land on real disk before the run continues.
+
+### 2026-08-21 — Wake threshold == sleep-entry threshold → death loop
+Context: Organism found asleep at pos (0,61) with thirst=79/87, sleepPressure=16.8, a
+full waterskin (5 sips) — never drank, died of thirst. `data/runs/v2c_s31`.
+Mistake: `Engine::decide` woke a sleeping organism only when `thirst() > 85` (line ~410),
+and *separately* blocked sleep *entry* when `thirst() < 85` (line ~420). The two thresholds
+were identical, so a sleeping organism at thirst=79 satisfied neither — it neither woke nor
+was prevented from re-sleeping — and just stayed asleep while thirst climbed to 100. A
+safety valve at `thirst > 80` further down was unreachable because `decide` returned
+`Action::Sleep` first. The bug was invisible in baseline runs (the organism rarely slept at
+thirst 60–84) and only surfaced under the v2 teacher prior, which over-prioritized Sleep.
+Root-cause took a full instrumented replay (33381 `actionsDrink` events with ZERO actual
+drinks) because the count looked like Drink was firing — but `decide` chose Sleep *before*
+ever reaching Drink.
+Fix / rule: **Survival wake thresholds must sit strictly below survival block thresholds**,
+otherwise the mid-band state has no escape path. Documented both numbers in DESIGN §13 and
+verified 6/7 seeds survive 2 days with the v2 prior (was 3/5). When a logged action count
+disagrees with a logged *event* count (e.g. `actionsDrink=33381` but 0 drink events), the
+action is being chosen but its `execute()` branch is taking a no-op path — instrument
+`execute()`, not `decide()`.
+
+### 2026-08-21 — `adjacentToWater` (terrain) true but `drinkFromSource` (source list) returns 0 — no fall-through
+Context: Same seed-31 strand. Organism adjacent to a water tile, called Drink thousands of
+times, waterskin full — zero actual drinks. Died of thirst with `waterCarried=5`.
+Mistake: `Execute(Drink)` gated the waterskin-reserve branch behind `else if
+(!adjacentToWater(p))`. But `adjacentToWater` checks the **terrain** grid (Water/River
+neighbours), while `drinkFromSource` searches the **`waterSources_` list** within 16 tiles
+and requires `ws.current >= 1.0`. When a water tile exists but its registered source is
+depleted (or further than 16 tiles — common at the world edge / a small pond that wildlife
+drained), `adjacentToWater` returns true, `drinkFromSource` returns 0, the `if` branch does
+nothing, and the `else if` (waterskin) is skipped entirely. The organism dies of thirst
+with a full skin it was never allowed to sip.
+Fix / rule: When two queries describe related-but-not-identical world state (terrain vs a
+drainable source), never let a positive on the *cheaper* query suppress the *fallback*
+branch behind an `else`. Refactored to a `drank_from_source` flag so a source-dry adjacent
+Drink falls through to `drinkFromSkin`, and only seeks water once the skin is empty. Audit
+other `adjacentTo*` / `nearest*` pairs in the engine for the same terrain-vs-instance
+mismatch (forage/plant, gather/resource).

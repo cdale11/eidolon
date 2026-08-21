@@ -5,6 +5,21 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 
 ## [Unreleased]
 
+### Bugfix — survival decision logic (sleep + waterskin)
+- A sleeping organism with rising thirst stayed asleep until it died: the wake-from-sleep
+  threshold (`thirst > 85`) matched the sleep-entry block (`thirst < 85`), so at thirst=79
+  the organism neither woke nor was blocked from re-entering sleep — a death loop. Wake
+  threshold lowered to 55; sleep-entry block tightened to `thirst < 55 && hunger < 75`.
+- Emergency Drink safety valve lowered from `thirst > 80` to `thirst > 55`, with a
+  `hunger < 80` guard so a thirsty-and-starving organism forages rather than drinking water
+  it doesn't need.
+- `Execute(Drink)` fix: when `adjacentToWater(p)` (terrain check) was true but
+  `drinkFromSource` returned 0 (the matching `waterSources_` entry depleted or >16 tiles
+  away), the action did nothing and never fell through to `drinkFromSkin`. A stranded
+  organism could call Drink 33k+ times with a full waterskin and die of thirst. Now a
+  source-dry adjacent Drink falls through to the emergency waterskin reserve, and only
+  seeks water (gradient/wander) once the skin is empty.
+
 ### Phase 5 — Rich world & wildlife (world generation + ecology)
 - Noise-field world generation (simplex fbm): elevation, temperature, humidity per tile;
   biomes (temperate plains/forest, boreal, tundra, desert, savannah, jungle, mountain,

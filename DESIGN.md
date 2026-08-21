@@ -414,6 +414,13 @@ micro-batches:
 
 Consolidation is bounded per night (caps processing time); no LLM calls in the cycle.
 
+**Survival overrides sleep** (in `Engine::decide`, not the sleep FSM): a sleeping organism
+is forced awake when `thirst > 55` or `hunger > 80` or a predator is within 2 tiles, and
+sleep entry is blocked while `thirst >= 55` (hunger >= 75). The wake threshold must sit
+strictly below the entry-block threshold — earlier code used 85 for both, creating a death
+loop where a sleeping organism at rising thirst simply never woke. The same survival
+valves (`thirst > 55`, `hunger > 80`, `pain > 40`) also break the organism out of Rest.
+
 ---
 
 ## 14. Language (LLM Bridge)
