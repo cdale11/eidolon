@@ -8,6 +8,7 @@
 #include "mind/learn.hpp"
 #include "mind/personality.hpp"
 #include "mind/policy.hpp"
+#include "mind/genetic_memory.hpp"
 
 namespace eidolon {
 
@@ -18,10 +19,19 @@ void HeredityGenome::serialize(struct BinaryWriter& w) const {
   personality.serialize(w);
   
   w.f32(lifeStats.avgReward);
-  w.f32(lifeStats.avgThreat);
+  w.f32(lifeStats.rewardVar);
   w.f32(lifeStats.avgNovelty);
+  w.f32(lifeStats.threatRate);
+  w.f32(lifeStats.avgValence);
+  w.f32(lifeStats.forageRate);
+  w.f32(lifeStats.drinkRate);
+  w.f32(lifeStats.restRate);
   w.f32(lifeStats.successRate);
-  w.u64(lifeStats.totalTicks);
+  w.f32(lifeStats.avgPain);
+  
+  // Genetic memories
+  w.u32(static_cast<uint32_t>(geneticMemories.size()));
+  for (const auto& mem : geneticMemories) mem.serialize(w);
   
   w.u64(parentSeed);
   w.u64(deathTick);
@@ -40,10 +50,22 @@ bool HeredityGenome::deserialize(struct BinaryReader& r) {
   if (!personality.deserialize(r)) return false;
   
   if (!r.f32(lifeStats.avgReward)) return false;
-  if (!r.f32(lifeStats.avgThreat)) return false;
+  if (!r.f32(lifeStats.rewardVar)) return false;
   if (!r.f32(lifeStats.avgNovelty)) return false;
+  if (!r.f32(lifeStats.threatRate)) return false;
+  if (!r.f32(lifeStats.avgValence)) return false;
+  if (!r.f32(lifeStats.forageRate)) return false;
+  if (!r.f32(lifeStats.drinkRate)) return false;
+  if (!r.f32(lifeStats.restRate)) return false;
   if (!r.f32(lifeStats.successRate)) return false;
-  if (!r.u64(lifeStats.totalTicks)) return false;
+  if (!r.f32(lifeStats.avgPain)) return false;
+  
+  // Genetic memories
+  if (!r.u32(n)) return false;
+  geneticMemories.resize(n);
+  for (uint32_t i = 0; i < n; ++i) {
+    if (!geneticMemories[i].deserialize(r)) return false;
+  }
   
   if (!r.u64(parentSeed)) return false;
   if (!r.u64(deathTick)) return false;
@@ -128,19 +150,38 @@ HeredityGenome HeredityManager::extractGenome(
   
   const auto& learn = engine.learn();
   
-  // Extract policy weights (direct access to private member via friend or public method)
-  // For now, use the policy's internal weights via serialization round-trip
-  // This is a simplified approach - in practice we'd add a weights() accessor
+  // Extract policy weights
   genome.policyWeights = learn.policy().serializedWeights();
   
   genome.personality = learn.personality();
   
-  // Life stats from learn system (using available metrics)
-  genome.lifeStats.avgReward = 0.0f; // Not tracked in base LearnerMetrics
-  genome.lifeStats.avgThreat = 0.0f;
-  genome.lifeStats.avgNovelty = 0.0f;
-  genome.lifeStats.successRate = 0.0f;
-  genome.lifeStats.totalTicks = engine.clock().now();
+  // Life stats from learn system
+  const auto ls = learn.lifeStats();
+  genome.lifeStats.avgReward = ls.avgReward;
+  genome.lifeStats.rewardVar = ls.rewardVar;
+  genome.lifeStats.avgNovelty = ls.avgNovelty;
+  genome.lifeStats.threatRate = ls.threatRate;
+  genome.lifeStats.avgValence = ls.avgValence;
+  genome.lifeStats.forageRate = ls.forageRate;
+  genome.lifeStats.drinkRate = ls.drinkRate;
+  genome.lifeStats.restRate = ls.restRate;
+  genome.lifeStats.successRate = ls.successRate;
+  genome.lifeStats.avgPain = ls.avgPain;
+  
+  // Extract genetic memories from engine's memory system
+  // Note: In a full implementation, we'd extract from the Archive
+  // For now, create a death-cause memory
+  GeneticMemory deathMem;
+  deathMem.type = GeneticMemoryType::DeathCause;
+  deathMem.importance = 0.9f;
+  deathMem.tick = deathTick;
+  deathMem.x = static_cast<int16_t>(engine.world().organismPos().x);
+  deathMem.y = static_cast<int16_t>(engine.world().organismPos().y);
+  deathMem.summary = "Died from " + causeOfDeath;
+  deathMem.lesson = "Avoid this location/situation - " + causeOfDeath;
+  deathMem.emotionalValence = -0.8f;
+  deathMem.rehearsalCount = 0;
+  genome.geneticMemories.push_back(deathMem);
   
   genome.deathTick = deathTick;
   genome.lifespanTicks = deathTick;
@@ -161,10 +202,17 @@ void HeredityManager::applyHeredity(
   auto& learn = engine.learn();
   auto& policy = learn.policy();
   
-  // Apply policy weights (blend with current) via loadPrior mechanism
+  // Apply policy weights (blend with current)
   if (genome.policyWeights.size() == policy.serializedWeightsSize()) {
-    // Create a temporary prior file and load it
-    // This is a simplified approach
+    const std::vector<float>& currentWeights = policy.weights();
+    std::vector<float> blendedWeights(policy.serializedWeightsSize());
+    for (size_t i = 0; i < blendedWeights.size(); ++i) {
+      blendedWeights[i] = currentWeights[i] * (1.0f - inheritanceWeight) + genome.policyWeights[i] * inheritanceWeight;
+    }
+    auto& w = policy.weights();
+    for (size_t i = 0; i < w.size(); ++i) {
+      w[i] = blendedWeights[i];
+    }
   }
   
   // Apply personality (blend)
@@ -172,7 +220,16 @@ void HeredityManager::applyHeredity(
   for (int i = 0; i < PersonalityLatent::kDims; ++i) {
     currentPersonality[i] = currentPersonality[i] * (1.0f - inheritanceWeight) + genome.personality[i] * inheritanceWeight;
   }
-  // Note: drive re-derivation would require access to private drives_
+  learn.rederiveDrives();
+  
+  // Apply genetic memories - inject death memories into threat system
+  for (const auto& mem : genome.geneticMemories) {
+    if (mem.type == GeneticMemoryType::DeathCause && mem.importance * inheritanceWeight > 0.5f) {
+      // Inject as a strong threat memory at the death location
+      // This will make the organism avoid the death location
+      // In a full implementation, this would inject into the memory ring
+    }
+  }
 }
 
 std::string HeredityManager::defaultHeredityPath(const std::string& dataDir, int generation) {

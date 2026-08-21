@@ -71,6 +71,12 @@ void Engine::init(uint64_t masterSeed, bool deterministic, int worldW, int world
   body_.setWaterCapacity(Physiology::kInnateWaterskinCapacity);
   body_.refillWater();
   learn_.init(rngLearn_);
+  
+  // Load heredity if a heredity path was set before init
+  if (!heredityPath_.empty() && !heredityLoaded_) {
+    loadHeredity();
+  }
+  
   recordEpisode(EventKind::Birth, 0, 0.5, 255, Participant::Self, Outcome::Success, 0.0f, 0.0f, 0.0f, 0.0f, Relevance::Rewarding);
 }
 
@@ -224,6 +230,12 @@ Action Engine::tick() noexcept {
   if (!body_.alive() && !died_) {
     died_ = true;
     world_.killOrganism();
+    
+    // Save heredity for inheritance by future organisms
+    if (!heredityPath_.empty()) {
+      std::string cause = determineCauseOfDeath();
+      saveHeredity(clock_.now(), cause);
+    }
   }
   scheduler_.recordTick(WorkerDomain::NeuralMl,
                         std::chrono::duration<double, std::micro>(Clock::now() - tPhysio).count());
@@ -233,6 +245,57 @@ Action Engine::tick() noexcept {
 bool Engine::loadPolicyPrior(const std::string& path) { return learn_.loadPolicyPrior(path); }
 
 bool Engine::savePolicyPrior(const std::string& path) const { return learn_.savePolicyPrior(path); }
+
+// Heredity: load inheritance from a previous organism's genome
+bool Engine::loadHeredity() {
+  if (heredityPath_.empty() || heredityLoaded_) return false;
+  
+  HeredityGenome genome;
+  if (!HeredityManager::loadHeredity(genome, heredityPath_)) {
+    return false;
+  }
+  
+  HeredityManager::applyHeredity(*this, genome, heredityInheritanceWeight_);
+  heredityLoaded_ = true;
+  return true;
+}
+
+// Save current organism's genome as heredity for future inheritance
+bool Engine::saveHeredity(uint64_t deathTick, const std::string& causeOfDeath) const {
+  if (heredityPath_.empty()) return false;
+  
+  HeredityGenome genome = HeredityManager::extractGenome(*this, deathTick, causeOfDeath);
+  return HeredityManager::saveHeredity(genome, heredityPath_);
+}
+
+// Determine the primary cause of death for heredity recording
+std::string Engine::determineCauseOfDeath() const noexcept {
+  const auto& b = body_;
+  
+  // Check for starvation
+  if (b.hunger() >= 95.0) return "starvation";
+  
+  // Check for dehydration
+  if (b.thirst() >= 95.0) return "dehydration";
+  
+  // Check for energy depletion
+  if (b.energy() <= 0.0) return "energy_depletion";
+  
+  // Check for health loss from damage
+  if (b.health() <= 0.0 && b.pain() > 30.0) return "predator_attack";
+  
+  // Check for temperature extremes
+  const float tempDev = std::fabs(b.bodyTemp() - Physiology::kBodyTempC);
+  if (tempDev > 15.0) return "temperature_extreme";
+  
+  // Check for disease
+  if (b.totalInfection() >= 0.7) return "disease";
+  
+  // Check for old age / natural causes
+  if (b.energy() <= 0.0) return "energy_depletion";
+  
+  return "unknown";
+}
 
 bool Engine::aversiveTick(const Physiology& before) const noexcept {
   // Acute danger only: pain, rapid health loss, or near-lethal core temperature.
@@ -1102,3 +1165,71 @@ bool Engine::processUserInstruction(const std::string& text, uint64_t tick) {
 }
 
 } // namespace eidolon
+
+// DEBUG TEST HOOK
+extern "C" void debug_threat_test() {
+  using namespace eidolon;
+  
+  auto runTicks = [](Engine& e, int n) {
+    for (int i = 0; i < n; ++i) {
+      if (!e.isAlive()) break;
+      e.tick();
+    }
+  };
+  
+  auto parkHungryWolf = [](Engine& e) {
+    auto& wl = e.world().wildlife();
+    for (auto& a : wl.agents()) {
+      if (a.species == Species::Rabbit) a.alive = false;
+    }
+    WildlifeAgent* wolf = nullptr;
+    for (auto& a : wl.agents()) {
+      if (a.species == Species::Wolf && a.alive) {
+        if (!wolf) wolf = &a;
+        else a.alive = false;
+      }
+    }
+    if (!wolf) return;
+    const Vec2i op = e.world().organismPos();
+    const Grid& g = e.world().grid();
+    Vec2i spot{-1, -1};
+    const int off[8][2] = {{-1,-1},{0,-1},{1,-1},{-1,0},{1,0},{-1,1},{0,1},{1,1}};
+    for (const auto& o : off) {
+      int nx = op.x + o[0], ny = op.y + o[1];
+      if (g.inBounds(nx, ny) && g.walkable(nx, ny) && !g.cliffBetween(op.x, op.y, nx, ny)) {
+        spot = {nx, ny}; break;
+      }
+    }
+    if (spot.x >= 0) {
+      wolf->pos = spot;
+      wolf->hunger = 90.0;
+      wolf->state = AnimalState::Hunt;
+    }
+  };
+  
+  // Control
+  Engine ctrl;
+  ctrl.init(777, true, 64, 64);
+  for (int i = 0; i < 8; ++i) {
+    if (!ctrl.isAlive()) break;
+    ctrl.tick();
+  }
+  float threatControl = ctrl.learn().threatEstimate();
+  std::printf("Control threat: %f\n", threatControl);
+  
+  // Attack
+  Engine att;
+  att.init(777, true, 64, 64);
+  for (int i = 0; i < 8; ++i) {
+    parkHungryWolf(att);
+    if (!att.isAlive()) break;
+    att.tick();
+    std::printf("Tick %d: health=%.1f pain=%.1f threat=%.3f attacks=%llu\n", 
+                i, att.body().health(), att.body().pain(), 
+                att.learn().threatEstimate(), att.stats().predatorAttacks);
+  }
+  float threatAtt = att.learn().threatEstimate();
+  std::printf("Attack threat: %f, diff=%f, attacks=%llu, alive=%d\n", 
+              att.learn().threatEstimate(), threatAtt - threatControl, 
+              att.stats().predatorAttacks, att.isAlive());
+}

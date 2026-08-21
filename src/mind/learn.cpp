@@ -41,7 +41,7 @@ void LearnSystem::init(Rng& r) {
   lastThreat_ = 0.0f;
   lastDailyUpdate_ = -86400;
   avgReward_ = rewardVar_ = avgNovelty_ = threatRate_ = avgValence_ = 0.0f;
-  forageRate_ = drinkRate_ = restRate_ = avgPain_ = 0.0f;
+  forageRate_ = drinkRate_ = restRate_ = successRate_ = avgPain_ = 0.0f;
   lifeTicks_ = 0;
 }
 
@@ -222,6 +222,8 @@ void LearnSystem::updateLifeStats(float reward, bool aversive, PolicyAction acti
   forageRate_ += lrLife_ * ((forageSuccess ? 1.0f : 0.0f) - forageRate_);
   drinkRate_ += lrLife_ * ((drinkSuccess ? 1.0f : 0.0f) - drinkRate_);
   restRate_ += lrLife_ * ((restSuccess ? 1.0f : 0.0f) - restRate_);
+  const bool anySuccess = forageSuccess || drinkSuccess || restSuccess;
+  successRate_ += lrLife_ * ((anySuccess ? 1.0f : 0.0f) - successRate_);
   avgPain_ += lrLife_ * (neuromod_.stress / 100.0f - avgPain_);
 }
 

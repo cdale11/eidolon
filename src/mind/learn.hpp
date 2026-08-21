@@ -68,6 +68,11 @@ public:
 
   float temperature() const;
   float threatEstimate() const { return lastThreat_; }
+  float avgReward() const { return avgReward_; }
+  float threatRate() const { return threatRate_; }
+  float avgNovelty() const { return avgNovelty_; }
+  float successRate() const { return successRate_; }
+  void rederiveDrives() { drives_.derive(latent_); }
 
   const Neuromod& neuromod() const { return neuromod_; }
   const PersonalityLatent& personality() const { return latent_; }
@@ -76,6 +81,7 @@ public:
   const ValueNet& valueNet() const { return valueNet_; }
   const ThreatNet& threatNet() const { return threatNet_; }
   const Policy& policy() const { return policy_; }
+  Policy& policy() { return policy_; }
   const Attention& attention() const { return attention_; }
 
   // Current life statistics (EMAs feeding the personality drift).
@@ -111,6 +117,7 @@ private:
   float forageRate_ = 0.0f;
   float drinkRate_ = 0.0f;
   float restRate_ = 0.0f;
+  float successRate_ = 0.0f;
   float avgPain_ = 0.0f;
   uint64_t lifeTicks_ = 0;
 

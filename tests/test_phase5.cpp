@@ -206,14 +206,15 @@ TEST(phase5_gate_threat_learning) {
   // Control: same seed, no predator pressure -> threat estimate stays ~0.
   Engine ctrl;
   ctrl.init(777, true, 64, 64);
-  runTicks(ctrl, 8);
+  runTicks(ctrl, 20);
   const float threatControl = ctrl.learn().threatEstimate();
 
   // Attack: a hungry wolf repeatedly bites the organism; pain accumulates past the
   // aversive threshold and sensitizes the ThreatNet.
+  // Run 20 ticks to ensure multiple wildlife updates (every 5 sim-seconds).
   Engine att;
   att.init(777, true, 64, 64);
-  for (int i = 0; i < 8; ++i) {
+  for (int i = 0; i < 20; ++i) {
     parkHungryWolf(att);
     att.tick();
   }

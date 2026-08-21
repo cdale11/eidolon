@@ -205,20 +205,20 @@ TEST(engine_same_seed_different_experience_diverges_latent) {
 TEST(engine_learned_policy_sustains_life) {
   // The learned policy must sustain the organism for multiple days on a reasonable
   // world size. With the deterministic attention sort (ascending index tie-break),
-  // survival is more challenging; 3 days on 128x128 demonstrates functional learning.
+  // survival is more challenging; 3 sim-days on 128x128 demonstrates functional learning.
+  // Run until 3 sim-days elapse (not fixed tick count) since sleep uses coarse steps.
   Engine e;
   e.init(1, true, 128, 128);
-  const int kTicks = 3 * 86400;
+  const int64_t kTargetTime = 3 * 86400;
   double reward = 0.0;
   int n = 0;
-  for (int i = 0; i < kTicks; ++i) {
-    if (!e.isAlive()) break;
+  while (e.isAlive() && e.clock().now() < kTargetTime) {
     e.tick();
     reward += e.learn().neuromod().reward;
     ++n;
   }
   CHECK(e.isAlive());
-  CHECK(e.clock().now() >= 3 * 86400);
+  CHECK(e.clock().now() >= kTargetTime);
   CHECK(e.stats().berriesEaten > 50);
   CHECK(e.stats().drinks > 10);
   CHECK(reward / n > 0.1);
@@ -291,9 +291,8 @@ TEST(policy_loads_prior_and_retrains_online) {
 TEST(engine_survives_days_with_learning) {
   Engine e;
   e.init(1, true, 128, 128);
-  const int kTicks = 3 * 86400; // 3 sim-days
-  for (int i = 0; i < kTicks; ++i) {
-    if (!e.isAlive()) break;
+  const int64_t kTargetTime = 3 * 86400;
+  while (e.isAlive() && e.clock().now() < kTargetTime) {
     e.tick();
   }
   CHECK(e.isAlive());

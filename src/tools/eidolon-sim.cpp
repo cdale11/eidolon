@@ -49,7 +49,9 @@ void printUsage(FILE* out, const char* prog) {
                "  --archive         also archive memories/events to memory.db (SQLite)\n"
                "  --dump-experiences FILE  append teacher-training records (JSONL) per tick\n"
 "  --policy-prior FILE      seed the fresh policy with teacher-baked weights\n"
-                "  --bench                  run the hot-path benchmark + backend selection, then exit\n"
+                 "  --heredity FILE          load/save organism heredity from/to FILE\n"
+                 "  --heredity-weight FLOAT  inheritance weight 0.0..1.0 (default 0.7)\n"
+                 "  --bench                  run the hot-path benchmark + backend selection, then exit\n"
                 "  --bench-ticks N          ticks for --bench (default 5000)\n"
                 "  --bench-json             emit benchmark results as JSON\n"
                 "  --help            this message\n",
@@ -206,6 +208,8 @@ int main(int argc, char** argv) {
   std::string dumpPath, priorPath;
   bool bench = false, benchJson = false;
   int64_t benchTicks = 5000;
+  std::string heredityPath;
+  float heredityWeight = 0.7f;
 
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
@@ -231,6 +235,8 @@ int main(int argc, char** argv) {
     else if (a == "--archive") archive = true;
     else if (a == "--dump-experiences") dumpPath = need("FILE");
     else if (a == "--policy-prior") priorPath = need("FILE");
+    else if (a == "--heredity") heredityPath = need("FILE");
+    else if (a == "--heredity-weight") heredityWeight = std::atof(need("FLOAT"));
     else if (a == "--bench") bench = true;
     else if (a == "--bench-ticks") benchTicks = std::atoll(need("N"));
     else if (a == "--bench-json") benchJson = true;
@@ -300,6 +306,16 @@ int main(int argc, char** argv) {
       }
       std::fprintf(stderr, "policy prior loaded from %s (online learning continues)\n",
                    priorPath.c_str());
+    }
+    if (!heredityPath.empty()) {
+      engine.setHeredityPath(heredityPath, heredityWeight);
+      if (!engine.loadHeredity()) {
+        std::fprintf(stderr, "warning: could not load heredity from %s (starting fresh)\n",
+                     heredityPath.c_str());
+      } else {
+        std::fprintf(stderr, "heredity loaded from %s (weight %.2f)\n",
+                     heredityPath.c_str(), heredityWeight);
+      }
     }
     std::fprintf(stderr, "fresh organism: seed=%llu deterministic=%d world=%dx%d\n",
                  static_cast<unsigned long long>(seed), deterministic ? 1 : 0, worldW,

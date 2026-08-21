@@ -17,6 +17,7 @@
 #include "mind/learn.hpp"
 #include "mind/memory.hpp"
 #include "mind/memory_system.hpp"
+#include "mind/heredity.hpp"
 #include "llm/instruction_learning.hpp"
 #include "mind/goal_emergence.hpp"
 #include "world/world.hpp"
@@ -132,12 +133,26 @@ bool stepTo(Vec2i q, bool allowFall = false) noexcept;
 
   // Seed the policy bandit with teacher-baked weights (a "wisdom prior") instead of the
   // random init. Only meaningful for a fresh organism; online learning continues on top.
-  bool loadPolicyPrior(const std::string& path);
-
+bool loadPolicyPrior(const std::string& path);
+  
   // Export the current organism's learned policy as an .eprp prior file, so a well-adapted
   // organism can seed future fresh runs (mirror of loadPolicyPrior).
   bool savePolicyPrior(const std::string& path) const;
+  
+  // Heredity: load inheritance from a previous organism's genome
+  // Must be called before init() or after init() before first tick.
+  void setHeredityPath(const std::string& path, float inheritanceWeight = 0.7f) {
+    heredityPath_ = path;
+    heredityInheritanceWeight_ = inheritanceWeight;
+  }
 
+  // Load and apply heredity from file (called automatically in init if set)
+  bool loadHeredity();
+
+  // Save current organism's genome as heredity for future inheritance
+  // Called automatically on death if heredityPath_ is set.
+  bool saveHeredity(uint64_t deathTick, const std::string& causeOfDeath) const;
+  
   // Optional offline experience dump (teacher training data): when set, each tick appends
   // one JSONL record (features, action, reward, interpretable context). Used only by the
   // headless CLI for offline teacher pipelines; never in the server hot path.
@@ -169,6 +184,7 @@ private:
                        float socialRelevance = 0.0f, Relevance relevance = Relevance::None) noexcept;
   bool aversiveTick(const Physiology& before) const noexcept;
   bool safeTick(float reward) const noexcept;
+  std::string determineCauseOfDeath() const noexcept;
   static Action policyToAction(PolicyAction a) noexcept;
   static PolicyAction actionToPolicy(Action a) noexcept;
   void dumpExperience(PolicyAction pa, bool agentic, float reward, float novelty,
@@ -214,6 +230,11 @@ private:
   GoalEmergence goal_emergence_;
   // User model for tracking relationship with the user
   UserModel userModel_;
+
+  // Heredity (organism inheritance across generations)
+  std::string heredityPath_; // path to heredity file for inheritance
+  bool heredityLoaded_ = false;
+  float heredityInheritanceWeight_ = 0.7f; // 0.0 = fresh, 1.0 = full inheritance
 };
 
 } // namespace eidolon

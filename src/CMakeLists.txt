@@ -31,6 +31,8 @@ add_library(eidolon_core STATIC
   mind/attention.cpp
   mind/personality.cpp
   mind/learn.cpp
+  mind/heredity.cpp
+  mind/genetic_memory.cpp
   mind/world_predictor.cpp
   mind/goal_emergence.cpp
   mind/llm_planner.cpp

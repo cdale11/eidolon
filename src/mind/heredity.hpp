@@ -8,6 +8,7 @@
 #include "core/serialize.hpp"
 #include "mind/personality.hpp"
 #include "mind/policy.hpp"
+#include "mind/genetic_memory.hpp"
 
 namespace eidolon {
 
@@ -25,14 +26,22 @@ struct HeredityGenome {
   // Personality latent vector (16-d)
   PersonalityLatent personality;
   
-  // Life statistics for personality drift baseline
+  // Life statistics for personality drift baseline (mirrors Personality::LifeStats)
   struct LifeStats {
     float avgReward = 0.0f;
-    float avgThreat = 0.0f;
+    float rewardVar = 0.0f;
     float avgNovelty = 0.0f;
+    float threatRate = 0.0f;
+    float avgValence = 0.0f;
+    float forageRate = 0.0f;
+    float drinkRate = 0.0f;
+    float restRate = 0.0f;
     float successRate = 0.0f;
-    uint64_t totalTicks = 0;
+    float avgPain = 0.0f;
   } lifeStats;
+  
+  // Genetic memories inherited from parent
+  std::vector<GeneticMemory> geneticMemories;
   
   // Metadata
   uint64_t parentSeed = 0;

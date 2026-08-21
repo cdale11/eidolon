@@ -21,6 +21,7 @@ struct LifeStats {
   float forageRate = 0.0f;  // forage success EMA
   float drinkRate = 0.0f;   // drink success EMA
   float restRate = 0.0f;    // rest/sleep recovery EMA
+  float successRate = 0.0f; // overall action success EMA
   float avgPain = 0.0f;
 };
 
