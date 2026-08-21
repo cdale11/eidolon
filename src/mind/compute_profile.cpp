@@ -247,7 +247,8 @@ bool ComputeProfileDetector::isBackendViable(BackendType backend, const ComputeP
     case BackendType::WasmSimd:
       return profile.hasWasmSimd128;
     case BackendType::WasmPlain:
-      return true;
+      // Require at least 32MB for basic WASM; weaker clients fall back to server.
+      return profile.maxMemoryBytes >= 32 * 1024 * 1024;
     case BackendType::ServerFallback:
       return true;
     case BackendType::Native:
