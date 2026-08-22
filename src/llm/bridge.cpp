@@ -232,6 +232,35 @@ CognitiveSnapshot makeSnapshot(const Engine& engine) {
     drives.hunger, drives.thirst, drives.rest, drives.energy, drives.curiosity);
   s.driveSummary = driveBuf;
 
+// Life-stats summary (age in days, per-action totals, milestones).
+   char lifeBuf[512];
+   std::snprintf(lifeBuf, sizeof(lifeBuf),
+       "age=%lld actions=%llu [forage=%llu drink=%llu rest=%llu wander=%llu observe=%llu flee=%llu] "
+       "attacks=%llu wounds=%llu infections=%llu built=%llu crafted=%llu ate=%llu drank=%llu rebirths=%u",
+       static_cast<long long>(engine.clock().day()),
+       static_cast<unsigned long long>(engine.stats().actionsWander + engine.stats().actionsRest +
+                                      engine.stats().actionsSleep + engine.stats().actionsObserve +
+                                      engine.stats().actionsForage + engine.stats().actionsDrink +
+                                      engine.stats().actionsFlee + engine.stats().actionsFarm +
+                                      engine.stats().actionsCook + engine.stats().actionsCraft +
+                                      engine.stats().actionsBuild + engine.stats().actionsCollectWater +
+                                      engine.stats().actionsPreserve),
+       static_cast<unsigned long long>(engine.stats().actionsForage),
+       static_cast<unsigned long long>(engine.stats().actionsDrink),
+       static_cast<unsigned long long>(engine.stats().actionsRest),
+       static_cast<unsigned long long>(engine.stats().actionsWander),
+       static_cast<unsigned long long>(engine.stats().actionsObserve),
+       static_cast<unsigned long long>(engine.stats().actionsFlee),
+       static_cast<unsigned long long>(engine.stats().predatorAttacks),
+       static_cast<unsigned long long>(engine.stats().woundsSustained),
+       static_cast<unsigned long long>(engine.stats().infections),
+       static_cast<unsigned long long>(engine.stats().structuresBuilt),
+       static_cast<unsigned long long>(engine.stats().itemsCrafted),
+       static_cast<unsigned long long>(engine.stats().berriesEaten),
+       static_cast<unsigned long long>(engine.stats().drinks),
+       static_cast<unsigned int>(engine.rebirthCount()));
+   s.lifeStatsSummary = lifeBuf;
+
   // Social - User model
   const auto& userModel = engine.userModel();
   s.userTrust = userModel.trust;
@@ -419,14 +448,19 @@ std::string fallbackReply(const CognitiveSnapshot& s, const std::string& userTex
   if (s.physiologicalState == "drowsy") opening = "a little drowsy";
   else if (s.physiologicalState == "rested") opening = "well-rested";
   else if (s.physiologicalState == "fine") opening = "steady";
-  std::snprintf(buf, sizeof(buf),
-                "Good %s. It is %s in %s, weather %s (%.1f C). I am %s at (%d,%d). "
-                "Energy %.0f, health %.0f, hunger %.0f, thirst %.0f, water %d/%d.",
-                (hSlot(s.hour)), s.timeOfDayPhrase.c_str(), s.seasonName.c_str(),
-                s.weather.c_str(), s.ambientTempC, opening, s.posX, s.posY,
-                s.energy, s.health, s.hunger, s.thirst,
-                s.waterCarried, s.waterCapacity);
-  return buf;
+std::snprintf(buf, sizeof(buf),
+                 "Good %s. It is %s in %s, weather %s (%.1f C). I am %s at (%d,%d). "
+                 "Energy %.0f, health %.0f, hunger %.0f, thirst %.0f, water %d/%d.",
+                 (hSlot(s.hour)), s.timeOfDayPhrase.c_str(), s.seasonName.c_str(),
+                 s.weather.c_str(), s.ambientTempC, opening, s.posX, s.posY,
+                 s.energy, s.health, s.hunger, s.thirst,
+                 s.waterCarried, s.waterCapacity);
+   // Add age info for life-stats awareness in fallback reply.
+   char ageBuf[32];
+   std::snprintf(ageBuf, sizeof(ageBuf), " I am %lld days old.",
+                 static_cast<long long>(s.simTime / 86400));
+   std::strncat(buf, ageBuf, sizeof(buf) - std::strlen(buf) - 1);
+   return buf;
 }
 
 bool LLMBridge::post(const std::string& body, std::string& response) {
@@ -571,7 +605,13 @@ bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
       "organism at 3am is groggy; a thirsty organism mentions thirst first; a "
       "well-rested organism at midday is calm and clear. The tone is more important "
       "than the words — speak as the organism feels RIGHT NOW, not as a generic "
-      "assistant.");
+      "assistant.\n"
+      "LIFE-STATS AWARENESS: your reply should reflect the organism's life experience "
+      "using the lifeStatsSummary field (age in days, per-action totals, milestones). "
+      "Examples: a young organism may say 'I am only 2 days old'; a battle-scarred "
+      "organism may mention 'I have survived 3 predator attacks'; an experienced "
+      "forager may note 'I have eaten 1200 berries'. Use these facts to ground your "
+      "reply in the organism's lived experience.");
   JsonValue user = JsonValue::makeObject();
   user.setString("role", "user");
   JsonValue payload = JsonValue::makeObject();
@@ -611,6 +651,7 @@ bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
     s.wildlifeSummary.c_str(),
     s.skillSummary.c_str(),
     s.recentMemorySummary.c_str(),
+    s.lifeStatsSummary.c_str(),
     s.phaseOfDay.c_str(), s.timeOfDayPhrase.c_str(), s.seasonName.c_str(),
     s.physiologicalState.c_str(), s.primaryNeed.c_str(), s.circadianTone.c_str()
   );

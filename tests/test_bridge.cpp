@@ -190,15 +190,44 @@ TEST(fallback_reply_thirst_mentions_drive) {
 }
 
 TEST(fallback_reply_deterministic) {
-  // Same snapshot must always yield the same fallback reply (no RNG, no time of day
-  // pulled from wall clock — DESIGN §3 invariant).
-  const CognitiveSnapshot s = sampleSnapshot();
-  const std::string r1 = fallbackReply(s, "hello");
-  const std::string r2 = fallbackReply(s, "hello");
-  CHECK_EQ(r1, r2);
-  // And a different user text must not change a deterministic fallback (userText unused).
-  const std::string r3 = fallbackReply(s, "something else entirely");
-  CHECK_EQ(r1, r3);
+   // Same snapshot must always yield the same fallback reply (no RNG, no time of day
+   // pulled from wall clock — DESIGN §3 invariant).
+   const CognitiveSnapshot s = sampleSnapshot();
+   const std::string r1 = fallbackReply(s, "hello");
+   const std::string r2 = fallbackReply(s, "hello");
+   CHECK_EQ(r1, r2);
+   // And a different user text must not change a deterministic fallback (userText unused).
+   const std::string r3 = fallbackReply(s, "something else entirely");
+   CHECK_EQ(r1, r3);
+}
+
+TEST(snapshot_life_stats_populated) {
+   // The lifeStatsSummary field must be populated with age and action totals.
+   Engine engine;
+   engine.init(42, true, 64, 64);
+   // Run a few ticks to generate some stats.
+   for (int i = 0; i < 100; ++i) engine.tick();
+   CognitiveSnapshot s = makeSnapshot(engine);
+   CHECK(!s.lifeStatsSummary.empty());
+   // Must contain age= and actions=
+   CHECK(s.lifeStatsSummary.find("age=") != std::string::npos);
+   CHECK(s.lifeStatsSummary.find("actions=") != std::string::npos);
+   // Must contain the bracket section with forage, drink, rest, wander, observe, flee.
+   CHECK(s.lifeStatsSummary.find("[forage=") != std::string::npos);
+   CHECK(s.lifeStatsSummary.find("drink=") != std::string::npos);
+   CHECK(s.lifeStatsSummary.find("rest=") != std::string::npos);
+   CHECK(s.lifeStatsSummary.find("wander=") != std::string::npos);
+   CHECK(s.lifeStatsSummary.find("observe=") != std::string::npos);
+   CHECK(s.lifeStatsSummary.find("flee=") != std::string::npos);
+   // Must contain milestones.
+   CHECK(s.lifeStatsSummary.find("attacks=") != std::string::npos);
+   CHECK(s.lifeStatsSummary.find("wounds=") != std::string::npos);
+   CHECK(s.lifeStatsSummary.find("infections=") != std::string::npos);
+   CHECK(s.lifeStatsSummary.find("built=") != std::string::npos);
+   CHECK(s.lifeStatsSummary.find("crafted=") != std::string::npos);
+   CHECK(s.lifeStatsSummary.find("ate=") != std::string::npos);
+   CHECK(s.lifeStatsSummary.find("drank=") != std::string::npos);
+   CHECK(s.lifeStatsSummary.find("rebirths=") != std::string::npos);
 }
 
 // ---------------------------------------------------------------------------
