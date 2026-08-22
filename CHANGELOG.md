@@ -5,6 +5,36 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 
 ## [Unreleased]
 
+### Fix-as-you-go — `Engine::lastAction()` persisted for chat grounding
+- **`Engine::lastAction()` accessor** (`src/sim/engine.hpp`): returns the action chosen
+  by `decide()` on the most recent tick. The LLM bridge now reads it via
+  `engine.lastAction()` to populate `CognitiveSnapshot::currentAction` — the previous
+  hardcoded `"active"` placeholder is gone.
+- **Persisted in the snapshot (v10)** (`src/sim/engine.cpp::serializeState`,
+  `src/core/serialize.hpp`): `lastAction_` is written after the explore-state block and
+  read back with a bounds check (rejects `>12` so a corrupt snapshot returns a clear
+  error per DESIGN §15). A resumed run now continues with the correct chat-grounding
+  action instead of always showing `"active"`.
+- **`init` explicit default**: `lastAction_ = Action::Observe` is set on every fresh
+  init so pre-first-tick snapshots are well-defined.
+- **Test coverage** (4 new tests, +1 invariant re-verified):
+  - `engine_lastAction_default_then_updates` (test_engine.cpp) — pre-tick default is
+    Observe, after ticks lastAction matches the returned Action from `tick()`.
+  - `engine_lastAction_survives_snapshot_roundtrip` (test_engine.cpp) — central
+    invariant: snapshot A → restore into B → both continue with identical lastAction.
+  - `snapshot_current_action_is_meaningful` (test_bridge.cpp) — `currentAction` is no
+    longer `"active"` placeholder; matches engine's lastAction via the documented
+    names (`"wander"`, `"forage"`, `"drink"`, etc.).
+  - `snapshot_current_action_survives_resume` (test_bridge.cpp) — resumed run's
+    `currentAction` matches the original run's at snapshot time.
+  - `test_saveload_continuity` (Python integration) — unchanged, re-verified: byte-
+    identical resume == uninterrupted run still holds with v10 (no determinism
+    regression from the snapshot bump).
+- **Result**: 118/118 C++ unit tests pass (was 114), full `run_integration.sh` green.
+- **Bonus**: the previously-unused `actionName()` helper in `bridge.cpp` (which had
+  caused a `-Wunused-function` warning for several commits) is now used; the build is
+  fully warning-clean.
+
 ### Teacher pipeline — .eprp schema versioning + stale test fixes
 - **Versioned the `.eprp` schema** (`python/teacher/fit_prior.py`,
   `src/mind/policy.cpp`): `PRIOR_VERSION = 2` is now the canonical constant; writer

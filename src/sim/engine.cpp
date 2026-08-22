@@ -51,6 +51,7 @@ void Engine::init(uint64_t masterSeed, bool deterministic, int worldW, int world
   clock_.set(0);
   died_ = false;
   resting_ = false;
+  lastAction_ = Action::Observe; // safe default until the first tick chooses one
   lastStatusAt_ = 0;
   statusInterval_ = 600;
   stats_ = Stats{};
@@ -129,6 +130,7 @@ Action Engine::tick() noexcept {
   learn_.buildFeatures(world_.perceive(world_.organismPos(), clock_), body_, featsBefore_);
 
   const Action action = decide();
+  lastAction_ = action; // for snapshot/CognitiveSnapshot::currentAction (chat grounding)
 
   // Step size: sleep is coarsest, rest is coarse, active is fine.
   const StepKind step = body_.isSleeping()
@@ -1074,6 +1076,9 @@ void Engine::serializeState(BinaryWriter& w) const {
   w.i64(static_cast<int64_t>(exploreDir_.x));
   w.i64(static_cast<int64_t>(exploreDir_.y));
   w.i64(static_cast<int64_t>(exploreTicks_));
+  // v10: last action chosen by decide()/execute(); used by the LLM bridge's
+  // CognitiveSnapshot::currentAction after a resume.
+  w.u8(static_cast<uint8_t>(lastAction_));
 }
 
 bool Engine::deserializeState(BinaryReader& r, std::string& err) {
@@ -1133,6 +1138,14 @@ bool Engine::deserializeState(BinaryReader& r, std::string& err) {
   }
   exploreDir_ = {static_cast<int>(edx), static_cast<int>(edy)};
   exploreTicks_ = static_cast<int>(eticks);
+  // v10: last action. Action is enum class : uint8_t with 13 values (0..12); reject
+  // anything out of range so a corrupt snapshot returns a clear error (DESIGN §15).
+  uint8_t lastActionByte;
+  if (!r.u8(lastActionByte) || lastActionByte > 12) {
+    err = "snapshot lastAction corrupt";
+    return false;
+  }
+  lastAction_ = static_cast<Action>(lastActionByte);
   return r.done();
 }
 

@@ -19,7 +19,9 @@ constexpr uint32_t kSnapshotMagic = 0x4549444C; // "EIDL"
 // v8: Phase 8 instruction learning + habit-biased action choice.
 // v9: Directed-exploration state (exploreDir_/exploreTicks_) — organisms no longer
 //      bounce in a corner to death when no food/water is in perception range.
-constexpr uint32_t kSnapshotVersion = 9;
+// v10: Engine::lastAction_ persisted so the LLM bridge's CognitiveSnapshot has the
+//      correct currentAction after a snapshot load (was always "active" placeholder).
+constexpr uint32_t kSnapshotVersion = 10;
 
 struct BinaryWriter {
 public:

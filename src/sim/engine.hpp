@@ -88,6 +88,13 @@ struct Stats {
 
   bool isAlive() const { return world_.organismAlive() && body_.alive(); }
 
+  // The action chosen on the most recent tick (also persisted in the snapshot so a
+  // resumed run continues with the correct chat-grounding state). Default until the
+  // first tick: Action::Observe. Used by the LLM bridge's CognitiveSnapshot so chat
+  // replies can reference what the organism is actually doing right now (the bridge
+  // calls this every makeSnapshot()).
+  Action lastAction() const noexcept { return lastAction_; }
+
   // Advance the simulation by one tick (step size chosen adaptively). noexcept hot path.
   // Returns the action chosen this tick.
   Action tick() noexcept;
@@ -247,6 +254,11 @@ private:
   int64_t statusInterval_ = 600; // sim-seconds between status lines
   int prevMode_ = 0; // last logged life mode: 0=active,1=rest,2=sleep
   bool resting_ = false; // hysteresis for rest mode (prevents boundary oscillation)
+  // The most recent action chosen by `decide()` / executed by `execute()`. Persisted in
+  // the snapshot (see serializeState) so a resumed run continues with the correct
+  // chat-grounding state — the LLM bridge reads it via `lastAction()` to populate
+  // CognitiveSnapshot::currentAction instead of the hardcoded "active" placeholder.
+  Action lastAction_ = Action::Observe;
   // Directed-exploration state: when no food/water is in perception range, the organism
   // walks in a fixed `exploreDir_` for up to `exploreTicks_` ticks then re-rolls — this
   // actually traverses terrain instead of bouncing randomly in a corner. Serialised.

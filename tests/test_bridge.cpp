@@ -200,3 +200,55 @@ TEST(fallback_reply_deterministic) {
   const std::string r3 = fallbackReply(s, "something else entirely");
   CHECK_EQ(r1, r3);
 }
+
+// ---------------------------------------------------------------------------
+// currentAction (fix-as-you-go #2): the LLM bridge used to populate
+// CognitiveSnapshot::currentAction with the hardcoded placeholder "active". Now
+// it reads Engine::lastAction() (the action chosen by decide() on the last
+// tick), which is also persisted in the snapshot (v10+).
+// ---------------------------------------------------------------------------
+
+TEST(snapshot_current_action_is_meaningful) {
+  // After a few ticks, the engine has a real lastAction (not the default Observe).
+  // The snapshot's currentAction must reflect it — not "active".
+  Engine engine;
+  engine.init(7, true, 64, 64);
+  // Drive long enough that the policy actually does something agentic.
+  for (int i = 0; i < 500; ++i) engine.tick();
+  const CognitiveSnapshot s = makeSnapshot(engine);
+  CHECK(!s.currentAction.empty());
+  CHECK(s.currentAction != "active"); // placeholder must be gone
+  // currentAction must match the engine's lastAction via the documented names.
+  const char* expected = "observe";
+  switch (engine.lastAction()) {
+    case Action::Wander: expected = "wander"; break;
+    case Action::Rest: expected = "rest"; break;
+    case Action::Sleep: expected = "sleep"; break;
+    case Action::Observe: expected = "observe"; break;
+    case Action::Forage: expected = "forage"; break;
+    case Action::Drink: expected = "drink"; break;
+    case Action::Flee: expected = "flee"; break;
+    case Action::Farm: expected = "farm"; break;
+    case Action::Cook: expected = "cook"; break;
+    case Action::Craft: expected = "craft"; break;
+    case Action::Build: expected = "build"; break;
+    case Action::CollectWater: expected = "collect water"; break;
+    case Action::Preserve: expected = "preserve"; break;
+  }
+  CHECK_EQ(s.currentAction, std::string(expected));
+}
+
+TEST(snapshot_current_action_survives_resume) {
+  // The fix-as-you-go invariant: a resumed run must continue with the same
+  // currentAction it had at snapshot time (otherwise the LLM would see a stale
+  // or placeholder action right after restart — misleading grounding).
+  Engine a, b;
+  a.init(11, true, 64, 64);
+  b.init(11, true, 64, 64);
+  for (int i = 0; i < 200; ++i) a.tick();
+  std::string err;
+  CHECK(b.restore(a.snapshot(), err));
+  const CognitiveSnapshot sa = makeSnapshot(a);
+  const CognitiveSnapshot sb = makeSnapshot(b);
+  CHECK_EQ(sa.currentAction, sb.currentAction);
+}

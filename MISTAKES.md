@@ -300,3 +300,30 @@ MISTAKES 2026-08-19 for what that looks like in practice). Verified: 8/8 Python
 teacher tests pass, 114/114 C++ unit tests pass, full `run_integration.sh` green;
 sim smoke run `eidolon-sim --days 1 --seed 42 --deterministic` survives (energy
 99.8, no errors).
+
+### 2026-08-22 — Snapshot version bump required for new fields, even trivial ones
+Context: Adding `Engine::lastAction_` (a single `uint8_t`) to the persisted snapshot
+required bumping `kSnapshotVersion` from 9 to 10 (`src/core/serialize.hpp`) so old
+v9 snapshots are refused on load with a clear error per DESIGN §15. The bump does
+NOT require a migration — `unpackSnapshot` will just refuse the old version.
+Mistake risk: forgetting to bump the version after editing `serializeState`/
+`deserializeState`. The header magic + version check
+(`src/core/serialize.hpp::unpackSnapshot`) would catch it at load time with
+"snapshot version mismatch", but only on the NEXT restore — and only if a test
+happens to load a v9 file. If no test covers resume, the bug ships silently:
+every newly-written snapshot is unreadable.
+Fix / rule: **Every time `serializeState` adds a new field, bump `kSnapshotVersion`
+in the SAME commit, AND update the version-history comment block in
+`src/core/serialize.hpp` (lines ~13-22), AND add at least one test that does
+init → tick → snapshot → restore → verify-the-new-field.** The byte-identical-resume
+integration test (`test_saveload_continuity`) is the safety net that catches any
+determinism regression, but it doesn't itself verify the new field round-trips —
+the field-specific test does. Verified for this commit:
+  - 118/118 C++ unit tests pass (was 114, +4 new for lastAction semantics).
+  - Full `run_integration.sh` green; `test_saveload_continuity` confirms
+    byte-identical resume == uninterrupted run still holds at v10.
+  - Smoke run `eidolon-sim --days 1 --seed 42 --deterministic` survives (energy
+    99.8, zero warnings/errors).
+  - Build fully warning-clean (bonus: the previously-unused `actionName()` helper
+    in `bridge.cpp` is now actually used — the `-Wunused-function` warning that
+    had been noise for several commits is gone).

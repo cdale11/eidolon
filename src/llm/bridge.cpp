@@ -193,9 +193,10 @@ CognitiveSnapshot makeSnapshot(const Engine& engine) {
   s.waterCarried = b.waterCarried();
   s.waterCapacity = b.waterCapacity();
 
-  // Current action (from last tick's decision)
-  // We can infer from recent behavior or use a placeholder
-  s.currentAction = "active"; // placeholder
+  // Current action (from last tick's decision). The engine persists this in its
+  // snapshot (v10+) so a resumed run continues with the correct chat-grounding
+  // action; see src/sim/engine.cpp::serializeState.
+  s.currentAction = actionName(engine.lastAction());
 
   // Threat level
   s.threatLevel = engine.learn().threatEstimate();

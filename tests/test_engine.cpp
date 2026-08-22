@@ -114,3 +114,49 @@ TEST(engine_adaptive_steps_used) {
   CHECK(e.stats().ticksCoarse + e.stats().ticksSleep > 0);
   CHECK(e.stats().ticksFine > 0);
 }
+
+TEST(engine_lastAction_default_then_updates) {
+  // Before the first tick, lastAction is a safe default (Observe). After a few
+  // ticks, lastAction must reflect whatever decide()/execute() actually chose —
+  // not the default, not necessarily Observe. This is what the LLM bridge's
+  // CognitiveSnapshot::currentAction reads (see src/llm/bridge.cpp::makeSnapshot).
+  Engine e;
+  e.init(7, true, 64, 64);
+  CHECK_EQ(static_cast<int>(e.lastAction()), static_cast<int>(Action::Observe));
+  for (int i = 0; i < 50; ++i) e.tick();
+  // After 50 ticks, lastAction must equal the last returned Action from tick().
+  // Capture the next action and verify they match.
+  const Action a = e.tick();
+  CHECK_EQ(static_cast<int>(e.lastAction()), static_cast<int>(a));
+  // And: lastAction must NOT be stuck on the default (otherwise the snapshot
+  // would lie about what the organism is doing right now).
+  const bool sawNonObserve = (e.stats().actionsForage > 0) ||
+                             (e.stats().actionsDrink > 0) ||
+                             (e.stats().actionsRest > 0) ||
+                             (e.stats().actionsWander > 0) ||
+                             (e.stats().actionsFlee > 0);
+  CHECK(sawNonObserve); // sanity: the organism actually does things
+  CHECK(static_cast<int>(e.lastAction()) != static_cast<int>(Action::Observe) ||
+        sawNonObserve == false); // tautology guard — lastAction CAN be Observe
+                                  // when the policy legitimately chose it.
+}
+
+TEST(engine_lastAction_survives_snapshot_roundtrip) {
+  // lastAction_ is in the snapshot (v10+) so a resumed run has the correct
+  // chat-grounding action. This is the central invariant for fix-as-you-go #2.
+  Engine a, b;
+  a.init(11, true, 64, 64);
+  b.init(11, true, 64, 64);
+  for (int i = 0; i < 200; ++i) a.tick();
+  const Action lastA = a.lastAction();
+  std::string err;
+  CHECK(b.restore(a.snapshot(), err));
+  CHECK_EQ(static_cast<int>(b.lastAction()), static_cast<int>(lastA));
+  // Resume a few more ticks on both — the actions must continue to match
+  // (deterministic given the seed).
+  for (int i = 0; i < 50; ++i) {
+    a.tick();
+    b.tick();
+  }
+  CHECK_EQ(static_cast<int>(a.lastAction()), static_cast<int>(b.lastAction()));
+}
