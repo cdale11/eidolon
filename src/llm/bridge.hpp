@@ -62,6 +62,16 @@ struct CognitiveSnapshot {
   // Current action/activity
   std::string currentAction;  // "wander"/"forage"/"drink"/"rest"/"sleep"/"flee"/"observe"/"farm"/"cook"/"craft"/"build"/"collectwater"/"preserve"
 
+  // Cumulative life-stats summary (age in days, per-action totals, milestones).
+  // Computed deterministically from Engine::stats() + Engine::rebirthCount() each
+  // snapshot; not persisted separately (those counters ARE persisted in the snapshot
+  // v10's Stats block). This string lets the LLM honestly answer "how old are you?",
+  // "have you been attacked?", "what have you built?" without inventing answers.
+  // Format: "age=Nd actions=N [forage=N drink=N rest=N wander=N observe=N flee=N]
+  //         attacks=N wounds=N infections=N built=N crafted=N ate=N drank=N
+  //         rebirths=N"
+  std::string lifeStatsSummary;
+
   // Threat level (0..1)
   double threatLevel = 0.0;
 
