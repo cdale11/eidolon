@@ -84,8 +84,12 @@ public:
   std::string applyDelta(const std::vector<uint8_t>& deltaBlob, std::string& err);
   
   // Phase 12: ComputeProfile handling (client reports capabilities)
-// Phase 12: ComputeProfile handling (client reports capabilities)
   std::string computeProfileJson(const std::string& jsonBody, std::string& err);
+  // Phase 15: client offload endpoints (raw content; caller sets status/type)
+  std::string wasmBinary();         // empty if unavailable (404)
+  std::string wasmJavaScript();     // empty if unavailable (404)
+  std::string clientSnapshotUpload(const std::vector<uint8_t>& blob, std::string& err);
+  void maybeStartClientComputing(const ComputeProfile& profile);
 
   // Future Directions: Internet access (configurable, user-gated)
   std::string browseSearchJson(const std::string& jsonBody, std::string& err);
@@ -110,6 +114,12 @@ private:
   mutable std::mutex engineMu_; // guards engine_ (sim thread vs HTTP handlers)
   int64_t conversationId_ = -1;
   FidelitySettings fidelity_; // resolved at simLoop start (metrics/status report)
+  // Phase 15: client-side offload
+  std::atomic<bool> clientComputing_{false};
+  std::string wasmPath_;
+  std::string wasmJsPath_;
+  // metrics
+  uint64_t clientSnapshotsReceived_{0};
 };
 
 } // namespace eidolon

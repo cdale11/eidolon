@@ -357,6 +357,26 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
 - Documentation finalization; CHANGELOG entries; performance report
 - Gate: full `ctest` + integration suite green on a clean checkout.
 
+## Phase 15 — Client-side offload foundation (started; ahead of 13–14 on user direction)
+- [x] Server stops local ticking when a capable client claims the sim
+      (`clientComputing_` flag; `simLoop` idles instead — life continues via
+      client snapshots, server persists + answers chat).
+- [x] WASM artifacts served to the client (`GET /api/wasm/core.wasm`,
+      `GET /api/wasm/core.js`; resolves build-wasm-mt → build-wasm-simd →
+      build-wasm by selected backend).
+- [x] Client tick-state uploads (`POST /api/client/snapshot`; validates,
+      restores, persists; rejected while the server is hosting).
+- [x] `POST /api/compute-profile` now arms/disarms offload via
+      `maybeStartClientComputing()` (WasmPlain/WasmSimd/WasmSimdMt → client;
+      others stay server-side).
+- [x] `run_eidolon.sh` — one-command launcher: starts llama-server (Vulkan
+      iGPU, waits for health, reuses an already-healthy instance, kills only
+      its own on exit) + eidolon-server on 0.0.0.0:8081.
+- [ ] Client-side Web Worker host: browser JS that loads the WASM module,
+      ticks locally, posts snapshots back (parity-tested vs native).
+- Gate: endpoints verified live (404 before profile, 200 after; bad snapshot
+      rejected; valid snapshot round-trips); unit + integration suites green.
+
 ## Future directions (deferred by design)
 Logged from user requirements; not yet sequenced into phases. No LLM in the hot path
 and "client does the maximum work" invariants apply to all of them.

@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <random>
 #include <thread>
 #include <unordered_map>
@@ -449,6 +450,14 @@ void Server::simLoop() {
       static_cast<int64_t>(1e6 / fidelity.simSecondsPerWallSecond);
   std::fprintf(stderr, "fidelity: %s\n", fidelity.toString().c_str());
   while (!stop_.load()) {
+    // Phase 15: when a capable client has taken over the simulation, the server
+    // stops ticking locally — it only persists client snapshots, answers chat,
+    // and serves state. Life never stops: if no client ever sends a snapshot the
+    // state simply stays frozen until a client connects or the flag is cleared.
+    if (clientComputing_.load()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      continue;
+    }
     {
       // Scope the lock so HTTP handler threads always get a window to acquire the
       // mutex; holding it across the pacing sleep below would starve them out.
@@ -1008,7 +1017,82 @@ std::string Server::computeProfileJson(const std::string& jsonBody, std::string&
   fid.setBool("defer_consolidation", fidelity_.deferConsolidation);
   root.set("fidelity", std::move(fid));
   
+  // Phase 15: if the client can carry the sim, stop the server's local ticking.
+  maybeStartClientComputing(profile);
+  
   return root.dump();
+}
+
+// ---------------------------------------------------------------------------
+// Phase 15 — Client-side offload foundation
+// The server serves the compiled WASM module to the browser; when the client
+// reports a capable ComputeProfile (WasmSimd/WasmSimdMt), the server stops its
+// local tick loop and accepts tick-state returns from the client instead
+// (client-authoritative compute, server persists — DESIGN §17).
+// ---------------------------------------------------------------------------
+
+void Server::maybeStartClientComputing(const ComputeProfile& profile) {
+  ComputeProfileDetector detector;
+  const BackendSelection sel = detector.selectBackend(profile);
+  // Client carries the sim for any WASM backend; WebGPU/Native/server stay local.
+  const bool clientCanCompute =
+      (sel.type == BackendType::WasmPlain || sel.type == BackendType::WasmSimd ||
+       sel.type == BackendType::WasmSimdMt);
+  clientComputing_.store(clientCanCompute);
+
+  // Resolve which WASM artifacts to serve for this backend. Served from the
+  // build sibling dirs next to the working directory; missing files are fine —
+  // wasmBinary()/wasmJavaScript() 404 then and the client falls back to server compute.
+  const char* dirs[] = {"build-wasm-mt", "build-wasm-simd", "build-wasm"};
+  const char* names[] = {"eidolon-parity-dump", "eidolon-parity-dump", "eidolon-parity-dump"};
+  (void)names;
+  std::string wantDir = "build-wasm";
+  if (sel.type == BackendType::WasmSimdMt) wantDir = "build-wasm-mt";
+  else if (sel.type == BackendType::WasmSimd) wantDir = "build-wasm-simd";
+  for (const char* d : {wantDir.c_str(), dirs[1], dirs[2]}) {
+    const std::string w = std::string(d) + "/bin/eidolon-parity-dump.wasm";
+    const std::string j = std::string(d) + "/bin/eidolon-parity-dump.js";
+    if (std::filesystem::exists(w) && std::filesystem::exists(j)) {
+      wasmPath_ = w;
+      wasmJsPath_ = j;
+      break;
+    }
+  }
+  std::fprintf(stderr, "client offload: computing=%s wasm=%s\n",
+               clientComputing_.load() ? "client" : "server",
+               wasmPath_.empty() ? "(none found)" : wasmPath_.c_str());
+}
+
+std::string Server::wasmBinary() {
+  if (wasmPath_.empty() || !std::filesystem::exists(wasmPath_)) return "";
+  std::ifstream f(wasmPath_, std::ios::binary);
+  return std::string(std::istreambuf_iterator<char>(f),
+                     std::istreambuf_iterator<char>());
+}
+
+std::string Server::wasmJavaScript() {
+  if (wasmJsPath_.empty() || !std::filesystem::exists(wasmJsPath_)) return "";
+  std::ifstream f(wasmJsPath_, std::ios::binary);
+  return std::string(std::istreambuf_iterator<char>(f),
+                     std::istreambuf_iterator<char>());
+}
+
+std::string Server::clientSnapshotUpload(const std::vector<uint8_t>& blob, std::string& err) {
+  std::lock_guard<std::mutex> lock(engineMu_);
+  if (!clientComputing_.load()) {
+    err = "server is currently hosting the sim; client offload not active";
+    return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
+  }
+  if (!engine_.restore(blob, err)) {
+    return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
+  }
+  ++clientSnapshotsReceived_;
+  std::string saveErr;
+  engine_.saveFile(opts_.dataDir + "/save.snap", saveErr);
+  if (!saveErr.empty()) {
+    std::fprintf(stderr, "warning: client snapshot save failed: %s\n", saveErr.c_str());
+  }
+  return "{\"ok\":true}";
 }
 
 // Future Directions: Internet access - search endpoint
@@ -1210,6 +1294,35 @@ int Server::run() {
   svr.Post("/api/compute-profile", [this](const httplib::Request& req, httplib::Response& res) {
     std::string err;
     std::string out = computeProfileJson(req.body, err);
+    if (!err.empty()) res.status = 400;
+    res.set_content(out, "application/json");
+  });
+  
+  // Phase 15: serve the WASM module + glue to the client
+  svr.Get("/api/wasm/core.wasm", [this](const httplib::Request&, httplib::Response& res) {
+    const std::string out = wasmBinary();
+    if (out.empty()) {
+      res.status = 404;
+      res.set_content("{\"error\":\"wasm binary not available\"}", "application/json");
+      return;
+    }
+    res.set_content(out, "application/wasm");
+  });
+  svr.Get("/api/wasm/core.js", [this](const httplib::Request&, httplib::Response& res) {
+    const std::string out = wasmJavaScript();
+    if (out.empty()) {
+      res.status = 404;
+      res.set_content("{\"error\":\"wasm glue not available\"}", "application/json");
+      return;
+    }
+    res.set_content(out, "text/javascript");
+  });
+  
+  // Phase 15: client returns its tick state (client-authoritative compute)
+  svr.Post("/api/client/snapshot", [this](const httplib::Request& req, httplib::Response& res) {
+    std::vector<uint8_t> blob(req.body.begin(), req.body.end());
+    std::string err;
+    std::string out = clientSnapshotUpload(blob, err);
     if (!err.empty()) res.status = 400;
     res.set_content(out, "application/json");
   });
