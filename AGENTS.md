@@ -58,9 +58,11 @@ Rules for any agent (AI or human) working in this repo. Read before touching any
     --no-kv-offload --cache-ram 0 --cache-type-k q8_0 --cache-type-v q8_0 --no-mmproj`
     (~1.05 GiB GTT on the iGPU, KV cache quantized in CPU RAM, no prompt-cache RAM).
     Note the model path lives in `~/llama.cpp/` root, not `models/`.
-  - **eidolon-server on the LAN**: launch with `--host 0.0.0.0 --llm
-    http://127.0.0.1:8080/v1 --llm-timeout 20000`; firewall already permits
-    ports 1025-65535/tcp, so the chat UI is reachable at `http://<lan-ip>:8081`.
+  - **eidolon-server on the LAN**: just run `./run_eidolon.sh` — it starts llama-server
+    (Vulkan flags above; reuses one already healthy on :8080) then eidolon-server with
+    `--host 0.0.0.0 --llm http://127.0.0.1:8080/v1 --llm-timeout 20000`; Ctrl+C stops
+    both. Firewall already permits ports 1025-65535/tcp, so the chat UI is reachable at
+    `http://<lan-ip>:8081`. `EIDOLON_NO_LLM=1 ./run_eidolon.sh` for offline mode.
 - **Conda env `eidolon`**: Python 3.12.13, activated by default in this shell. Current
   packages: pip/setuptools/wheel only. Packages needed for tooling (e.g. numpy, pyyaml,
   requests, torch-CPU) must be installed here and recorded in `python/requirements.txt`.

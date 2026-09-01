@@ -61,12 +61,15 @@ cmake --build build -j
 # Run tests (C++ unit)
 ./build/tests/eidolon_tests
 
+# One-command launcher (llama-server on the iGPU + eidolon-server on 0.0.0.0:8081)
+./run_eidolon.sh            # Ctrl+C stops both. EIDOLON_NO_LLM=1 for offline mode.
+
 # Headless simulation (no UI; runs until SIGINT)
 ./build/bin/eidolon-sim --data data/runs/run1 --days 2
 
-# Web server (chat UI at http://localhost:8080)
-./build/bin/eidolon-server --data data/runs/run1 --port 8080 \
-    --llm-url http://127.0.0.1:8081 --llm-model Qwen3-4B-Instruct-Q4_K_M.gguf
+# Web server manually (chat UI at http://localhost:8081)
+./build/bin/eidolon-server --data data/runs/run1 --port 8081 \
+    --llm http://127.0.0.1:8080/v1 --llm-timeout 20000
 
 # Seeded deterministic replay (debugging)
 ./build/bin/eidolon-sim --seed 42 --deterministic --data data/runs/replay1 --days 1

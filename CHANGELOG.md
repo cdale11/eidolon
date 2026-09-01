@@ -5,6 +5,32 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 
 ## [Unreleased]
 
+### Phase 15 — Client-side offload foundation (started)
+- **Server hands the sim to a capable client**: when a browser posts a
+  `ComputeProfile` whose selected backend is WasmPlain/WasmSimd/WasmSimdMt,
+  the server's local tick loop idles and the organism's life continues via
+  client snapshots (client-authoritative compute; server persists, syncs and
+  answers chat — DESIGN §17).
+- **New endpoints**: `GET /api/wasm/core.wasm` + `GET /api/wasm/core.js`
+  (serve the matching prebuilt WASM module for the selected backend;
+  404 until a profile is posted), `POST /api/client/snapshot` (validates,
+  restores and persists a client-produced tick state; rejected while the
+  server is hosting the sim itself).
+- **`run_eidolon.sh`**: one-command launcher — starts llama-server (Vulkan
+  iGPU backend, Qwen3-4B, waits for `/health`, reuses an already-healthy
+  instance without touching it, kills only its own on exit) then
+  `eidolon-server` on `0.0.0.0:8081`. `EIDOLON_NO_LLM=1` starts offline mode.
+  Ctrl+C stops both cleanly.
+- README quickstart flags corrected (`--llm`/`--llm-timeout`, port 8081).
+
+### Fix-as-you-go — life-stats grounding for chat
+- `CognitiveSnapshot::lifeStatsSummary`: deterministic, non-persisted string
+  derived from `Engine::stats()` + `rebirthCount()` (age in days, per-action
+  totals, attack/wound/infection/build/craft/eat/drink milestones). The
+  respond prompt now references it so the LLM can honestly answer "how old
+  are you?" / "have you been attacked?" without inventing facts; the
+  offline fallback reply appends the organism's age.
+
 ### Fix-as-you-go — `Engine::lastAction()` persisted for chat grounding
 - **`Engine::lastAction()` accessor** (`src/sim/engine.hpp`): returns the action chosen
   by `decide()` on the most recent tick. The LLM bridge now reads it via
