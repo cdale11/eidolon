@@ -44,6 +44,9 @@ const char* kIndexHtml = R"html(<!DOCTYPE html>
   #diagbtn { width: 100%; padding: 8px 12px; margin-top: 4px; border: 1px solid #d9d9e3;
     border-radius: 8px; background: #ececf1; color: #0d0d0d; cursor: pointer; font-size: 13px; }
   #diagbtn:hover { background: #e3e3ea; }
+  #offloadbtn { width: 100%; padding: 8px 12px; margin-top: 4px; border: 1px solid #10a37f;
+    border-radius: 8px; background: #ececf1; color: #0d0d0d; cursor: pointer; font-size: 13px; }
+  #offloadbtn.on { background: #e7f7f2; color: #10a37f; border-color: #10a37f; }
   #diag { display: none; padding: 12px; border-top: 1px solid #ececec; background: #fafafa;
           font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px;
           white-space: pre; overflow-x: auto; max-height: 40vh; overflow-y: auto; }
@@ -99,6 +102,7 @@ const char* kIndexHtml = R"html(<!DOCTYPE html>
     <button id="newworld">Restart world (fresh organism)</button>
     <button id="saveprior" title="Save this organism's learned behaviour as a prior for future runs">Save this organism as prior</button>
     <button id="diagbtn">Diagnostics</button>
+    <button id="offloadbtn" title="Run the simulation in this browser tab (WASM worker) instead of on the server">Compute: server</button>
   </div>
   <div id="convlist"></div>
   <div id="diag">loading…</div>
@@ -206,6 +210,7 @@ async function newChat() {
 }
 async function resetWorld() {
    if (!confirm('Start a fresh world with a brand-new organism? Current life and world are replaced.')) return;
+   if (computeOn) { await stopClientCompute(); computeOn = false; offloadBtn.classList.remove('on'); offloadBtn.textContent = 'Compute: server'; }
    await fetch('/api/world/reset', {
      method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'
    });
@@ -297,6 +302,147 @@ async function send() {
   sendBtn.disabled = false;
   chat.scrollTop = chat.scrollHeight;
 }
+// ---------------------------------------------------------------------------
+// Phase 15: client-side compute. A capable tab can take over the tick loop in a
+// Web Worker (WASM ReplicaCore, bit-exact with the server core) — the server then
+// persists snapshots and handles chat only. If this tab closes or stalls, the
+// server automatically resumes the sim after ~15s of silence (continuity invariant).
+// ---------------------------------------------------------------------------
+const offloadBtn = document.getElementById('offloadbtn');
+let computeWorker = null;
+let computeOn = false;
+let postBusy = false;
+
+function detectCaps() {
+  // Minimal SIMD128 probe (i32x4.splat of 0) per the wasm-feature-detect recipe.
+  let simd = false;
+  try {
+    simd = WebAssembly.validate(new Uint8Array([
+      0,97,115,109,1,0,0,0,1,5,1,96,0,123,0,3,2,1,0,10,10,1,8,0,65,0,253,15,253,98,11]));
+  } catch (e) {}
+  const sab = (typeof SharedArrayBuffer !== 'undefined') && (self.crossOriginIsolated === true);
+  return {
+    wasm_simd128: simd ? 1 : 0,
+    shared_array_buffer: sab ? 1 : 0,
+    max_workers: navigator.hardwareConcurrency || 1,
+    thread_support: sab ? 3 : 1,
+    max_memory_bytes: (performance.memory && performance.memory.jsHeapSizeLimit) || 256*1024*1024,
+    preferred_memory_bytes: 256*1024*1024,
+    estimated_sim_steps_per_sec: 1000,
+    estimated_inferences_per_sec: 100,
+    user_agent: navigator.userAgent,
+    platform: navigator.platform || ''
+  };
+}
+
+function onWorkerMsg(ev) {
+  const m = ev.data;
+  if (m.kind === 'snapshot') {
+    if (postBusy) return; // drop rather than queue: heartbeats are frequent
+    postBusy = true;
+    fetch('/api/client/snapshot', { method: 'POST', body: m.buffer })
+      .catch(() => {})
+      .finally(() => { postBusy = false; });
+  } else if (m.kind === 'dead') {
+    computeOn = false;
+    offloadBtn.classList.remove('on');
+    offloadBtn.textContent = 'Compute: server';
+    alert('The organism has died. The server will resume the simulation and rebirth it shortly.');
+    computeWorker.terminate(); computeWorker = null;
+  } else if (m.kind === 'error') {
+    alert('Client compute failed: ' + m.error + ' — handing control back to the server.');
+    stopClientCompute();
+  }
+}
+
+function workerCall(worker, msg, transfer) {
+  return new Promise((resolve, reject) => {
+    const prev = worker.onmessage;
+    const to = setTimeout(() => reject(new Error('worker timeout')), 15000);
+    worker.onmessage = (ev) => {
+      // 'ready'/'stopped' resolve; pass everything else through to the relay.
+      if (ev.data.kind === 'ready' || ev.data.kind === 'stopped') {
+        clearTimeout(to);
+        worker.onmessage = prev;
+        resolve(ev.data);
+      } else {
+        prev(ev);
+      }
+    };
+    worker.onerror = (e) => { clearTimeout(to); reject(new Error(e.message || 'worker error')); };
+    worker.postMessage(msg, transfer || []);
+  });
+}
+
+async function startClientCompute() {
+  const prof = detectCaps();
+  const r = await fetch('/api/compute-profile', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(prof) });
+  const j = await r.json();
+  const backend = j.selection && j.selection.backend; // 2=simd, 3=simd+mt take over
+  if (backend !== 2 && backend !== 3) {
+    alert('This browser cannot take over the sim: ' + ((j.selection && j.selection.reason) || 'no SIMD backend'));
+    return false;
+  }
+  const snapResp = await fetch('/api/snapshot/download');
+  if (!snapResp.ok) { alert('Could not download organism state.'); return false; }
+  const snap = await snapResp.arrayBuffer();
+  computeWorker = new Worker('/api/wasm/worker.js');
+  computeWorker.onmessage = onWorkerMsg;
+  await workerCall(computeWorker, { kind: 'init', snapshot: snap }, [snap]);
+  const tps = Math.round((j.fidelity && j.fidelity.sim_sec_per_wall_sec) || 300);
+  computeWorker.postMessage({ kind: 'start', tps });
+  return true;
+}
+
+async function stopClientCompute() {
+  if (computeWorker) {
+    try { await workerCall(computeWorker, { kind: 'stop' }); } catch (e) {}
+    computeWorker.terminate();
+    computeWorker = null;
+  }
+  // Disarm server-side offload so the local loop resumes immediately.
+  try {
+    await fetch('/api/compute-profile', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ offload: false, wasm_simd128: 0, max_workers: 1 }) });
+  } catch (e) {}
+}
+
+offloadBtn.onclick = async () => {
+  offloadBtn.disabled = true;
+  if (!computeOn) {
+    offloadBtn.textContent = 'Compute: starting…';
+    try {
+      if (await startClientCompute()) {
+        computeOn = true;
+        offloadBtn.classList.add('on');
+        offloadBtn.textContent = 'Compute: THIS TAB';
+      } else {
+        offloadBtn.textContent = 'Compute: server';
+      }
+    } catch (e) {
+      offloadBtn.textContent = 'Compute: server';
+      alert('Client compute could not start: ' + e.message);
+    }
+  } else {
+    await stopClientCompute();
+    computeOn = false;
+    offloadBtn.classList.remove('on');
+    offloadBtn.textContent = 'Compute: server';
+  }
+  offloadBtn.disabled = false;
+};
+
+// If the tab closes while it holds the sim, tell the server to resume immediately.
+window.addEventListener('beforeunload', () => {
+  if (computeOn) {
+    navigator.sendBeacon('/api/compute-profile',
+      new Blob([JSON.stringify({ offload: false, wasm_simd128: 0, max_workers: 1 })],
+               { type: 'application/json' }));
+  }
+});
+
 sendBtn.onclick = send;
 document.getElementById('newchat').onclick = newChat;
 document.getElementById('newworld').onclick = resetWorld;
@@ -319,6 +465,105 @@ input.addEventListener('input', autoGrow);
 </script>
 </body>
 </html>)html";
+
+// Phase 15: browser Web Worker script. The page spawns this as a Worker; it loads the
+// WASM ReplicaCore module, restores the server's snapshot, ticks at the negotiated
+// fidelity pacing, and posts one snapshot per heartbeat interval back to the page
+// (which relays it to POST /api/client/snapshot). Adaptive slice sizing keeps the
+// worker responsive on weak clients; death stops the loop and asks the page to hand
+// control back to the server (which auto-rebirths on resume).
+const char* kWorkerJs = R"js(
+"use strict";
+let M = null;        // emscripten module
+let eng = 0;         // Engine* handle
+let timer = null;
+let ticksPerSec = 300;      // fidelity pacing: sim ticks per wall-second
+let sliceBudget = 300;      // ticks per 1s slice (adaptive)
+const UPLOAD_EVERY_MS = 1000;
+let lastUpload = 0;
+let modulePromise = null;
+
+function loadModule() {
+  if (!modulePromise) {
+    importScripts('/api/wasm/core.js');
+    modulePromise = EidolonWorker({ locateFile: () => '/api/wasm/core.wasm' });
+  }
+  return modulePromise;
+}
+
+function snapshotBytes() {
+  const n = M._eidn_snapshot_size(eng);
+  if (!n) return null;
+  const p = M._malloc(n);
+  const wrote = M._eidn_snapshot(eng, p, n);
+  if (wrote !== n) { M._free(p); return null; }
+  const out = M.HEAPU8.slice(p, p + n).buffer;
+  M._free(p);
+  return out;
+}
+
+function loop() {
+  const t0 = performance.now();
+  for (let i = 0; i < sliceBudget && M._eidn_alive(eng); ++i) M._eidn_tick(eng);
+  const dt = performance.now() - t0;
+  if (!M._eidn_alive(eng)) {
+    clearInterval(timer); timer = null;
+    const s = snapshotBytes();
+    postMessage({ kind: 'dead', simtime: Number(M._eidn_simtime(eng)), snapshot: s },
+                 s ? [s] : []);
+    return;
+  }
+  // Adaptive slice: keep tick work below ~250ms per second; grow when cheap.
+  if (dt > 250) sliceBudget = Math.max(10, (sliceBudget / 2) | 0);
+  else if (dt < 120 && sliceBudget < ticksPerSec)
+    sliceBudget = Math.min(ticksPerSec, Math.max(sliceBudget + 10, (sliceBudget * 1.25) | 0));
+  const now = performance.now();
+  if (now - lastUpload >= UPLOAD_EVERY_MS) {
+    lastUpload = now;
+    const s = snapshotBytes();
+    if (s) postMessage({ kind: 'snapshot', simtime: Number(M._eidn_simtime(eng)), buffer: s }, [s]);
+  }
+  postMessage({ kind: 'stats', sliceMs: dt, slice: sliceBudget,
+                simtime: Number(M._eidn_simtime(eng)) });
+}
+
+onmessage = async (ev) => {
+  const m = ev.data;
+  try {
+    if (m.kind === 'init') {
+      M = await loadModule();
+      if (eng) { M._eidn_free(eng); eng = 0; }
+      eng = M._eidn_new();
+      if (!eng) { postMessage({ kind: 'error', error: 'alloc failed' }); return; }
+      if (m.snapshot) {
+        const b = new Uint8Array(m.snapshot);
+        const p = M._malloc(b.length);
+        M.HEAPU8.set(b, p);
+        const ok = M._eidn_restore(eng, p, b.length);
+        M._free(p);
+        if (!ok) { postMessage({ kind: 'error', error: 'snapshot restore failed' }); return; }
+      } else if (m.seed !== undefined) {
+        M._eidn_init(eng, BigInt(m.seed), m.deterministic ? 1 : 0, m.w || 128, m.h || 128);
+      } else {
+        postMessage({ kind: 'error', error: 'init needs snapshot or seed' });
+        return;
+      }
+      postMessage({ kind: 'ready', simtime: Number(M._eidn_simtime(eng)),
+                    seed: String(M._eidn_seed(eng)) });
+    } else if (m.kind === 'start') {
+      ticksPerSec = m.tps || 300;
+      sliceBudget = Math.min(300, ticksPerSec);
+      if (timer) clearInterval(timer);
+      timer = setInterval(loop, 1000);
+    } else if (m.kind === 'stop') {
+      if (timer) { clearInterval(timer); timer = null; }
+      postMessage({ kind: 'stopped' });
+    }
+  } catch (e) {
+    postMessage({ kind: 'error', error: String(e) });
+  }
+};
+)js";
 
 std::string jsonEscape(const std::string& s) {
   std::string out;
@@ -452,9 +697,28 @@ void Server::simLoop() {
   while (!stop_.load()) {
     // Phase 15: when a capable client has taken over the simulation, the server
     // stops ticking locally — it only persists client snapshots, answers chat,
-    // and serves state. Life never stops: if no client ever sends a snapshot the
-    // state simply stays frozen until a client connects or the flag is cleared.
+    // and serves state. Continuity invariant: if the claiming client goes silent
+    // for >15s (tab closed/crashed), the server resumes the sim itself.
     if (clientComputing_.load()) {
+      const int64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now().time_since_epoch()).count();
+      const int64_t last = lastClientContactMs_.load();
+      if (last > 0 && nowMs - last > 15000) {
+        clientComputing_.store(false);
+        std::fprintf(stderr, "client offload: no snapshots for >15s; server resumes the sim\n");
+        continue;
+      }
+      // Periodic wall-clock save while offloaded (crash safety; client uploads
+      // themselves don't hit the disk to keep uploads cheap).
+      static int64_t lastIdleSaveMs = 0;
+      if (nowMs - lastIdleSaveMs >= 60000) {
+        lastIdleSaveMs = nowMs;
+        std::lock_guard<std::mutex> lock(engineMu_);
+        std::string err;
+        if (!engine_.saveFile(savePath, err)) {
+          std::fprintf(stderr, "warning: offloaded save failed: %s\n", err.c_str());
+        }
+      }
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
       continue;
     }
@@ -1017,8 +1281,14 @@ std::string Server::computeProfileJson(const std::string& jsonBody, std::string&
   fid.setBool("defer_consolidation", fidelity_.deferConsolidation);
   root.set("fidelity", std::move(fid));
   
-  // Phase 15: if the client can carry the sim, stop the server's local ticking.
-  maybeStartClientComputing(profile);
+  // Phase 15: the client may explicitly disarm offload ("offload": false); otherwise
+  // arm it only when the selected backend is SIMD-class (plain WASM is kept
+  // server-side — it is not faster than the native server, so hosting stays put).
+  if (body.find("offload") && !body.boolean("offload", true)) {
+    clientComputing_.store(false);
+  } else {
+    maybeStartClientComputing(profile);
+  }
   
   return root.dump();
 }
@@ -1034,29 +1304,33 @@ std::string Server::computeProfileJson(const std::string& jsonBody, std::string&
 void Server::maybeStartClientComputing(const ComputeProfile& profile) {
   ComputeProfileDetector detector;
   const BackendSelection sel = detector.selectBackend(profile);
-  // Client carries the sim for any WASM backend; WebGPU/Native/server stay local.
+  // Only SIMD-class backends actually carry the sim: plain WASM would be slower than
+  // the native server, so there is no offload win for it (the selection is still
+  // reported honestly to the client for diagnostics/benchmarks). Posting a weak
+  // profile (or "offload":false in computeProfileJson) therefore disarms offload.
   const bool clientCanCompute =
-      (sel.type == BackendType::WasmPlain || sel.type == BackendType::WasmSimd ||
-       sel.type == BackendType::WasmSimdMt);
+      (sel.type == BackendType::WasmSimd || sel.type == BackendType::WasmSimdMt);
   clientComputing_.store(clientCanCompute);
 
-  // Resolve which WASM artifacts to serve for this backend. Served from the
-  // build sibling dirs next to the working directory; missing files are fine —
-  // wasmBinary()/wasmJavaScript() 404 then and the client falls back to server compute.
-  const char* dirs[] = {"build-wasm-mt", "build-wasm-simd", "build-wasm"};
-  const char* names[] = {"eidolon-parity-dump", "eidolon-parity-dump", "eidolon-parity-dump"};
-  (void)names;
+  // The MT variant needs SharedArrayBuffer (COOP/COEP-isolated page) — only pick it
+  // when the client's profile actually reports SAB, else prefer SIMD over plain.
   std::string wantDir = "build-wasm";
-  if (sel.type == BackendType::WasmSimdMt) wantDir = "build-wasm-mt";
-  else if (sel.type == BackendType::WasmSimd) wantDir = "build-wasm-simd";
-  for (const char* d : {wantDir.c_str(), dirs[1], dirs[2]}) {
-    const std::string w = std::string(d) + "/bin/eidolon-parity-dump.wasm";
-    const std::string j = std::string(d) + "/bin/eidolon-parity-dump.js";
+  if (sel.type == BackendType::WasmSimdMt && profile.hasSharedArrayBuffer) wantDir = "build-wasm-mt";
+  else if (sel.type == BackendType::WasmSimd || sel.type == BackendType::WasmSimdMt)
+    wantDir = "build-wasm-simd";
+  const std::string searchDirs[] = {wantDir, "build-wasm-simd", "build-wasm"};
+  for (const std::string& d : searchDirs) {
+    const std::string w = d + "/bin/eidolon-worker.wasm";
+    const std::string j = d + "/bin/eidolon-worker.js";
     if (std::filesystem::exists(w) && std::filesystem::exists(j)) {
       wasmPath_ = w;
       wasmJsPath_ = j;
       break;
     }
+  }
+  if (clientCanCompute) {
+    lastClientContactMs_.store(std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
   }
   std::fprintf(stderr, "client offload: computing=%s wasm=%s\n",
                clientComputing_.load() ? "client" : "server",
@@ -1087,11 +1361,9 @@ std::string Server::clientSnapshotUpload(const std::vector<uint8_t>& blob, std::
     return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
   }
   ++clientSnapshotsReceived_;
-  std::string saveErr;
-  engine_.saveFile(opts_.dataDir + "/save.snap", saveErr);
-  if (!saveErr.empty()) {
-    std::fprintf(stderr, "warning: client snapshot save failed: %s\n", saveErr.c_str());
-  }
+  lastClientContactMs_.store(std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now().time_since_epoch()).count());
+  // No per-upload disk write: the sim loop persists periodically while offloaded.
   return "{\"ok\":true}";
 }
 
@@ -1193,6 +1465,10 @@ int Server::run() {
 
   httplib::Server svr;
   svr.Get("/", [](const httplib::Request&, httplib::Response& res) {
+    // COOP/COEP enable crossOriginIsolated (SharedArrayBuffer) so a capable client
+    // can run the MT wasm worker later; harmless for same-origin fetches we use now.
+    res.set_header("Cross-Origin-Opener-Policy", "same-origin");
+    res.set_header("Cross-Origin-Embedder-Policy", "require-corp");
     res.set_content(kIndexHtml, "text/html");
   });
   svr.Get("/api/status", [this](const httplib::Request&, httplib::Response& res) {
@@ -1298,7 +1574,8 @@ int Server::run() {
     res.set_content(out, "application/json");
   });
   
-  // Phase 15: serve the WASM module + glue to the client
+  // Phase 15: serve the WASM worker module + glue + worker script to the client.
+  // CORP: same-origin lets these load under the COEP-isolated page.
   svr.Get("/api/wasm/core.wasm", [this](const httplib::Request&, httplib::Response& res) {
     const std::string out = wasmBinary();
     if (out.empty()) {
@@ -1306,6 +1583,7 @@ int Server::run() {
       res.set_content("{\"error\":\"wasm binary not available\"}", "application/json");
       return;
     }
+    res.set_header("Cross-Origin-Resource-Policy", "same-origin");
     res.set_content(out, "application/wasm");
   });
   svr.Get("/api/wasm/core.js", [this](const httplib::Request&, httplib::Response& res) {
@@ -1315,7 +1593,12 @@ int Server::run() {
       res.set_content("{\"error\":\"wasm glue not available\"}", "application/json");
       return;
     }
+    res.set_header("Cross-Origin-Resource-Policy", "same-origin");
     res.set_content(out, "text/javascript");
+  });
+  svr.Get("/api/wasm/worker.js", [](const httplib::Request&, httplib::Response& res) {
+    res.set_header("Cross-Origin-Resource-Policy", "same-origin");
+    res.set_content(kWorkerJs, "text/javascript");
   });
   
   // Phase 15: client returns its tick state (client-authoritative compute)

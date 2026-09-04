@@ -120,6 +120,9 @@ private:
   std::string wasmJsPath_;
   // metrics
   uint64_t clientSnapshotsReceived_{0};
+  // last wall ms a client snapshot arrived (0 = never); simLoop resumes the sim
+  // itself once a claiming client has been silent for >15s (continuity invariant).
+  std::atomic<int64_t> lastClientContactMs_{0};
 };
 
 } // namespace eidolon

@@ -69,17 +69,38 @@ target_link_libraries(eidolon_store PRIVATE eidolon_core sqlite3)
 target_include_directories(eidolon_store PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 endif()
 
-add_executable(eidolon-sim tools/eidolon-sim.cpp)
 if(NOT EIDOLON_WASM_BUILD)
+add_executable(eidolon-sim tools/eidolon-sim.cpp)
 target_link_libraries(eidolon-sim PRIVATE eidolon_core eidolon_store eidolon_llm)
-else()
-target_link_libraries(eidolon-sim PRIVATE eidolon_core eidolon_llm)
-endif()
 set_target_properties(eidolon-sim PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+endif()
 
 add_executable(eidolon-parity-dump ${CMAKE_CURRENT_LIST_DIR}/../tools/eidolon-parity-dump.cpp)
 target_link_libraries(eidolon-parity-dump PRIVATE eidolon_core eidolon_llm)
 set_target_properties(eidolon-parity-dump PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+# Phase 15: WASM worker module — ReplicaCore driven by a browser Web Worker
+# (client-side offload, DESIGN §17). No main(); loaded by the kWorkerJs script
+# that calls the exported eidn_* API. MODULARIZE factory for worker/node use.
+if(EIDOLON_WASM_BUILD)
+  add_executable(eidolon-worker ${CMAKE_CURRENT_LIST_DIR}/../tools/eidolon-wasm-worker.cpp)
+  target_link_libraries(eidolon-worker PRIVATE eidolon_core eidolon_llm)
+  target_link_options(eidolon-worker PRIVATE
+    --no-entry
+    -sMODULARIZE=1
+    -sEXPORT_ES6=0
+    -sEXPORT_NAME=EidolonWorker
+    -sENVIRONMENT=web,worker,node
+    -sALLOW_MEMORY_GROWTH=1
+    -sINITIAL_MEMORY=64MB
+    -sMAXIMUM_MEMORY=256MB
+    -sSTACK_SIZE=5MB
+    -sASSERTIONS=0
+    -sSAFE_HEAP=0
+    -sEXPORTED_FUNCTIONS=_malloc,_free
+    -sEXPORTED_RUNTIME_METHODS=HEAPU8)
+  set_target_properties(eidolon-worker PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+endif()
 
 if(NOT EIDOLON_WASM_BUILD)
 add_library(eidolon_server STATIC

@@ -22,6 +22,20 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   `eidolon-server` on `0.0.0.0:8081`. `EIDOLON_NO_LLM=1` starts offline mode.
   Ctrl+C stops both cleanly.
 - README quickstart flags corrected (`--llm`/`--llm-timeout`, port 8081).
+- **Browser take-over (client-side compute)**: capable browsers run the simulation
+  themselves in a Web Worker — the page ships a WASM ReplicaCore build
+  (`/api/wasm/worker.js` + `core.{js,wasm}`), restores the current organism snapshot,
+  ticks at the fidelity pacing with adaptive slice budgets, and posts a snapshot back
+  every second. Bit-exact vs the native engine (same digest from
+  `eidolon-parity-dump`). Sidebar "Compute: server/THIS TAB" toggle with capability
+  detection; closing or reloading the tab hands the sim back within ~15s so the
+  organism never stalls. Server-side uploads are validated, weak profiles never arm
+  offload, and `"offload":false` disarms immediately.
+- **Bugfix (found while validating)**: the learned policy had 12 outputs but only 6
+  were mapped to real actions — Farm/Cook/Craft/Build/CollectWater/Preserve silently
+  degenerated into Observe (and trained Observe's weights). The mapping is now a
+  complete bijection with a roundtrip regression test; the experience dump's action
+  name table grew to all 12 (it previously segfaulted on the newly reachable actions).
 
 ### Fix-as-you-go — life-stats grounding for chat
 - `CognitiveSnapshot::lifeStatsSummary`: deterministic, non-persisted string

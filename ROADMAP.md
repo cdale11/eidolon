@@ -372,10 +372,32 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
 - [x] `run_eidolon.sh` — one-command launcher: starts llama-server (Vulkan
       iGPU, waits for health, reuses an already-healthy instance, kills only
       its own on exit) + eidolon-server on 0.0.0.0:8081.
-- [ ] Client-side Web Worker host: browser JS that loads the WASM module,
-      ticks locally, posts snapshots back (parity-tested vs native).
-- Gate: endpoints verified live (404 before profile, 200 after; bad snapshot
-      rejected; valid snapshot round-trips); unit + integration suites green.
+- [x] Client-side Web Worker host: `tools/eidolon-wasm-worker.cpp` exports a C API
+      (`eidn_new/init/restore/tick/snapshot/...`) built as `eidolon-worker.{js,wasm}`
+      for plain + SIMD Emscripten targets (wasm `-msimd128`); a browser Worker script
+      (embedded `kWorkerJs`, served at `/api/wasm/worker.js`) restores the server
+      snapshot, ticks at fidelity pacing with adaptive slice budgets, and relays one
+      snapshot per second back through the page -> `POST /api/client/snapshot`.
+      Sidebar toggle "Compute: server|THIS TAB" (capability-detected, SIMD+ only);
+      tab close/beacon disarms instantly.
+- [x] Continuity on silence: server resumes the local tick loop after 15s without a
+      client snapshot (tab crash/close never freezes the organism); periodic
+      wall-clock save while offloaded; client death notice hands control back.
+- [x] Offload interlocks: explicit `"offload":false` disarm, uploads rejected while
+      server-owned, weak profiles never arm (only WasmSimd/WasmSimdMt do),
+      COOP/COEP headers for future MT/SAB clients.
+- [x] Parity + regression harnesses: `tools/wasm_worker_smoke.cjs` (fnv digest match
+      vs native `eidolon-parity-dump`, wasm resume-parity) and
+      `python/tests/test_client_offload.py` (protocol e2e incl. silence-resume).
+- [x] Bug found and fixed en route: `PolicyAction` had 12 values but
+      `Engine::policyToAction`/`actionToPolicy` mapped only 6 — advanced actions
+      (Farm/Cook/Craft/Build/CollectWater/Preserve) silently became Observe and their
+      rewards trained Observe's policy weights. Fixed the bijection, expanded the
+      6-entry dump `kActionNames` (which then SIGSEGVed `--dump-experiences`),
+      added `engine_policy_action_roundtrip_all12`. See MISTAKES 2026-09-03.
+- Gate: native + wasm + wasm-simd builds warning-free; unit suite green (120 tests);
+      integration suite green incl. offload protocol; parity digest identical across
+      native/plain/simd wasm; `eidolon-sim --data data/runs/check --days 1` healthy.
 
 ## Future directions (deferred by design)
 Logged from user requirements; not yet sequenced into phases. No LLM in the hot path

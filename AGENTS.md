@@ -38,6 +38,12 @@ Rules for any agent (AI or human) working in this repo. Read before touching any
 ## 2. Environment & hardware
 
 - **OS**: Fedora 41, g++ 14.3.1, CMake 3.30.8, ninja, sqlite3 dev headers (`/usr/include/sqlite3.h`).
+- **Emscripten SDK** at `~/emsdk` (Phase 15 WASM worker builds). Build commands:
+  `cmake -S . -B build-wasm[-simd] -DCMAKE_TOOLCHAIN_FILE=$HOME/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake
+    -DCMAKE_BUILD_TYPE=Release -DEIDOLON_WASM_BUILD=1 [-DCMAKE_CXX_FLAGS="-msimd128"]`
+  → `build-wasm*/bin/eidolon-worker.{js,wasm}` (served by the server for browser compute).
+  Parity check: `node tools/wasm_worker_smoke.cjs build-wasm*/bin/eidolon-worker.js 1000 42`
+  must match `./build/bin/eidolon-parity-dump --seed 42 --ticks 1000`. Node 24 is installed.
 - **CPU**: AMD Ryzen 3 8300GE (8 threads), ~6 GB RAM total. Keep runtime small and CPU-first.
 - **iGPU** (important for ML dependency decisions): **AMD Radeon 740M (RDNA 3, `gfx1103`,
   Phoenix2 APU)**, 0.5 GB VRAM, `amdgpu` driver, `/dev/dri/renderD128`, `/dev/kfd` present,
