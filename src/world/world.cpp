@@ -328,9 +328,22 @@ bool eidolon::WaterSource::deserialize(eidolon::BinaryReader& r) {
   return true;
 }
 
+void eidolon::World::rebuildTerrainFactor() {
+  terrainFactor_.assign(static_cast<size_t>(grid_.width()) * grid_.height(), 1.0f);
+  for (int y = 0; y < grid_.height(); ++y) {
+    for (int x = 0; x < grid_.width(); ++x) {
+      const size_t idx = static_cast<size_t>(y) * grid_.width() + x;
+      if (grid_.deepWater(x, y) || grid_.at(x, y) == Terrain::Swamp) {
+        terrainFactor_[idx] = 2.0f;
+      }
+    }
+  }
+}
+
 void eidolon::World::generate(int w, int h, eidolon::Rng& r) {
   grid_.generate(w, h, r);
   infectionCA_.resize(w, h);
+  rebuildTerrainFactor();
   alive_ = true; // fresh world -> fresh organism (reset after a previous death)
   pos_ = grid_.randomWalkable(r);
 
@@ -493,16 +506,7 @@ eidolon::WorldUpdate eidolon::World::update(const eidolon::SimClock& c, int64_t 
   // Update CA with infection rate, immunity, and terrain factors (swamp/deep-water = higher).
   static constexpr double kBaseInfectionRate = 0.15;
   static constexpr double kImmunityFactor = 0.5;
-  std::vector<float> terrainFactor(grid_.width() * grid_.height(), 1.0f);
-  for (int y = 0; y < grid_.height(); ++y) {
-    for (int x = 0; x < grid_.width(); ++x) {
-      size_t idx = static_cast<size_t>(y) * grid_.width() + x;
-      if (grid_.deepWater(x, y) || grid_.at(x, y) == Terrain::Swamp) {
-        terrainFactor[idx] = 2.0f;
-      }
-    }
-  }
-  infectionCA_.step(kBaseInfectionRate, kImmunityFactor, terrainFactor.data());
+  infectionCA_.step(kBaseInfectionRate, kImmunityFactor, terrainFactor_.data());
 
   out.weatherChanged = weather_.raining() != wasRaining || weather_.snowing() != wasSnowing ||
                        weather_.storming() != wasStorming;
@@ -722,6 +726,7 @@ void eidolon::World::serialize(eidolon::BinaryWriter& w) const {
 
 bool eidolon::World::deserialize(eidolon::BinaryReader& r) {
   if (!grid_.deserialize(r) || !weather_.deserialize(r)) return false;
+  rebuildTerrainFactor();
   int64_t x, y;
   uint8_t alive;
   if (!r.i64(x) || !r.i64(y) || !r.u8(alive)) return false;

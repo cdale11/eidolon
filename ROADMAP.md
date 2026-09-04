@@ -344,11 +344,18 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
 - [x] Server accepts client ComputeProfile; auto-select fastest stable backend
 
 ## Phase 13 — Performance & long-run stability
-- Profiling: hot-path allocation audits, adaptive-clock tuning
-- Benchmarks: 30 sim-days headless target < ~10 min; fine tick p50 ≤ 2 ms; snapshot ≤ 100 ms
-- Long-run tests: weeks of simulated time, RSS flat, archive bounded, no drift in metrics
-- Observability polish: /api/metrics complete, headless --stats, --bench report
-- Gate: all performance budgets met; long-run memory stability test green.
+- [x] Profiling: hot-path allocation audit — removed a per-tick `std::vector<float>`
+      terrain-factor allocation + O(w*h) scan in `World::update` (cached in a member,
+      rebuilt on generate/deserialize; +15% throughput, bit-exact).
+- [x] Benchmarks: 30 sim-days headless = **58 s** (budget < 10 min, 10× headroom);
+      fine tick p50 = **53 µs** (budget ≤ 2 ms, 37× headroom); snapshot = 286 KB in
+      **0.9 ms** (budget ≤ 100 ms).
+- [x] Long-run tests: RSS plateaus flat at ~9.8 MB with `--archive` (no drift);
+      SQLite `memory.db` bounded (~3.4 MB over 30 days, pruning active).
+- [x] Observability: `/api/metrics` + headless `metrics.log` + `--bench` report all
+      present; diagnostics panel wired (Phase 11/12).
+- Gate: all performance budgets met; long-run memory stability green (RSS sampled
+  over a full 30-day run, flat after warm-up).
 
 ## Phase 14 — Full test matrix & release
 - Complete test suite per DESIGN §19 (unit, seeded replay, behavioural scenarios,

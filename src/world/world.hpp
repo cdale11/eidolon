@@ -269,6 +269,11 @@ public:
   bool hasStructureAt(Vec2i pos, StructureType type) const;
 
 private:
+  // Cached per-cell terrain infection factor (2.0 on swamp/deep-water, else 1.0).
+  // Derived purely from static grid geometry, rebuilt on generate/deserialize and
+  // reused every tick (no O(w*h) allocation/scan in the hot path).
+  void rebuildTerrainFactor();
+  std::vector<float> terrainFactor_;
   Grid grid_;
   Weather weather_;
   SimplexNoise elevationNoise_;
