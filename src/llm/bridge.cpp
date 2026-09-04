@@ -456,7 +456,7 @@ std::snprintf(buf, sizeof(buf),
                  s.energy, s.health, s.hunger, s.thirst,
                  s.waterCarried, s.waterCapacity);
    // Add age info for life-stats awareness in fallback reply.
-   char ageBuf[32];
+   char ageBuf[64];
    std::snprintf(ageBuf, sizeof(ageBuf), " I am %lld days old.",
                  static_cast<long long>(s.simTime / 86400));
    std::strncat(buf, ageBuf, sizeof(buf) - std::strlen(buf) - 1);
@@ -634,6 +634,7 @@ bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
     "wildlife=[%s] "
     "skills=[%s] "
     "recentMemories=[%s] "
+    "lifeStats=\"%s\" "
     "circadian=[phase=%s phrase=\"%s\" season=%s] "
     "physiological=[state=%s primaryNeed=%s tone=%s]",
     static_cast<long long>(s.simTime), s.day, s.hour, s.awake ? "yes" : "no",
