@@ -314,11 +314,12 @@ let computeOn = false;
 let postBusy = false;
 
 function detectCaps() {
-  // Minimal SIMD128 probe (i32x4.splat of 0) per the wasm-feature-detect recipe.
+  // Minimal SIMD128 probe (i32x4.splat of 0); bytes produced by binaryen wasm-as,
+  // verified to validate in V8 and Node.
   let simd = false;
   try {
     simd = WebAssembly.validate(new Uint8Array([
-      0,97,115,109,1,0,0,0,1,5,1,96,0,123,0,3,2,1,0,10,10,1,8,0,65,0,253,15,253,98,11]));
+      0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,8,1,6,0,65,0,253,17,11]));
   } catch (e) {}
   const sab = (typeof SharedArrayBuffer !== 'undefined') && (self.crossOriginIsolated === true);
   return {
