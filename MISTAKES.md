@@ -327,3 +327,22 @@ the field-specific test does. Verified for this commit:
   - Build fully warning-clean (bonus: the previously-unused `actionName()` helper
     in `bridge.cpp` is now actually used — the `-Wunused-function` warning that
     had been noise for several commits is gone).
+
+## 2026-09-03 — Paired tables drifted: PolicyAction(12) vs dump mapping(6)
+
+- **What happened**: `Policy::kActions = 12` shipped in Phase 6 (Farm/Cook/Craft/Build/
+  CollectWater/Preserve), but the three translation sites never grew past the original 6:
+  `Engine::policyToAction`/`actionToPolicy` silently fell through to `Observe`, and
+  `dumpExperience`'s `kActionNames[]` had 6 entries.
+- **Impact**: policy outputs 6–11 collapsed onto Observe (learned behaviour for the six
+  advanced actions never took effect, and their rewards were credited to Observe's
+  policy weights). Worse: after the mapping was completed, the name table crashed
+  `eidolon-sim --dump-experiences` with a SIGSEGV (out-of-bounds string from the
+  6-entry array) the moment the policy picked an advanced action.
+- **Lesson**: any change to a policy/action enum must mechanically sweep ALL paired
+  tables (C++ switch maps, dump name arrays, `python/teacher/dataset.py` ACTION_NAMES).
+  A "table parity" grep belongs in review for every enum extension. The bit that saved
+  us from shipping it: the integration suite's teacher tests catch crashes in
+  `--dump-experiences` immediately.
+- **Fix**: completed the 12-entry bijection in `engine.cpp`, expanded `kActionNames`,
+  added `engine_policy_action_roundtrip_all12` regression test, and gated the encoder.

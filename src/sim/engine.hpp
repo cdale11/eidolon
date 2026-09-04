@@ -99,6 +99,10 @@ struct Stats {
   // Returns the action chosen this tick.
   Action tick() noexcept;
 
+  // Pure policy<->action mapping (complete 12-entry bijection). Exposed for tests.
+  static Action policyToAction(PolicyAction a) noexcept;
+  static PolicyAction actionToPolicy(Action a) noexcept;
+
   // tick() plus per-tick logging (state transitions, status lines, events). Used by
   // runDays and by the headless CLI so both trace identically.
   void tickAndLog(EventLog& log) noexcept;
@@ -227,8 +231,6 @@ private:
   bool aversiveTick(const Physiology& before) const noexcept;
   bool safeTick(float reward) const noexcept;
   std::string determineCauseOfDeath() const noexcept;
-  static Action policyToAction(PolicyAction a) noexcept;
-  static PolicyAction actionToPolicy(Action a) noexcept;
   void dumpExperience(PolicyAction pa, bool agentic, float reward, float novelty,
                       bool aversive, bool safe, double eaten, bool drank) noexcept;
 

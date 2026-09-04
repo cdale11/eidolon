@@ -160,3 +160,23 @@ TEST(engine_lastAction_survives_snapshot_roundtrip) {
   }
   CHECK_EQ(static_cast<int>(a.lastAction()), static_cast<int>(b.lastAction()));
 }
+
+TEST(engine_policy_action_roundtrip_all12) {
+  // policyToAction/actionToPolicy used to silently drop Farm/Cook/Craft/Build/
+  // CollectWater/Preserve (falling through to Observe) — the policy's 12 outputs
+  // must map bijectively onto the matching 12 Actions.
+  const PolicyAction all[] = {
+    PolicyAction::Forage, PolicyAction::Drink, PolicyAction::Rest,
+    PolicyAction::Wander, PolicyAction::Observe, PolicyAction::Flee,
+    PolicyAction::Farm, PolicyAction::Cook, PolicyAction::Craft,
+    PolicyAction::Build, PolicyAction::CollectWater, PolicyAction::Preserve,
+  };
+  for (PolicyAction p : all) {
+    const Action a = Engine::policyToAction(p);
+    CHECK_EQ(static_cast<int>(Engine::actionToPolicy(a)), static_cast<int>(p));
+  }
+  // Spot-check the previously broken tail of the mapping.
+  CHECK(Engine::policyToAction(PolicyAction::Build) == Action::Build);
+  CHECK(Engine::policyToAction(PolicyAction::Preserve) == Action::Preserve);
+  CHECK(Engine::actionToPolicy(Action::CollectWater) == PolicyAction::CollectWater);
+}

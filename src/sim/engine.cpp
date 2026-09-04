@@ -324,8 +324,11 @@ void Engine::dumpExperience(PolicyAction pa, bool agentic, float reward, float n
                             bool aversive, bool safe, double eaten,
                             bool drank) noexcept {
   const Vec2i p = world_.organismPos();
-  static constexpr const char* kActionNames[] = {"Forage", "Drink", "Rest",
-                                                   "Wander", "Observe", "Flee"};
+  // Full 12-entry PolicyAction name table; MUST match python/teacher/dataset.py
+  // ACTION_NAMES and policy.hpp order (index 0..11).
+  static constexpr const char* kActionNames[] = {
+      "Forage", "Drink", "Rest", "Wander", "Observe", "Flee",
+      "Farm", "Cook", "Craft", "Build", "CollectWater", "Preserve"};
   int bushDist = -1;
   const Plant* plant = world_.nearestEdiblePlant(p, Perception::kSightRadius);
   if (plant) {
@@ -451,6 +454,12 @@ Action Engine::policyToAction(PolicyAction a) noexcept {
     case PolicyAction::Wander: return Action::Wander;
     case PolicyAction::Observe: return Action::Observe;
     case PolicyAction::Flee: return Action::Flee;
+    case PolicyAction::Farm: return Action::Farm;
+    case PolicyAction::Cook: return Action::Cook;
+    case PolicyAction::Craft: return Action::Craft;
+    case PolicyAction::Build: return Action::Build;
+    case PolicyAction::CollectWater: return Action::CollectWater;
+    case PolicyAction::Preserve: return Action::Preserve;
   }
   return Action::Observe;
 }
@@ -461,7 +470,14 @@ PolicyAction Engine::actionToPolicy(Action a) noexcept {
     case Action::Drink: return PolicyAction::Drink;
     case Action::Rest: return PolicyAction::Rest;
     case Action::Wander: return PolicyAction::Wander;
+    case Action::Observe: return PolicyAction::Observe;
     case Action::Flee: return PolicyAction::Flee;
+    case Action::Farm: return PolicyAction::Farm;
+    case Action::Cook: return PolicyAction::Cook;
+    case Action::Craft: return PolicyAction::Craft;
+    case Action::Build: return PolicyAction::Build;
+    case Action::CollectWater: return PolicyAction::CollectWater;
+    case Action::Preserve: return PolicyAction::Preserve;
     default: return PolicyAction::Observe;
   }
 }
@@ -524,6 +540,9 @@ Action Engine::decide() noexcept {
       case PolicyAction::Wander: intent = UserIntentType::Explore; break;
       case PolicyAction::Observe: intent = UserIntentType::Observe; break;
       case PolicyAction::Flee: intent = UserIntentType::Flee; break;
+      case PolicyAction::Build: intent = UserIntentType::Build; break;
+      case PolicyAction::Craft: intent = UserIntentType::Craft; break;
+      default: break; // Farm/Cook/CollectWater/Preserve have no user-intent analogue
     }
     if (intent != UserIntentType::None) {
       habit_strength[a] = instructionLearning_.get_habit_influence(intent, "");
@@ -898,6 +917,7 @@ void Engine::execute(Action a) noexcept {
       ++stats_.actionsCollectWater;
       // CollectWater: gather rainwater, dew
       const Vec2i p = world_.organismPos();
+      (void)p; // collection depends on weather/location-independent for now
       const Weather& weather = world_.weather();
       bool collected = false;
       // Rain collection
@@ -1269,6 +1289,7 @@ extern "C" void debug_threat_test() {
       e.tick();
     }
   };
+  (void)runTicks; // kept for ad-hoc debugging of this hook
   
   auto parkHungryWolf = [](Engine& e) {
     auto& wl = e.world().wildlife();
@@ -1319,10 +1340,11 @@ extern "C" void debug_threat_test() {
     att.tick();
     std::printf("Tick %d: health=%.1f pain=%.1f threat=%.3f attacks=%llu\n", 
                 i, att.body().health(), att.body().pain(), 
-                att.learn().threatEstimate(), att.stats().predatorAttacks);
+                att.learn().threatEstimate(),
+                static_cast<unsigned long long>(att.stats().predatorAttacks));
   }
   float threatAtt = att.learn().threatEstimate();
   std::printf("Attack threat: %f, diff=%f, attacks=%llu, alive=%d\n", 
               att.learn().threatEstimate(), threatAtt - threatControl, 
-              att.stats().predatorAttacks, att.isAlive());
+              static_cast<unsigned long long>(att.stats().predatorAttacks), att.isAlive());
 }
