@@ -63,7 +63,6 @@ ParsedInstruction IntentParser::parse(const std::string& text) const {
   // Find best matching intent
   UserIntentType bestIntent = UserIntentType::None;
   std::string bestKeyword;
-  size_t bestPos = std::string::npos;
   float bestConfidence = 0.0f;
   
   for (const auto& [intent, keywords] : INTENT_KEYWORDS) {
@@ -87,7 +86,6 @@ ParsedInstruction IntentParser::parse(const std::string& text) const {
           bestConfidence = confidence;
           bestIntent = static_cast<UserIntentType>(intent);
           bestKeyword = keyword;
-          bestPos = pos;
         }
       }
     }

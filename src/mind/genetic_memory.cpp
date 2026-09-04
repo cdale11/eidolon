@@ -62,6 +62,7 @@ GeneticMemoryBundle GeneticMemorySystem::extractFromArchive(
     int generation,
     int maxMemories) {
   
+  (void)maxMemories; // stub: archive integration pending
   GeneticMemoryBundle bundle;
   bundle.parentSeed = parentSeed;
   bundle.generation = generation;
@@ -71,6 +72,7 @@ GeneticMemoryBundle GeneticMemorySystem::extractFromArchive(
 
 size_t GeneticMemorySystem::applyToOrganism(
     float inheritanceWeight) {
+  (void)inheritanceWeight; // stub: archive integration pending
   return 0;
 }
 

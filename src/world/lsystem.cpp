@@ -117,6 +117,7 @@ LSystemInterpreter::Network LSystemInterpreter::interpretNetwork(
     const Vec2f& startPos, float startHeading, float startLength, float startWidth,
     int maxDepth, class Rng& rng) const {
   Network net;
+  (void)startWidth; // network geometry ignores width
   std::string generated = generate(maxDepth >= 0 ? maxDepth : system_.maxDepth);
 
   struct NetState {

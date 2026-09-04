@@ -199,6 +199,7 @@ std::vector<NamedPlace> ProceduralGenerator::generateNamedPlaces(int count) {
 void ProceduralGenerator::tagObjects() {
   // Tag plants, water sources, etc. based on nearby landmarks
   for (auto& lm : landmarks_) {
+    (void)lm;
     // Could tag nearby plants as medicinal/edible based on landmark type
     // This would iterate over world_->plants() and world_->waterSources()
   }

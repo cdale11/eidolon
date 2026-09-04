@@ -115,6 +115,7 @@ TEST(wildlife_wolf_eats_rabbit) {
 
   SimClock c;
   WorldUpdate out;
+  (void)out; // update() returns via member state; out not filled by this overload
   w.update(c, Wildlife::kInterval, r);
   c.advance(Wildlife::kInterval);
   w.update(c, Wildlife::kInterval, r); // second step lets the kill resolve

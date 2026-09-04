@@ -322,7 +322,8 @@ public:
       return false;
     }
     
-    const uint32_t timeoutMs = 15000;
+    // Timeouts are fixed at 15s below; the search-engine specific timeout knob
+    // applies to SearXNG/DDG only.
     httplib::Client cli(endpoint_);
     cli.set_connection_timeout(15, 0);
     cli.set_read_timeout(15, 0);

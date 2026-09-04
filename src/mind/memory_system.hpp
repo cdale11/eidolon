@@ -28,7 +28,7 @@ public:
 
 private:
   MemoryRing ring_;
-  float decayRate_ = 0.9999f;
+  [[maybe_unused]] float decayRate_ = 0.9999f;
   class Rng rng_;
 };
 

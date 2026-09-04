@@ -19,40 +19,40 @@ void AttachmentSystem::initialize(uint64_t seed) {
   // Set initial parameters based on style
   switch (style) {
     case AttachmentStyle::Secure:
-      attachment_strength = 0.6f + 0.2f * static_cast<float>(rand()) / RAND_MAX;
-      separation_anxiety = 0.2f + 0.2f * static_cast<float>(rand()) / RAND_MAX;
-      reunion_response = 0.6f + 0.3f * static_cast<float>(rand()) / RAND_MAX;
+      attachment_strength = 0.6f + 0.2f * static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+      separation_anxiety = 0.2f + 0.2f * static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+      reunion_response = 0.6f + 0.3f * static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
       seeks_proximity_on_reunion = true;
       shows_distress_on_separation = true;
       explores_when_user_present = true;
       explores_when_user_absent = true;
       break;
     case AttachmentStyle::Anxious:
-      attachment_strength = 0.7f + 0.2f * static_cast<float>(rand()) / RAND_MAX;
-      separation_anxiety = 0.6f + 0.3f * static_cast<float>(rand()) / RAND_MAX;
-      reunion_response = 0.8f + 0.2f * static_cast<float>(rand()) / RAND_MAX;
+      attachment_strength = 0.7f + 0.2f * static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+      separation_anxiety = 0.6f + 0.3f * static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+      reunion_response = 0.8f + 0.2f * static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
       seeks_proximity_on_reunion = true;
       shows_distress_on_separation = true;
       explores_when_user_present = true;
       explores_when_user_absent = false;
       break;
     case AttachmentStyle::Avoidant:
-      attachment_strength = 0.3f + 0.2f * static_cast<float>(rand()) / RAND_MAX;
-      separation_anxiety = 0.1f + 0.1f * static_cast<float>(rand()) / RAND_MAX;
-      reunion_response = 0.2f + 0.2f * static_cast<float>(rand()) / RAND_MAX;
+      attachment_strength = 0.3f + 0.2f * static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+      separation_anxiety = 0.1f + 0.1f * static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+      reunion_response = 0.2f + 0.2f * static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
       seeks_proximity_on_reunion = false;
       shows_distress_on_separation = false;
       explores_when_user_present = true;
       explores_when_user_absent = true;
       break;
     case AttachmentStyle::Disorganized:
-      attachment_strength = 0.4f + 0.3f * static_cast<float>(rand()) / RAND_MAX;
-      separation_anxiety = 0.4f + 0.4f * static_cast<float>(rand()) / RAND_MAX;
-      reunion_response = 0.3f + 0.4f * static_cast<float>(rand()) / RAND_MAX;
-      seeks_proximity_on_reunion = static_cast<float>(rand()) / RAND_MAX > 0.5f;
+      attachment_strength = 0.4f + 0.3f * static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+      separation_anxiety = 0.4f + 0.4f * static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+      reunion_response = 0.3f + 0.4f * static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+      seeks_proximity_on_reunion = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) > 0.5f;
       shows_distress_on_separation = true;
-      explores_when_user_present = static_cast<float>(rand()) / RAND_MAX > 0.5f;
-      explores_when_user_absent = static_cast<float>(rand()) / RAND_MAX > 0.5f;
+      explores_when_user_present = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) > 0.5f;
+      explores_when_user_absent = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) > 0.5f;
       break;
   }
 }

@@ -21,7 +21,7 @@ TEST(physiology_ode_analytic_tests) {
 
 // Convergence test: Euler method error should generally decrease with smaller dt
 TEST(physiology_ode_smaller_dt_converges) {
-  const double T = 86400.0;
+  [[maybe_unused]] const double T = 86400.0;
   // Just verify all reasonable dt values produce acceptable results
   // (convergence is not perfectly monotonic for exponential decay)
   auto r10 = testEnergyDecay(70.0, 86400.0, 10.0, 1e-3);

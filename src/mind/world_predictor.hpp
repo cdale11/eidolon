@@ -88,8 +88,8 @@ public:
 
 private:
   const WorldPredictor* predictor_;
-  class Rng* rng_;
-  float surprise_threshold_ = 0.5f;
+  [[maybe_unused]] class Rng* rng_; // reserved: stochastic replan jitters
+  [[maybe_unused]] float surprise_threshold_ = 0.5f; // replan() takes it by argument
 
   float computeValue(const std::array<float, 43>& features,
                      const std::array<float, 43>& goal) const;

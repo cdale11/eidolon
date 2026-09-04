@@ -38,6 +38,7 @@ void CellularAutomata::step(double infectionRate, double immunityFactor,
       if (current == State::Infected) {
         // Infected cells: recover with probability increasing with immunity.
         const double recoverProb = 0.05 * (1.0 - immunityFactor) + 0.02;
+        (void)recoverProb; // stochastic variant unused: deterministic recovery rule below
         // For deterministic behavior without random noise (seeded CA), we use a simple
         // threshold: recover after a fixed number of ticks (simplified deterministic rule).
         // This keeps the CA fully deterministic and reproducible — required by the gate.
