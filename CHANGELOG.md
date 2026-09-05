@@ -5,6 +5,20 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 
 ## [Unreleased]
 
+### Balance & behavior — hunger survival + behavioral circadian rhythm
+- **Hunger is no longer the dominant killer.** Plant density ~2× (1/100 → 1/55 of the
+  world), per-plant yield raised, plants no longer spawn on desert tiles, and Forage now
+  searches a wider "smell" radius (16) before falling back to directed exploration. The
+  hunger emergency valve fires earlier (`hunger > 65`, was `80`) so the organism forages
+  before starving, and a meal restores more hunger (`food × 1.2`, was `0.9`). Measured
+  headless 10-day survival rises from ~43% to ~90% across a 40-seed sweep, with deaths
+  now split between hunger and thirst rather than hunger-dominant.
+- **The organism now has a real day/night rhythm.** `SimClock::daylight()` (a pure cosine
+  of the hour) drives a diurnal scheduler: it beds down at night and wakes at dawn unless
+  thirsty/hungry/pained/threatened. This removes an always-awake energy-drain spiral that
+  starved organisms before their sleep pressure ever built a sleep window. No new
+  persistent state — determinism and native/WASM parity are unchanged.
+
 ### Phase 15 — Client-side offload foundation (started)
 - **Server hands the sim to a capable client**: when a browser posts a
   `ComputeProfile` whose selected backend is WasmPlain/WasmSimd/WasmSimdMt,

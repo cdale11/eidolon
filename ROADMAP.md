@@ -464,6 +464,14 @@ and "client does the maximum work" invariants apply to all of them.
         at midday in spring"; tired at night → "drowsy in the deep night"). Pure
         functions of existing snapshot state — no new persistent state, no extra LLM
         calls, determinism preserved.
+  - [x] **Slice 2 — behavioral circadian sleep/wake rhythm** (`src/core/clock.hpp`,
+        `src/sim/engine.cpp`): `SimClock::daylight()` (pure cosine envelope, 0=midnight,
+        1=noon) drives a diurnal scheduler in `Engine::decide` — at night the organism
+        beds down unless survival valves (`thirst>55`/`hunger>70`/`pain>40`/predator)
+        say otherwise, and wakes at daybreak; by day it stays active unless genuine sleep
+        pressure forces a nap. This fixes an always-awake death spiral (energy drained
+        faster than foraging could replace it). Derived from the clock only — no new
+        persistent state, bit-exact determinism and native/WASM parity retained.
   - [ ] UI circadian indicators (avatar / mood / weather-worn appearance).
   - [ ] Audio cues for key states (alert / calm / distress) — light non-blocking layer.
   - [ ] Timezone-aware chat scheduling (e.g. "good morning" greeting only fires in the

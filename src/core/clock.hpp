@@ -2,6 +2,7 @@
 // Sim time is integer seconds since the start of the organism's life.
 #pragma once
 
+#include <cmath>
 #include <cstdint>
 #include <queue>
 
@@ -20,6 +21,12 @@ public:
   bool isDaytime(double dawn = 6.0, double dusk = 20.0) const noexcept {
     const double h = hourOfDay();
     return h >= dawn && h < dusk;
+  }
+  // Smooth 0..1 light envelope (0 = midnight, 1 = solar noon, 0.5 = 6am/6pm dawn-dusk
+  // crossing). Cosine envelope so day/night ramps smoothly; used by the circadian
+  // scheduler to bias sleep/activity toward the organism's diurnal phase.
+  double daylight() const noexcept {
+    return 0.5 * (1.0 - std::cos(2.0 * 3.14159265358979323846 * hourOfDay() / 24.0));
   }
   int seasonOfYear(int yearDays = 365) const noexcept { // 0=spring,1=summer,2=autumn,3=winter
     const int d = static_cast<int>(day()) % yearDays;

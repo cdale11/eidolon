@@ -415,11 +415,11 @@ micro-batches:
 Consolidation is bounded per night (caps processing time); no LLM calls in the cycle.
 
 **Survival overrides sleep** (in `Engine::decide`, not the sleep FSM): a sleeping organism
-is forced awake when `thirst > 55` or `hunger > 80` or a predator is within 2 tiles, and
-sleep entry is blocked while `thirst >= 55` (hunger >= 75). The wake threshold must sit
+is forced awake when `thirst > 55` or `hunger > 70` or a predator is within 2 tiles, and
+sleep entry is blocked while `thirst >= 55` (hunger >= 60). The wake threshold must sit
 strictly below the entry-block threshold — earlier code used 85 for both, creating a death
 loop where a sleeping organism at rising thirst simply never woke. The same survival
-valves (`thirst > 55`, `hunger > 80`, `pain > 40`) also break the organism out of Rest.
+valves (`thirst > 55`, `hunger > 65`, `pain > 40`) also break the organism out of Rest.
 
 **Directed exploration** (in `Engine::execute`): when no resource is in perception range,
 Wander, Forage, Drink, and Flee no longer use 1-tile random walks (which trap organisms
@@ -427,6 +427,34 @@ in corners with >75% return probability). Instead `exploreStep()` walks in a fix
 direction for ~16 ticks, rotates 90° on obstacles, and falls through to any step — this
 actually traverses terrain and escapes resource deserts. State (`exploreDir_`,
 `exploreTicks_`) is serialised for bit-exact resume.
+
+**Hunger balance (food scarcity is the primary survival constraint).** Three coordinated
+levers keep the organism from an all-hunger death profile while preserving "a world that
+produces genuine pressure" (§9):
+- Food is *findable*: Forage expands from the sight radius to a wider "smell" radius
+  (`kHearingRadius`, 16) before falling back to directed exploration, so a nearby bush
+  outside line-of-sight is still approached. Plant density is `w*h/55` (≈ 298 plants on
+  a 128² world, ~2× the old 1/100), plants never spawn on desert tiles, and per-plant
+  yield is `8 + r*22` food units.
+- The hunger survival valve fires earlier and scales with hunger's slower climb:
+  Forage at `hunger > 65` (was `80`), so the organism forages *before* it is starving.
+  A meal restores `food * 1.2` hunger (was `0.9`).
+- Nights restore reserves (see circadian scheduler below), so an active day no longer ends
+  in an unrecoverable energy spiral.
+
+**Behavioral circadian (time-of-day awareness, emerged).** The organism does not sleep on
+schedule from a script; night is a *light envelope* derived from `SimClock::daylight()` (a
+pure cosine of `hourOfDay()`, 0 at midnight, 1 at noon). In `Engine::decide`, when light
+drops below 0.5 (night) the organism beds down unless a survival valve (`thirst > 55`,
+`hunger > 70`, `pain > 40`, nearby predator) says otherwise; it wakes at daybreak once
+rested. During the day it stays active unless genuine sleep pressure forces a nap. This is
+a *behavioral* circadian layer complementing the *chat* circadian snapshot fields (§14);
+both are pure functions of the clock, so no new persistent state and bit-exact determinism.
+The old always-awake behaviour drained energy faster than foraging could replace it and
+starved the organism before its sleep pressure ever built a sleep window; the night
+bed-down gives every organism a real diurnal rhythm (measured: 10-day headless survival
+rises from ~43% to ~90% across a 40-seed sweep, with deaths split between hunger and
+thirst rather than hunger-dominant).
 
 ---
 
@@ -490,9 +518,11 @@ reply (LLM or fallback) in the organism's actual circadian + drive state right n
 5. None of these fields persist in the snapshot; they are recomputed every time
    `makeSnapshot()` runs.
 
-This is the first slice of the **time-of-day awareness in chat** future direction
-(ROADMAP). It does NOT yet add UI circadian indicators, audio cues, or timezone-aware
-chat scheduling — those stay deferred.
+This is the first slice of the **time-of-day awareness** direction (ROADMAP): the *chat*
+circadian snapshot (§ this section) is complemented by the *behavioral* circadian
+scheduler described in §13, which turns the same derived light envelope into a real
+sleep/wake rhythm. Still deferred: UI circadian indicators, audio cues, and timezone-aware
+chat scheduling.
 
 ### Grounding & safety
 - LLM output is **parsed and validated**; any world mutation must come as a structured action

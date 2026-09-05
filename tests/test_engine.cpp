@@ -115,6 +115,20 @@ TEST(engine_adaptive_steps_used) {
   CHECK(e.stats().ticksFine > 0);
 }
 
+TEST(engine_circadian_sleep_wake_rhythm) {
+  // Over two full sim-days a healthy organism must both sleep (night bed-down) and be
+  // actively awake (day foraging/exploration) — the diurnal circadian scheduler. A
+  // seed chosen from the survival sweep so the organism lives through both days.
+  Engine e;
+  e.init(42, true, 128, 128);
+  // Tick until just past two sim-days (86400 s/day); fine ticks are 1 s each but rest
+  // and sleep use coarser steps, so bound the loop by wall/sim time instead.
+  while (e.isAlive() && e.clock().now() < 2 * 86400) e.tick();
+  CHECK(e.isAlive());
+  CHECK(e.stats().ticksSleep > 0); // slept at night at least once
+  CHECK(e.stats().ticksFine > 0);  // and was actively doing things by day
+}
+
 TEST(engine_lastAction_default_then_updates) {
   // Before the first tick, lastAction is a safe default (Observe). After a few
   // ticks, lastAction must reflect whatever decide()/execute() actually chose —

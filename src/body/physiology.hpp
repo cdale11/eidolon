@@ -56,7 +56,7 @@ public:
 
   // Consume food/water (units of energy / thirst reduction). Returns nothing; clamps.
   void eat(double food) {
-    hunger_ = std::max(0.0, hunger_ - food * 0.9);
+    hunger_ = std::max(0.0, hunger_ - food * 1.2);
     energy_ = std::min(kMax, energy_ + food * 2.2);
   }
   void drink(double water) {

@@ -377,12 +377,16 @@ void eidolon::World::generate(int w, int h, eidolon::Rng& r) {
     if (placed) break;
   }
 
-  int targetPlants = static_cast<int>(static_cast<uint64_t>(w) * h / 100);
+  // Edible food is the primary survival constraint: at 1/100 density the organism
+  // routinely starves when it spawns far from the few edible clusters. 1/55 gives ~2x
+  // the vegetation so foraging reliably carries the organism across a multi-day stretch.
+  int targetPlants = static_cast<int>(static_cast<uint64_t>(w) * h / 55);
   int guard = targetPlants * 10;
   while (static_cast<int>(plants_.size()) < targetPlants && guard-- > 0) {
     eidolon::Vec2i p = grid_.randomWalkable(r);
     if (!grid_.walkable(p.x, p.y)) continue;
     if (distCheb(p, pos_) <= 3) continue;
+    if (grid_.at(p.x, p.y) == eidolon::Terrain::Desert) continue; // plants don't grow in desert
 
     eidolon::Biome b = grid_.biome(p.x, p.y);
     eidolon::PlantType type;
@@ -417,7 +421,7 @@ void eidolon::World::generate(int w, int h, eidolon::Rng& r) {
     eidolon::Plant pl;
     pl.pos = p;
     pl.type = type;
-    pl.maxAmount = 5.0 + r.unit() * 15.0;
+    pl.maxAmount = 8.0 + r.unit() * 22.0;
     pl.amount = pl.maxAmount * (0.5 + r.unit() * 0.5);
     pl.regrowthRate = 0.5 + r.unit() * 1.0;
     pl.toxicity = toxicity;

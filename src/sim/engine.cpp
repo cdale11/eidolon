@@ -483,15 +483,21 @@ PolicyAction Engine::actionToPolicy(Action a) noexcept {
 }
 
 Action Engine::decide() noexcept {
+  const double light = clock_.daylight();
+  const bool night = light < 0.5;
   if (body_.isSleeping()) {
     // Survival overrides sleep: a predator at the door, or rising thirst/hunger.
     if (world_.nearestPredator(world_.organismPos(), 2)) {
       body_.setSleeping(false);
       return Action::Flee;
     }
-    if (body_.thirst() > 55.0 || body_.hunger() > 80.0) {
+    if (body_.thirst() > 55.0 || body_.hunger() > 70.0) {
       body_.setSleeping(false); // wake to drink/eat, then re-sleep
-    } else if (body_.sleepPressure() < 12.0 && body_.fatigue() < 15.0) {
+    } else if ((!night && body_.sleepPressure() < 25.0 && body_.fatigue() < 30.0) ||
+               (body_.sleepPressure() < 12.0 && body_.fatigue() < 15.0)) {
+      // Circadian wake: a rested organism surfaces at daybreak even before sleep
+      // pressure fully clears (diurnal rhythm); at night it stays down until truly
+      // recovered. Survival valves above still override either way.
       body_.setSleeping(false);
       recordEpisode(EventKind::Wake, 0, 0.15, 255, Participant::Self, Outcome::Success, 0.0f, 0.0f, 0.1f, 0.0f, Relevance::Rewarding);
       return Action::Sleep;
@@ -500,7 +506,18 @@ Action Engine::decide() noexcept {
   }
   // Don't sleep while thirst/hunger are climbing — the active branch will drink/eat.
   // Thirst at 55 is already in the "must Drink" zone; sleeping lets it climb to death.
-  if (body_.needsSleep() && body_.thirst() < 55.0 && body_.hunger() < 75.0) {
+  // Circadian diurnal scheduler: at NIGHT sleep is the default (the organism beds down
+  // and recovers energy/health, barring survival needs), and it wakes at daybreak. During
+  // the DAY it stays active unless genuine sleep pressure (needsSleep) forces a nap. This
+  // gives every organism a real day/night rhythm; without it, an always-awake organism
+  // drains energy faster than it can forage and starves before sleep pressure ever builds.
+  const bool sleepVeto = body_.thirst() > 55.0 || body_.hunger() > 70.0 ||
+                         body_.pain() > 40.0;
+  const bool justRested = body_.sleepPressure() < 10.0 && body_.fatigue() < 25.0;
+  const bool nightSleep = night && !sleepVeto && !justRested;
+  const bool dayNap = !night && body_.needsSleep() && body_.thirst() < 55.0 &&
+                      body_.hunger() < 60.0;
+  if (nightSleep || dayNap) {
     body_.setSleeping(true);
     resting_ = false;
     recordEpisode(EventKind::Sleep, 0, 0.15, 255, Participant::Self, Outcome::Success, 0.0f, 0.0f, 0.0f, 0.0f, Relevance::None);
@@ -510,7 +527,7 @@ Action Engine::decide() noexcept {
   // trigger, so the organism doesn't oscillate around the fatigue boundary.
   // Critical thirst/hunger break out of rest — they kill faster than fatigue.
   if (resting_) {
-    if (body_.thirst() > 55.0 || body_.hunger() > 80.0 || body_.pain() > 40.0)
+    if (body_.thirst() > 55.0 || body_.hunger() > 65.0 || body_.pain() > 40.0)
       resting_ = false;
     else if (body_.fatigue() < 25.0) resting_ = false;
     else return Action::Rest;
@@ -522,10 +539,10 @@ Action Engine::decide() noexcept {
   // A predator within a few tiles outranks everything: flee first.
   if (world_.nearestPredator(world_.organismPos(), 3)) return Action::Flee;
   // Critical thirst first (with guard against hunger being even more critical), then
-  // hunger. The hunger<80 guard on Drink prevents an organism with both thirst~56 and
-  // hunger~81 from drinking forever while starving.
-  if (body_.thirst() > 55.0 && body_.hunger() < 80.0) return Action::Drink;
-  if (body_.hunger() > 80.0) return Action::Forage;
+  // hunger. The hunger<65 guard on Drink prevents an organism with both thirst~56 and
+  // hunger~66 from drinking forever while starving.
+  if (body_.thirst() > 55.0 && body_.hunger() < 65.0) return Action::Drink;
+  if (body_.hunger() > 65.0) return Action::Forage;
   if (body_.pain() > 40.0 && !world_.nearestPredator(world_.organismPos(), Perception::kSightRadius)) return Action::Rest;
   // Learned policy proposes an agentic action from the state features.
   // Get habit strengths from instruction learning to bias policy
@@ -775,9 +792,16 @@ void Engine::execute(Action a) noexcept {
       const Vec2i p = world_.organismPos();
       const Plant* plant = world_.nearestEdiblePlant(p, Perception::kSightRadius);
       if (!plant) {
-        // No food in sight: sustained directed exploration — random 1-tile walks bounce
-        // the organism in a corner until hunger kills it.
-        exploreStep();
+        // No food within sight: expand to a wider "smell" radius (hearing radius) and
+        // head toward the nearest edible plant. Food is sparser than water, so unlike
+        // the water path this is the primary food-finding route; only if nothing is
+        // within smell radius do we fall back to sustained directed exploration.
+        const Plant* far = world_.nearestEdiblePlant(p, Perception::kHearingRadius);
+        if (far) {
+          moveToward(far->pos);
+        } else {
+          exploreStep();
+        }
         break;
       }
       if (plant->pos == p) {

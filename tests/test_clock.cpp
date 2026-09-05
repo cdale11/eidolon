@@ -26,6 +26,27 @@ TEST(clock_daytime) {
   CHECK(!c.isDaytime());
 }
 
+TEST(clock_daylight_envelope) {
+  SimClock c;
+  c.set(0); // midnight
+  CHECK(c.daylight() < 0.05);
+  c.set(6 * 3600); // 06:00 dawn
+  CHECK(c.daylight() > 0.45 && c.daylight() < 0.55);
+  c.set(12 * 3600); // noon
+  CHECK(c.daylight() > 0.95);
+  c.set(18 * 3600); // 18:00 dusk
+  CHECK(c.daylight() > 0.45 && c.daylight() < 0.55);
+  c.set(24 * 3600); // next midnight
+  CHECK(c.daylight() < 0.05);
+  // diurnal: strictly more light at noon than at dawn or midnight
+  double dawnLight, noonLight, midnightLight;
+  c.set(6 * 3600); dawnLight = c.daylight();
+  c.set(12 * 3600); noonLight = c.daylight();
+  c.set(0); midnightLight = c.daylight();
+  CHECK(noonLight > dawnLight);
+  CHECK(dawnLight > midnightLight);
+}
+
 TEST(clock_season_cycles) {
   SimClock c;
   CHECK_EQ(c.seasonOfYear(), 0); // day 0 = spring
