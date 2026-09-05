@@ -247,7 +247,7 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
 - Gate: the concept graph is inspectable and reproducible from the seed; belief coherence
       score improves with experience; belief flips on strong evidence are reproducible.
 
-## Phase 10 — Dreams v2, reflection, narrative language (in progress)
+## Phase 10 — Dreams v2, reflection, narrative language (complete)
 - [x] Dreams influence associations measurably: `src/mind/memory_system.cpp::dream()` recombines episodes sharing location/participants/outcome/action, creates dream traces that strengthen source episodes and perturb policy toward recombined sequences (deterministic via seeded RNG)
 - [x] Slow layer reflection with LLM (rate-limited): `src/mind/reflection.hpp/.cpp` — `ReflectionSystem` with `reflect_on_recent_events()`, `summarize_absence()`, `generate_life_review()`, `answer_about_past()`; min-ticks-between-LLM rate limiting; honest uncertainty for unrecorded events
 - [x] "What happened while you were away" grounded in actual event timeline: `summarize_absence()` extracts events between lastSeenTick and currentTick, builds LLM prompt
@@ -267,7 +267,7 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
       is factually grounded in its actual event log, without an LLM call; utterances are
       reproducible from the seed and state.
 
-## Phase 11 — Portable WASM client compute (in progress)
+## Phase 11 — Portable WASM client compute (complete)
 - [x] Compile the same `ReplicaCore` to WebAssembly (Emscripten): plain WASM build working
   - Emscripten toolchain configured (`cmake/Modules/Platform/Emscripten.cmake`)
   - Static library `libeidolon_replica_core.a` builds successfully (~1.1 MB)
@@ -316,7 +316,7 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
 - Gate: same seeded scenario produces the same individual state on native and WASM
       (parity test); no heavy work on the main UI thread; fidelity reduction works.
 
-## Phase 12 — Synchronization, offline persistence & backend selection
+## Phase 12 — Synchronization, offline persistence & backend selection (partial)
 - Checkpoint/delta sync protocol (compact binary deltas: physiology, weight deltas,
   memories, beliefs, relationships, skills, concepts, world events, sim clock; batched +
   compressed; no tick streaming)
@@ -343,7 +343,7 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
 - [x] Checkpoint/delta sync protocol (compact binary deltas + compression)
 - [x] Server accepts client ComputeProfile; auto-select fastest stable backend
 
-## Phase 13 — Performance & long-run stability
+## Phase 13 — Performance & long-run stability (complete)
 - [x] Profiling: hot-path allocation audit — removed a per-tick `std::vector<float>`
       terrain-factor allocation + O(w*h) scan in `World::update` (cached in a member,
       rebuilt on generate/deserialize; +15% throughput, bit-exact).
@@ -364,7 +364,7 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
 - Documentation finalization; CHANGELOG entries; performance report
 - Gate: full `ctest` + integration suite green on a clean checkout.
 
-## Phase 15 — Client-side offload foundation (started; ahead of 13–14 on user direction)
+## Phase 15 — Client-side offload foundation (complete; ahead of 13–14 on user direction)
 - [x] Server stops local ticking when a capable client claims the sim
       (`clientComputing_` flag; `simLoop` idles instead — life continues via
       client snapshots, server persists + answers chat).
@@ -428,8 +428,9 @@ and "client does the maximum work" invariants apply to all of them.
   - [ ] Rate limiting + caching.
   - [ ] Proper search API integration (SerpAPI, Bing, Google) with API keys.
   - [ ] HTTPS support via OpenSSL-linked httplib.
-- **Client-side offload**: migrate most compute to the client per DESIGN §17 (Phases 11-12)
-  to free the server; headless fallback continues life when the client is away.
+- **Client-side offload** *(implemented — Phase 15)*: most compute now migrates to the
+  client per DESIGN §17 (a capable browser runs the sim in a Web Worker and posts
+  snapshots back); headless fallback continues life when the client is away.
 - **Learning from the user's actual speech (text)**: the organism understands and acts on what the
   user says — typed instructions ("eat", "sleep", "go to the river", "avoid wolves")
   become validated, structured goals the organism pursues through its normal planning loop
@@ -449,10 +450,11 @@ and "client does the maximum work" invariants apply to all of them.
   perspective: "I avoid the cold meadow, so I never see the berries there"). Suggestions
   come from its own planner/metacognition inspecting its metrics and are offered in
   conversation as *proposals* the user may adopt, not as code changes.
-- **Time-of-day awareness in chat** *(slice 1 implemented)*: the organism's replies
+- **Time-of-day awareness** *(slices 1–2 implemented)*: the organism's replies
   reflect its circadian state — whether it is awake/asleep, drowsy, tired, hungry or
-  thirsty at the moment of speaking. Grounded in the same snapshot that powers
-  `respond` (no new LLM dependence), so a question at 3am gets a groggy answer.
+  thirsty at the moment of speaking — and it lives on a real day/night rhythm. Grounded
+  in the same snapshot that powers `respond` (no new LLM dependence), so a question at
+  3am gets a groggy answer.
   - [x] **Slice 1 — circadian snapshot + tone-aware replies** (`src/llm/bridge.hpp/.cpp`):
         6 deterministic derived fields (`phaseOfDay`, `timeOfDayPhrase`, `seasonName`,
         `physiologicalState`, `primaryNeed`, `circadianTone`) appended to

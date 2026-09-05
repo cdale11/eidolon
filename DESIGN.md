@@ -113,7 +113,8 @@ thin front-ends.
 8. Execute action → world mutation → consequences → rewards/errors.
 9. Learning updates (throttled per-model).
 10. Memory write (if event worth recording).
-11. Sleep/consolidation when sleep pressure forces it.
+11. Sleep/consolidation when sleep pressure forces it (or at night — the behavioral
+    circadian scheduler beds the organism down after dusk; §13).
 
 Hot path is allocation-light: pre-allocated pools, ring buffers, per-tick arena, no heap
 churn, no dynamic dispatch in the innermost loops.
