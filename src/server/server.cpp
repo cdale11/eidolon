@@ -503,6 +503,47 @@ function snapshotBytes() {
   return out;
 }
 
+// ----- offline persistence (Phase 12): local IndexedDB checkpoint -------------
+// A periodic binary checkpoint survives a tab crash / reload so the organism is not
+// destroyed. On init we prefer the freshest local checkpoint when the server has no
+// snapshot (offline resume); the uploaded server snapshot still wins when present.
+const IDB_NAME = 'eidolon';
+const IDB_STORE = 'checkpoints';
+let idb = null;
+function idbOpen() {
+  if (idb) return idb;
+  idb = new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => {
+      if (!req.result.objectStoreNames.contains(IDB_STORE)) req.result.createObjectStore(IDB_STORE);
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return idb;
+}
+function localSave(simtime, buf) {
+  idbOpen().then((db) => {
+    try {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).put({ simtime, buf }, 'current');
+    } catch (e) {}
+  }).catch(() => {});
+}
+function localLoad() {
+  return idbOpen().then((db) => new Promise((resolve) => {
+    try {
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const req = tx.objectStore(IDB_STORE).get('current');
+      req.onsuccess = () => resolve(req.result ? req.result.buf : null);
+      req.onerror = () => resolve(null);
+    } catch (e) { resolve(null); }
+  })).catch(() => null);
+}
+
+let lastLocalSave = 0;
+const LOCAL_SAVE_EVERY_MS = 5000;
+
 function loop() {
   const t0 = performance.now();
   for (let i = 0; i < sliceBudget && M._eidn_alive(eng); ++i) M._eidn_tick(eng);
@@ -524,6 +565,12 @@ function loop() {
     const s = snapshotBytes();
     if (s) postMessage({ kind: 'snapshot', simtime: Number(M._eidn_simtime(eng)), buffer: s }, [s]);
   }
+  // Local IndexedDB checkpoint (survive tab crash), throttled separately.
+  if (now - lastLocalSave >= LOCAL_SAVE_EVERY_MS) {
+    lastLocalSave = now;
+    const s = snapshotBytes();
+    if (s) localSave(Number(M._eidn_simtime(eng)), s);
+  }
   postMessage({ kind: 'stats', sliceMs: dt, slice: sliceBudget,
                 simtime: Number(M._eidn_simtime(eng)) });
 }
@@ -536,6 +583,7 @@ onmessage = async (ev) => {
       if (eng) { M._eidn_free(eng); eng = 0; }
       eng = M._eidn_new();
       if (!eng) { postMessage({ kind: 'error', error: 'alloc failed' }); return; }
+      let restored = false;
       if (m.snapshot) {
         const b = new Uint8Array(m.snapshot);
         const p = M._malloc(b.length);
@@ -543,14 +591,30 @@ onmessage = async (ev) => {
         const ok = M._eidn_restore(eng, p, b.length);
         M._free(p);
         if (!ok) { postMessage({ kind: 'error', error: 'snapshot restore failed' }); return; }
-      } else if (m.seed !== undefined) {
-        M._eidn_init(eng, BigInt(m.seed), m.deterministic ? 1 : 0, m.w || 128, m.h || 128);
-      } else {
-        postMessage({ kind: 'error', error: 'init needs snapshot or seed' });
-        return;
+        restored = true;
+      } else if (m.allowLocalResume) {
+        // Offline resume: server offered no snapshot — try the local IndexedDB checkpoint
+        // first so a refreshed/reloaded tab continues the same organism offline.
+        const local = await localLoad();
+        if (local) {
+          const b = new Uint8Array(local);
+          const p = M._malloc(b.length);
+          M.HEAPU8.set(b, p);
+          const ok = M._eidn_restore(eng, p, b.length);
+          M._free(p);
+          if (ok) restored = true;
+        }
+      }
+      if (!restored) {
+        if (m.seed !== undefined) {
+          M._eidn_init(eng, BigInt(m.seed), m.deterministic ? 1 : 0, m.w || 128, m.h || 128);
+        } else {
+          postMessage({ kind: 'error', error: 'init needs snapshot, local checkpoint, or seed' });
+          return;
+        }
       }
       postMessage({ kind: 'ready', simtime: Number(M._eidn_simtime(eng)),
-                    seed: String(M._eidn_seed(eng)) });
+                    seed: String(M._eidn_seed(eng)), resumedLocal: restored });
     } else if (m.kind === 'start') {
       ticksPerSec = m.tps || 300;
       sliceBudget = Math.min(300, ticksPerSec);
@@ -596,6 +660,29 @@ uint64_t entropySeed() {
   uint64_t s = static_cast<uint64_t>(t) ^ (static_cast<uint64_t>(rd()) << 1);
   s ^= static_cast<uint64_t>(::getpid()) << 33;
   return s;
+}
+
+// Peek the sim-time (absolute sim seconds) from a snapshot blob WITHOUT fully restoring
+// it, so reconnect reconcile can reject a stale client snapshot before it rolls back the
+// headless fallback's forward progress. The snapshot layout is fixed by the versioned
+// format: magic(u32) version(u32) checksum(u64) .. then Engine::serializeState writes
+// masterSeed(u64) deterministic(u8) clock.now(i64) first. Returns false if the header is
+// malformed or unexpected (caller then falls back to a full restore/validate path).
+bool peekSnapshotSimTime(const std::vector<uint8_t>& blob, int64_t& outSimTime) {
+  if (blob.size() < 25) return false;
+  const uint8_t* p = blob.data();
+  auto u32 = [&](const uint8_t* q) {
+    return static_cast<uint32_t>(q[0]) | (static_cast<uint32_t>(q[1]) << 8) |
+           (static_cast<uint32_t>(q[2]) << 16) | (static_cast<uint32_t>(q[3]) << 24);
+  };
+  if (u32(p) != kSnapshotMagic) return false;
+  if (u32(p + 4) != kSnapshotVersion) return false;
+  // payload starts at offset 16; skip masterSeed(u64 @16) + deterministic(u8 @24).
+  const uint8_t* q = p + 25;
+  uint64_t t = 0;
+  for (int i = 0; i < 8; ++i) t |= static_cast<uint64_t>(q[i]) << (8 * i);
+  outSimTime = static_cast<int64_t>(t);
+  return true;
 }
 } // namespace
 
@@ -1362,13 +1449,35 @@ std::string Server::clientSnapshotUpload(const std::vector<uint8_t>& blob, std::
     err = "server is currently hosting the sim; client offload not active";
     return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
   }
+  // Reconnect reconcile (DESIGN §18): if the server's headless fallback has run ahead of
+  // a reconnecting client (sim-clock newer), reject the stale upload so it cannot roll
+  // back forward progress. Only enforced in server-authoritative mode; in the default
+  // client-authoritative mode the client's state is authoritative and accepted as-is.
+  int64_t incomingTime = -1;
+  const bool serverAuthoritative = opts_.worldAuthority == "server";
+  if (serverAuthoritative && peekSnapshotSimTime(blob, incomingTime) &&
+      incomingTime < engine_.clock().now()) {
+    static std::atomic<uint64_t> staleRejects{0};
+    ++staleRejects;
+    err = "stale client snapshot (sim-time " + std::to_string(incomingTime) +
+          " behind server " + std::to_string(engine_.clock().now()) + "); ignored";
+    return "{\"ok\":false,\"stale\":true,\"rejected\":" +
+           std::to_string(staleRejects.load()) + ",\"error\":\"" + jsonEscape(err) + "\"}";
+  }
   if (!engine_.restore(blob, err)) {
     return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
   }
   ++clientSnapshotsReceived_;
   lastClientContactMs_.store(std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::steady_clock::now().time_since_epoch()).count());
-  // No per-upload disk write: the sim loop persists periodically while offloaded.
+  // In server-authoritative mode, persist immediately so the reconciled state survives a
+  // crash before the next periodic autosave; client-authoritative defers to the loop.
+  if (serverAuthoritative) {
+    std::string saveErr;
+    if (!engine_.saveFile(opts_.dataDir + "/save.snap", saveErr)) {
+      std::fprintf(stderr, "warning: reconcile autosave failed: %s\n", saveErr.c_str());
+    }
+  }
   return "{\"ok\":true}";
 }
 
@@ -1469,6 +1578,33 @@ int Server::run() {
   simThread_ = std::thread([this] { simLoop(); });
 
   httplib::Server svr;
+  // Phase 12 authentication/session: single-user shared secret. When --api-key is set,
+  // reject mutating (POST) requests without a matching token. Read-only GET routes stay
+  // open so the status/chat UI can still poll (the organism itself is not a secret; only
+  // mutation is gated). Empty api key -> no auth (LAN trust model used by run_eidolon.sh).
+  if (!opts_.apiKey.empty()) {
+    const std::string expected = opts_.apiKey;
+    svr.set_pre_routing_handler([expected](const httplib::Request& req, httplib::Response& res) {
+      if (req.method != "POST") return httplib::Server::HandlerResponse::Unhandled;
+      // Accept "Authorization: Bearer KEY" or "?key=KEY", both constant-time-ish compare.
+      auto has = [&](const std::string& got) {
+        if (got.size() != expected.size()) return false;
+        unsigned char diff = 0;
+        for (size_t i = 0; i < got.size(); ++i) diff |= static_cast<unsigned char>(got[i] ^ expected[i]);
+        return diff == 0;
+      };
+      const std::string auth = req.get_header_value("Authorization");
+      bool ok = auth.rfind("Bearer ", 0) == 0 && has(auth.substr(7));
+      if (!ok && req.has_param("key")) ok = has(req.get_param_value("key"));
+      if (!ok) {
+        res.status = 401;
+        res.set_content("{\"error\":\"unauthorized\"}", "application/json");
+        return httplib::Server::HandlerResponse::Handled;
+      }
+      return httplib::Server::HandlerResponse::Unhandled;
+    });
+    std::fprintf(stderr, "auth: --api-key set, mutating endpoints require the token\n");
+  }
   svr.Get("/", [](const httplib::Request&, httplib::Response& res) {
     // COOP/COEP enable crossOriginIsolated (SharedArrayBuffer) so a capable client
     // can run the MT wasm worker later; harmless for same-origin fetches we use now.

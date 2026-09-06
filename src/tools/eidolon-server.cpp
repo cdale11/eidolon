@@ -38,6 +38,10 @@ void printUsage(FILE* out, const char* prog) {
                "  --max-search-results N  max results per search (default 5)\n"
                "  --max-fetch-chars N  max chars to fetch per page (default 8000)\n"
                "  --browse-timeout MS  browse request timeout in ms (default 10000)\n"
+               "  --api-key KEY        require this shared-secret token (Authorization: Bearer\n"
+               "                       or ?key=) on mutating endpoints; empty = no auth (default)\n"
+               "  --world-authority M  client|server (default client): server = server-authoritative\n"
+               "                       world, reconciles stale client snapshots\n"
                "  --help               this message\n",
                prog);
 }
@@ -101,6 +105,15 @@ int main(int argc, char** argv) {
       opts.maxFetchChars = static_cast<uint32_t>(std::atoi(need("N")));
     } else if (a == "--browse-timeout") {
       opts.browseTimeoutMs = static_cast<uint32_t>(std::atoi(need("MS")));
+    } else if (a == "--api-key") {
+      opts.apiKey = need("KEY");
+    } else if (a == "--world-authority") {
+      const std::string m = need("client|server");
+      if (m != "client" && m != "server") {
+        std::fprintf(stderr, "error: --world-authority must be 'client' or 'server'\n");
+        return 2;
+      }
+      opts.worldAuthority = m;
     } else if (a == "--help") {
       printUsage(stdout, argv[0]);
       return 0;

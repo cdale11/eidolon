@@ -48,6 +48,15 @@ public:
     uint32_t maxSearchResults = 5;
     uint32_t maxFetchChars = 8000;
     uint32_t browseTimeoutMs = 10000;
+    // Phase 12: authentication/session — a single-user shared secret. Empty disables
+    // auth (LAN trust model, per run_eidolon.sh). When set, mutating endpoints require
+    // the matching `Authorization: Bearer` (or `?key=`) token. The organism is
+    // single-user by invariant, so this is a shared secret, not multi-tenant accounts.
+    std::string apiKey;
+    // Phase 12: world-state authority. "client" (default) = client-authoritative
+    // cognition/learning for the single-user organism; "server" = server-authoritative
+    // world (cognition stays client-side) for future shared-world deployments.
+    std::string worldAuthority = "client";
   };
 
   explicit Server(Options opts);

@@ -506,11 +506,12 @@ Action Engine::decide() noexcept {
   }
   // Don't sleep while thirst/hunger are climbing — the active branch will drink/eat.
   // Thirst at 55 is already in the "must Drink" zone; sleeping lets it climb to death.
-  // Circadian diurnal scheduler: at NIGHT sleep is the default (the organism beds down
-  // and recovers energy/health, barring survival needs), and it wakes at daybreak. During
-  // the DAY it stays active unless genuine sleep pressure (needsSleep) forces a nap. This
-  // gives every organism a real day/night rhythm; without it, an always-awake organism
-  // drains energy faster than it can forage and starves before sleep pressure ever builds.
+  // Circadian diurnal scheduler: at NIGHT sleep is the default — the organism beds down and
+  // recovers energy/health — unless a survival need (thirst/hunger/pain) overrides. A
+  // freshly-spawned or just-woken organism stays up while genuinely rested; as soon as
+  // fatigue or sleep pressure builds it beds down. During the DAY it stays active unless
+  // genuine sleep pressure (needsSleep) forces a nap. (A predator within 2 tiles still
+  // wakes it, and the active branch flees before sleep when threat is high.)
   const bool sleepVeto = body_.thirst() > 55.0 || body_.hunger() > 70.0 ||
                          body_.pain() > 40.0;
   const bool justRested = body_.sleepPressure() < 10.0 && body_.fatigue() < 25.0;
