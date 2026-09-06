@@ -400,9 +400,12 @@ not assigned.
 
 ## 13. Sleep, Consolidation, Dreams
 
-When sleepPressure passes threshold: sleep state machine (awake → drowsy → deep → REM →
-wake). During sleep the clock runs coarse (30–60 s ticks) and consolidation runs in
-micro-batches:
+When the organism beds down (night, or sleep pressure), it descends a deterministic sleep
+architecture — **drowsy → light → deep (slow-wave) → REM → light …** — in an ultradian
+cycle, each stage with its own metabolic/recovery profile (`Physiology::SleepStage`):
+deep sleep burns the least energy and recovers the most, REM is the dreaming/consolidation
+phase, and the stages are driven purely by elapsed time (no RNG, so replays stay bit-exact).
+During sleep the clock runs coarse (30–60 s ticks) and consolidation runs in micro-batches:
 
 1. Replay hot-ring episodes through learning systems (surprise-gated).
 2. Strengthen important associations, decay irrelevant ones.
@@ -666,23 +669,26 @@ schema, same individual; only detail/frequency scale).
   on reconnect the client reconciles and uploads state. For the single-user organism,
   **client-authoritative cognition and learning** is the default; the server validates
   structural consistency rather than reproducing neural calculations.
-- **World-state authority is configurable**: client-authoritative for private/single-user
-  runs; server-authoritative world (cognition stays client-side) for future shared-world
-  deployments. Neither model is hardwired.
+- **World-state authority is configurable** (`--world-authority client|server`):
+  client-authoritative for private/single-user runs (default); server-authoritative world
+  (cognition stays client-side) for future shared-world deployments. In server-authoritative
+  mode a stale client snapshot (sim-time behind the headless fallback) is rejected rather
+  than rolling back forward progress. Neither model is hardwired.
 
 ### Client-side checkpointing
 
 The browser periodically persists local state (IndexedDB/OPFS) using **compact binary
 serialization** (never JSON for simulation state), so a tab crash does not destroy the
-organism. Human-readable diagnostic exports are separate.
+organism: the WASM worker checkpoints to IndexedDB every few seconds and resumes from it
+when the server offers no snapshot. Human-readable diagnostic exports are separate.
 
 ### Server roles
 
 ```
 Server
-├── authentication/session
+├── authentication/session   (--api-key: single-user shared-secret on mutating endpoints)
 ├── persistent Replica storage
-├── synchronization/checkpoints
+├── synchronization/checkpoints (delta sync + sim-clock reconcile idempotency)
 ├── optional LLM endpoint
 └── native headless fallback (unattended simulation when no client is attached)
 ```

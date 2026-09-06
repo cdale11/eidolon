@@ -62,7 +62,16 @@ const char* kIndexHtml = R"html(<!DOCTYPE html>
   .conv .del:hover { color: #d0312d; background: #fff; }
   #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
   #statusbar { padding: 8px 16px; font-size: 12px; color: #6b6b70;
-               border-bottom: 1px solid #ececec; background: #fafafa; }
+               border-bottom: 1px solid #ececec; background: #fafafa; display: flex;
+               align-items: center; gap: 8px; }
+  #circ { width: 14px; height: 14px; border-radius: 50%; flex: none;
+          display: inline-block; transition: background .6s; }
+  #circ.night { background: #1c2e4a; box-shadow: inset 0 0 0 2px #cbd5e1; }
+  #circ.deep_night { background: #0b1526; box-shadow: inset 0 0 0 2px #94a3b8; }
+  #circ.dawn { background: #f59e0b; }
+  #circ.day { background: #fbbf24; box-shadow: 0 0 4px 1px #fde68a; }
+  #circ.dusk { background: #f97316; }
+  #circ.asleep { background: #64748b; opacity: .7; }
   #chat { flex: 1; overflow-y: auto; background: #f9f9f9; }
   #chat .col { max-width: 760px; margin: 0 auto; padding: 24px 16px;
                display: flex; flex-direction: column; gap: 16px; }
@@ -108,7 +117,7 @@ const char* kIndexHtml = R"html(<!DOCTYPE html>
   <div id="diag">loading…</div>
 </div>
 <div id="main">
-  <div id="statusbar">connecting…</div>
+  <div id="statusbar"><span id="circ"></span><span id="statustext">connecting…</span></div>
   <div id="chat"><div class="col" id="chatcol"></div></div>
   <div id="inputrow">
     <div id="inputwrap">
@@ -134,8 +143,10 @@ async function refreshStatus() {
   try {
     const r = await fetch('/api/status');
     const s = await r.json();
-    document.getElementById('statusbar').textContent =
-      `Day ${s.day} · hour ${s.hour.toFixed(1)} · ${s.awake ? 'awake' : s.sleepStage} · ` +
+    const circ = document.getElementById('circ');
+    circ.className = s.awake ? s.phaseOfDay : 'asleep';
+    document.getElementById('statustext').textContent =
+      `Day ${s.day} · hour ${s.hour.toFixed(1)} · ${s.awake ? s.phaseOfDay : s.sleepStage} · ` +
       `energy ${s.energy.toFixed(0)} · hunger ${s.hunger.toFixed(0)} · ` +
       `thirst ${s.thirst.toFixed(0)} · health ${s.health.toFixed(0)} · ` +
       `rebirths ${s.rebirths} · ` +
@@ -893,19 +904,26 @@ std::string Server::statusJson() {
   const Vec2i p = engine_.world().organismPos();
   char buf[640];
   static const char* kSleepStageName[] = {"awake", "drowsy", "light_sleep", "deep_sleep", "rem"};
+  const double hour = engine_.clock().hourOfDay();
+  const char* phase = (hour >= 22.0 || hour < 5.0) ? "deep_night"
+                      : (hour < 6.0) ? "dawn"
+                      : (hour < 18.0) ? "day"
+                      : (hour < 21.0) ? "dusk" : "night";
   std::snprintf(buf, sizeof(buf),
                 "{\"day\":%lld,\"hour\":%.1f,\"awake\":%s,\"alive\":%s,"
-                "\"sleepStage\":\"%s\","
+                "\"sleepStage\":\"%s\",\"phaseOfDay\":\"%s\",\"daylight\":%.2f,"
                 "\"energy\":%.1f,\"hunger\":%.1f,\"thirst\":%.1f,\"fatigue\":%.1f,"
                 "\"sleepP\":%.1f,\"health\":%.1f,\"bodyTemp\":%.1f,\"weather\":\"%s\","
                 "\"tempC\":%.1f,\"simTime\":%lld,"
                 "\"preyNear\":%d,\"predatorsNear\":%d,\"predatorDist\":%d,"
                 "\"rebirths\":%u}",
                 static_cast<long long>(engine_.clock().day()),
-                engine_.clock().hourOfDay(),
+                hour,
                 b.isSleeping() ? "false" : "true",
                 engine_.isAlive() ? "true" : "false",
                 kSleepStageName[static_cast<uint8_t>(b.sleepStage())],
+                phase,
+                engine_.clock().daylight(),
                 b.energy(), b.hunger(), b.thirst(),
                 b.fatigue(), b.sleepPressure(), b.health(), b.bodyTemp(),
                 w.describe(), w.ambientTempC(engine_.clock()),

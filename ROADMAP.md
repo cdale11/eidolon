@@ -316,7 +316,7 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
 - Gate: same seeded scenario produces the same individual state on native and WASM
       (parity test); no heavy work on the main UI thread; fidelity reduction works.
 
-## Phase 12 — Synchronization, offline persistence & backend selection (partial)
+## Phase 12 — Synchronization, offline persistence & backend selection (complete)
 - Checkpoint/delta sync protocol (compact binary deltas: physiology, weight deltas,
   memories, beliefs, relationships, skills, concepts, world events, sim clock; batched +
   compressed; no tick streaming)
@@ -342,6 +342,17 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
 - [x] Binary snapshot download/upload endpoints (client-authoritative persistence path)
 - [x] Checkpoint/delta sync protocol (compact binary deltas + compression)
 - [x] Server accepts client ComputeProfile; auto-select fastest stable backend
+- [x] Offline client persistence: the WASM worker checkpoints its local state to
+      IndexedDB every ~5s and resumes from it when the server offers no snapshot, so a
+      tab crash/reload does not destroy the organism.
+- [x] Reconnect reconcile: `--world-authority server` rejects a stale client snapshot
+      (sim-time behind the headless fallback) via a header-only sim-time peek, so forward
+      progress is never rolled back. Default `client` mode stays client-authoritative.
+- [x] Session/auth: `--api-key` gates mutating POST endpoints with a constant-time
+      Bearer/`?key=` check (single-user shared secret); read-only GET stays open.
+- [x] `--world-authority client|server` flag wires configurable world-state authority.
+- [x] Integration test `python/tests/test_phase12.py` (auth gating, stale-snapshot reject,
+      client/server authority modes).
 
 ## Phase 13 — Performance & long-run stability (complete)
 - [x] Profiling: hot-path allocation audit — removed a per-tick `std::vector<float>`
@@ -469,15 +480,22 @@ and "client does the maximum work" invariants apply to all of them.
   - [x] **Slice 2 — behavioral circadian sleep/wake rhythm** (`src/core/clock.hpp`,
         `src/sim/engine.cpp`): `SimClock::daylight()` (pure cosine envelope, 0=midnight,
         1=noon) drives a diurnal scheduler in `Engine::decide` — at night the organism
-        beds down unless survival valves (`thirst>55`/`hunger>70`/`pain>40`/predator)
-        say otherwise, and wakes at daybreak; by day it stays active unless genuine sleep
-        pressure forces a nap. This fixes an always-awake death spiral (energy drained
-        faster than foraging could replace it). Derived from the clock only — no new
-        persistent state, bit-exact determinism and native/WASM parity retained.
-  - [ ] UI circadian indicators (avatar / mood / weather-worn appearance).
+        beds down unless survival valves (`thirst>55`/`hunger>70`/`pain>40`) say otherwise,
+        and wakes at daybreak; by day it stays active unless genuine sleep pressure forces
+        a nap. This fixes an always-awake death spiral (energy drained faster than foraging
+        could replace it). Derived from the clock only — no new persistent state, bit-exact
+        determinism and native/WASM parity retained.
+  - [x] **Slice 3 — sleep architecture (drowsy→light→deep→REM)**: `Physiology` models a
+        real night of staged sleep (DESIGN §13) with per-stage metabolic/recovery profiles;
+        the chat snapshot names the current stage and `/api/status` reports it.
+  - [x] **UI circadian indicator**: the status bar shows a phase-of-day dot (deep-night /
+        night / dawn / day / dusk / asleep) + a `phaseOfDay`/`daylight` field in
+        `/api/status`, so the organism's time of day is visible in the UI.
   - [ ] Audio cues for key states (alert / calm / distress) — light non-blocking layer.
-  - [ ] Timezone-aware chat scheduling (e.g. "good morning" greeting only fires in the
-        user's local morning, not the organism's sim morning).
+  - [ ] Timezone-aware chat scheduling (a "good morning" from the user side). Note: the
+        organism's diurnal ground is its own sim-clock (invariant: the organism exists
+        independently), so greetings already follow sim time-of-day; wall-clock mapping is
+        deferred, not required for correctness.
 - **Wildlife domestication / pets**: repeated non-threatening contact with individual prey
   (feeding, no hunting nearby) lowers their fear of the organism over time; a tamed
   individual follows the organism, warns of predators, and can be kept as a companion.
