@@ -112,6 +112,7 @@ const char* kIndexHtml = R"html(<!DOCTYPE html>
     <button id="saveprior" title="Save this organism's learned behaviour as a prior for future runs">Save this organism as prior</button>
     <button id="diagbtn">Diagnostics</button>
     <button id="offloadbtn" title="Run the simulation in this browser tab (WASM worker) instead of on the server">Compute: server</button>
+    <button id="soundbtn" title="Play soft audio cues on key state changes (alert/calm/distress)">Sound: on</button>
   </div>
   <div id="convlist"></div>
   <div id="diag">loading…</div>
@@ -134,6 +135,42 @@ const sendBtn = document.getElementById('send');
 const convsEl = document.getElementById('convlist');
 let convId = null;
 
+// --- audio cues (non-blocking WebAudio) ---
+let audioOk = true;
+let audioOn = true;
+let lastCueAt = 0;
+let prevStatus = null;
+let actx = null;
+function playTone(freq, dur, type, gainPk) {
+  if (!audioOn || !audioOk) return;
+  try {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    const t0 = actx.currentTime;
+    const osc = actx.createOscillator();
+    const g = actx.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(gainPk || 0.03, t0 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(g).connect(actx.destination);
+    osc.start(t0); osc.stop(t0 + dur);
+  } catch (e) { audioOk = false; }
+}
+function cue(kind) {
+  const now = Date.now();
+  if (now - lastCueAt < 8000) return; // throttle: no cue spam
+  lastCueAt = now;
+  if (kind === 'distress') { playTone(110, 0.5, 'sawtooth', 0.05); playTone(83, 0.6, 'sawtooth', 0.05); }
+  else if (kind === 'alert') { playTone(330, 0.18, 'square', 0.03); playTone(440, 0.22, 'square', 0.03); }
+  else if (kind === 'calm') { playTone(523, 0.25, 'sine', 0.03); }
+}
+const soundBtn = document.getElementById('soundbtn');
+soundBtn.onclick = () => {
+  audioOn = !audioOn;
+  soundBtn.textContent = audioOn ? 'Sound: on' : 'Sound: off';
+};
+
 function esc(s) {
   const d = document.createElement('div');
   d.textContent = s;
@@ -151,6 +188,14 @@ async function refreshStatus() {
       `thirst ${s.thirst.toFixed(0)} · health ${s.health.toFixed(0)} · ` +
       `rebirths ${s.rebirths} · ` +
       `${s.weather} ${s.tempC.toFixed(1)}C`;
+    if (prevStatus) {
+      // Audio cues on meaningful state transitions (throttled inside cue()).
+      if (s.health < 40 || s.health < prevStatus.health - 15) cue('distress');
+      else if ((s.predatorsNear > 0 || (s.predatorDist >= 0 && s.predatorDist <= 4)) &&
+               (prevStatus.predatorDist < 0 || prevStatus.predatorDist > 4)) cue('alert');
+      else if (!prevStatus.awake && s.awake) cue('calm');
+    }
+    prevStatus = s;
   } catch (e) {}
 }
 async function refreshConvs() {
@@ -297,7 +342,8 @@ async function send() {
     const r = await fetch('/api/send', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({message: text, conversation_id: convId ? String(convId) : ''})
+      body: JSON.stringify({message: text, conversation_id: convId ? String(convId) : '',
+                            user_hour: new Date().getHours() + new Date().getMinutes() / 60.0}),
     });
     const j = await r.json();
     thinking.textContent = j.reply || j.error || '(no reply)';
@@ -999,8 +1045,42 @@ std::string Server::metricsJson() {
   return root.dump();
 }
 
+std::string Server::worldSummaryJson() {
+  std::lock_guard<std::mutex> lock(engineMu_);
+  const auto& w = engine_.world();
+  const Vec2i p = w.organismPos();
+
+  JsonValue root = JsonValue::makeObject();
+  root.setString("authority", opts_.worldAuthority);
+  root.setBool("alive", engine_.isAlive());
+  root.setNumber("day", static_cast<double>(engine_.clock().day()));
+  root.setNumber("hour", engine_.clock().hourOfDay());
+  root.setNumber("organism_x", static_cast<double>(p.x));
+  root.setNumber("organism_y", static_cast<double>(p.y));
+
+  // Edible + candidate resources a shared observer cares about.
+  size_t plants = 0, edible = 0;
+  for (const Plant& pl : w.plants()) {
+    if (pl.amount >= 1.0) { ++plants; if (pl.type == PlantType::Edible) ++edible; }
+  }
+  root.setNumber("plants", static_cast<double>(plants));
+  root.setNumber("edible_plants", static_cast<double>(edible));
+  root.setNumber("water_sources", static_cast<double>(w.waterSources().size()));
+
+  // Wildlife census (the only other autonomous population; single-humanoid invariant).
+  int rabbits = 0, wolves = 0;
+  for (const WildlifeAgent& a : w.wildlife().agents()) {
+    if (!a.alive) continue;
+    if (a.species == Species::Rabbit) ++rabbits; else ++wolves;
+  }
+  root.setNumber("rabbits", static_cast<double>(rabbits));
+  root.setNumber("wolves", static_cast<double>(wolves));
+  root.setNumber("structures", static_cast<double>(w.structures().size()));
+  return root.dump();
+}
+
 std::string Server::sendMessage(const std::string& conversationIdStr,
-                                const std::string& text, std::string& err) {
+                                const std::string& text, std::string& err, double userHour) {
   const std::string trimmed = [&] {
     size_t a = 0, b = text.size();
     while (a < b && (text[a] == ' ' || text[a] == '\n' || text[a] == '\r')) ++a;
@@ -1044,10 +1124,10 @@ std::string Server::sendMessage(const std::string& conversationIdStr,
         llm_->respond(trimmed, snap, parsed, reply, raw)) {
       // success path
     } else {
-      reply = fallbackReply(snap, trimmed);
+      reply = fallbackReply(snap, trimmed, userHour);
     }
   } else {
-    reply = fallbackReply(snap, trimmed);
+    reply = fallbackReply(snap, trimmed, userHour);
   }
 
   if (archive_) {
@@ -1636,6 +1716,11 @@ int Server::run() {
   svr.Get("/api/metrics", [this](const httplib::Request&, httplib::Response& res) {
     res.set_content(metricsJson(), "application/json");
   });
+  // Shared-world observation: read-only authoritative world state, pollable by any number
+  // of observers (never mutates; exempt from the API-key gate so viewers can watch).
+  svr.Get("/api/world/summary", [this](const httplib::Request&, httplib::Response& res) {
+    res.set_content(worldSummaryJson(), "application/json");
+  });
   svr.Get("/api/conversations", [this](const httplib::Request&,
                                        httplib::Response& res) {
     res.set_content(conversationsJson(), "application/json");
@@ -1793,8 +1878,9 @@ int Server::run() {
       return;
     }
     const std::string text = body.str("message");
+    const double userHour = body.num("user_hour", -1.0);
     std::string err;
-    const std::string out = sendMessage(body.str("conversation_id"), text, err);
+    const std::string out = sendMessage(body.str("conversation_id"), text, err, userHour);
     if (!err.empty()) {
       res.status = 400;
       res.set_content("{\"error\":\"" + jsonEscape(err) + "\"}", "application/json");

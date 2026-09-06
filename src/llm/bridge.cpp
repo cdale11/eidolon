@@ -396,7 +396,8 @@ CognitiveSnapshot makeSnapshot(const Engine& engine) {
   return s;
 }
 
-std::string fallbackReply(const CognitiveSnapshot& s, const std::string& userText) {
+std::string fallbackReply(const CognitiveSnapshot& s, const std::string& userText,
+                          double userHour) {
   (void)userText;
   char buf[768];
   if (!s.alive) return "I am no longer alive. My last memory is my death.";
@@ -458,10 +459,13 @@ std::string fallbackReply(const CognitiveSnapshot& s, const std::string& userTex
   if (s.physiologicalState == "drowsy") opening = "a little drowsy";
   else if (s.physiologicalState == "rested") opening = "well-rested";
   else if (s.physiologicalState == "fine") opening = "steady";
+  // Greeting slot uses the user's local hour when provided (timezone-aware), else the
+  // organism's own sim hour; the organism's circadian content stays sim-grounded.
+  const double greetHour = (userHour >= 0.0 && userHour < 24.0) ? userHour : s.hour;
 std::snprintf(buf, sizeof(buf),
                  "Good %s. It is %s in %s, weather %s (%.1f C). I am %s at (%d,%d). "
                  "Energy %.0f, health %.0f, hunger %.0f, thirst %.0f, water %d/%d.",
-                 (hSlot(s.hour)), s.timeOfDayPhrase.c_str(), s.seasonName.c_str(),
+                 (hSlot(greetHour)), s.timeOfDayPhrase.c_str(), s.seasonName.c_str(),
                  s.weather.c_str(), s.ambientTempC, opening, s.posX, s.posY,
                  s.energy, s.health, s.hunger, s.thirst,
                  s.waterCarried, s.waterCapacity);

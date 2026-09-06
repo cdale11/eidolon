@@ -119,7 +119,11 @@ struct CognitiveSnapshot {
 CognitiveSnapshot makeSnapshot(const Engine& engine);
 
 // Deterministic fallback reply generated purely from state (LLM down/garbage).
-std::string fallbackReply(const CognitiveSnapshot& s, const std::string& userText);
+// `userHour` (optional, <0 = use sim hour) is the user's local-hour for the greeting
+// slot only — a "good morning" respects the user's timezone, while the organism's
+// circadian content stays grounded in its own sim clock.
+std::string fallbackReply(const CognitiveSnapshot& s, const std::string& userText,
+                          double userHour = -1.0);
 
 class LLMBridge {
 public:

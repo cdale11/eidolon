@@ -491,11 +491,14 @@ and "client does the maximum work" invariants apply to all of them.
   - [x] **UI circadian indicator**: the status bar shows a phase-of-day dot (deep-night /
         night / dawn / day / dusk / asleep) + a `phaseOfDay`/`daylight` field in
         `/api/status`, so the organism's time of day is visible in the UI.
-  - [ ] Audio cues for key states (alert / calm / distress) — light non-blocking layer.
-  - [ ] Timezone-aware chat scheduling (a "good morning" from the user side). Note: the
-        organism's diurnal ground is its own sim-clock (invariant: the organism exists
-        independently), so greetings already follow sim time-of-day; wall-clock mapping is
-        deferred, not required for correctness.
+  - [x] **Audio cues**: soft non-blocking WebAudio tones on key state transitions —
+        distress (low health/steep health drop), alert (predator closing in), calm (wake).
+        Throttled (≤1/8s) and toggleable via the sidebar "Sound" button; never blocks the
+        loop and degrades silently when the browser denies audio.
+  - [x] **Timezone-aware chat**: `/api/send` accepts the user's local `user_hour`; the
+        fallback greeting ("Good morning/afternoon/evening/night") follows the *user's*
+        local time while the organism's circadian content stays grounded in its own sim
+        clock (invariant: the organism exists independently).
 - **Wildlife domestication / pets**: repeated non-threatening contact with individual prey
   (feeding, no hunting nearby) lowers their fear of the organism over time; a tamed
   individual follows the organism, warns of predators, and can be kept as a companion.
@@ -510,9 +513,8 @@ and "client does the maximum work" invariants apply to all of them.
   exertion), extending the existing health/infection/immune model into eventful,
   conversational experiences.
 - **Embodiment feedback**: the organism's state rendered visually in the UI (avatar,
-  mood/state indicators, weather-worn appearance) with subtle aural tones for key states
-  (alert for predators, calm at rest, distress when hurt). Mostly visual; sound is a
-  light non-blocking layer.
+  mood/state indicators, weather-worn appearance) — the aural layer (audio cues for
+  alert/calm/distress) is now live; the richer visual avatar/mood rendering remains.
 
 ---
 

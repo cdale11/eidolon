@@ -5,6 +5,19 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 
 ## [Unreleased]
 
+### Interactions — audio cues, shared-world observation, timezone-aware chat
+- **Audio cues**: soft, non-blocking WebAudio tones fire on key state transitions —
+  distress (low/steeply-dropping health), alert (predator closing in), calm (wake). They
+  are throttled (≤1 per 8s) and toggleable via a sidebar "Sound" button; they degrade
+  silently when the browser denies audio.
+- **Shared-world observation**: `GET /api/world/summary` returns a read-only authoritative
+  census (organism position, plants/edible, water, wildlife, structures, day/hour,
+  authority) pollable by any number of observers — the single-authoritative-world guarantee
+  behind `--world-authority server`.
+- **Timezone-aware chat**: `/api/send` accepts the user's local `user_hour`; the fallback
+  greeting ("Good morning/afternoon/evening/night") follows the *user's* clock while the
+  organism's circadian content stays grounded in its own sim day.
+
 ### Sleep architecture + Phase 12 completion
 - **Real sleep stages.** Sleep is no longer a flat on/off flag: the organism descends
   drowsy → light → deep (slow-wave) → REM in a deterministic ultradian cycle, each stage

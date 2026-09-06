@@ -671,9 +671,13 @@ schema, same individual; only detail/frequency scale).
   structural consistency rather than reproducing neural calculations.
 - **World-state authority is configurable** (`--world-authority client|server`):
   client-authoritative for private/single-user runs (default); server-authoritative world
-  (cognition stays client-side) for future shared-world deployments. In server-authoritative
+  (cognition stays client-side) for shared-world deployments. In server-authoritative
   mode a stale client snapshot (sim-time behind the headless fallback) is rejected rather
   than rolling back forward progress. Neither model is hardwired.
+- **Shared-world observation** (`GET /api/world/summary`): a read-only authoritative world
+  census (organism pos, plants/edible, water sources, wildlife, structures, day/hour, and
+  the active `authority`) that any number of observers can poll without mutating state —
+  the single-authoritative-world guarantee that lets multiple viewers watch one organism.
 
 ### Client-side checkpointing
 

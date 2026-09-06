@@ -74,8 +74,11 @@ public:
   // API surface (called from HTTP handlers on server threads).
   std::string statusJson();
   std::string metricsJson();
+  // Shared-world observation: a read-only snapshot of the authoritative world state,
+  // pollable by any number of observers without mutating it (server-authoritative mode).
+  std::string worldSummaryJson();
   std::string sendMessage(const std::string& conversationIdStr, const std::string& text,
-                          std::string& err);
+                          std::string& err, double userHour = -1.0);
   std::string conversationsJson();
   std::string messagesJson(const std::string& conversationIdStr, std::string& err);
   std::string newConversationJson();
