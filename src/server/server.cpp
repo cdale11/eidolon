@@ -135,7 +135,7 @@ async function refreshStatus() {
     const r = await fetch('/api/status');
     const s = await r.json();
     document.getElementById('statusbar').textContent =
-      `Day ${s.day} · hour ${s.hour.toFixed(1)} · ${s.awake ? 'awake' : 'asleep'} · ` +
+      `Day ${s.day} · hour ${s.hour.toFixed(1)} · ${s.awake ? 'awake' : s.sleepStage} · ` +
       `energy ${s.energy.toFixed(0)} · hunger ${s.hunger.toFixed(0)} · ` +
       `thirst ${s.thirst.toFixed(0)} · health ${s.health.toFixed(0)} · ` +
       `rebirths ${s.rebirths} · ` +
@@ -804,9 +804,11 @@ std::string Server::statusJson() {
   const auto& b = engine_.body();
   const auto& w = engine_.world().weather();
   const Vec2i p = engine_.world().organismPos();
-  char buf[512];
+  char buf[640];
+  static const char* kSleepStageName[] = {"awake", "drowsy", "light_sleep", "deep_sleep", "rem"};
   std::snprintf(buf, sizeof(buf),
                 "{\"day\":%lld,\"hour\":%.1f,\"awake\":%s,\"alive\":%s,"
+                "\"sleepStage\":\"%s\","
                 "\"energy\":%.1f,\"hunger\":%.1f,\"thirst\":%.1f,\"fatigue\":%.1f,"
                 "\"sleepP\":%.1f,\"health\":%.1f,\"bodyTemp\":%.1f,\"weather\":\"%s\","
                 "\"tempC\":%.1f,\"simTime\":%lld,"
@@ -815,7 +817,9 @@ std::string Server::statusJson() {
                 static_cast<long long>(engine_.clock().day()),
                 engine_.clock().hourOfDay(),
                 b.isSleeping() ? "false" : "true",
-                engine_.isAlive() ? "true" : "false", b.energy(), b.hunger(), b.thirst(),
+                engine_.isAlive() ? "true" : "false",
+                kSleepStageName[static_cast<uint8_t>(b.sleepStage())],
+                b.energy(), b.hunger(), b.thirst(),
                 b.fatigue(), b.sleepPressure(), b.health(), b.bodyTemp(),
                 w.describe(), w.ambientTempC(engine_.clock()),
                 static_cast<long long>(engine_.clock().now()),

@@ -83,3 +83,29 @@ TEST(physiology_serdes_roundtrip) {
   CHECK(a.health() == b.health());
   CHECK(a.isSleeping() == b.isSleeping());
 }
+
+TEST(physiology_sleep_stage_progression) {
+  Physiology p;
+  p.reset();
+  CHECK(!p.isSleeping());
+  CHECK_EQ(static_cast<int>(p.sleepStage()), static_cast<int>(SleepStage::Awake));
+
+  // Descend: lights-out → drowsy, then into light sleep within a couple of minutes.
+  p.setSleeping(true);
+  CHECK_EQ(static_cast<int>(p.sleepStage()), static_cast<int>(SleepStage::Drowsy));
+  p.update(240.0, 20.0, Activity::Sleep);   // 4 min drowsy → light
+  CHECK_EQ(static_cast<int>(p.sleepStage()), static_cast<int>(SleepStage::Light));
+  p.update(2000.0, 20.0, Activity::Sleep);  // ~33 min light → deep
+  CHECK_EQ(static_cast<int>(p.sleepStage()), static_cast<int>(SleepStage::Deep));
+  p.update(3000.0, 20.0, Activity::Sleep);  // deep → REM
+  CHECK_EQ(static_cast<int>(p.sleepStage()), static_cast<int>(SleepStage::Rem));
+  CHECK(p.dreaming());
+  p.update(1000.0, 20.0, Activity::Sleep);  // REM → light (cycle)
+  CHECK_EQ(static_cast<int>(p.sleepStage()), static_cast<int>(SleepStage::Light));
+
+  // Waking resets the stage to Awake.
+  p.setSleeping(false);
+  CHECK(!p.isSleeping());
+  CHECK_EQ(static_cast<int>(p.sleepStage()), static_cast<int>(SleepStage::Awake));
+  CHECK(!p.dreaming());
+}

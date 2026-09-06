@@ -36,7 +36,8 @@ void Physiology::reset() {
   bodyTemp_ = kBodyTempC;
   health_ = 100.0;
   pain_ = 0.0;
-  sleeping_ = false;
+  stage_ = SleepStage::Awake;
+  sleepStageElapsed_ = 0.0;
   immunity_ = 0.5;
   exposure_ = 0.0;
   wounds_.clear();
@@ -45,7 +46,21 @@ void Physiology::reset() {
 void Physiology::update(double dt, double ambientTempC, Activity act, double hazardDose,
               int nearbyInfected) {
   if (dt <= 0.0) return;
-  const double asleep = sleeping_ ? 1.0 : 0.0;
+  const bool asleep = isSleeping();
+  // Stage-dependent multipliers (see SleepStage). Awake stays at the old full-activity
+  // profile; deeper sleep slows metabolism and drive accumulation and speeds recovery.
+  double metabMul = 1.0;   // energy burn multiplier
+  double driveMul = 1.0;   // hunger/thirst accumulation multiplier
+  double recoverMul = 1.0; // energy/health recovery multiplier (0 while awake)
+  if (asleep) {
+    switch (stage_) {
+      case SleepStage::Drowsy: metabMul = 0.70; driveMul = 0.80; recoverMul = 0.5; break;
+      case SleepStage::Light:  metabMul = 0.45; driveMul = 0.55; recoverMul = 1.0; break;
+      case SleepStage::Deep:   metabMul = 0.30; driveMul = 0.35; recoverMul = 2.0; break;
+      case SleepStage::Rem:    metabMul = 0.40; driveMul = 0.45; recoverMul = 0.8; break;
+      case SleepStage::Awake:  break;
+    }
+  }
   const double activity = act == Activity::Sleep ? 0.0
                           : act == Activity::Rest ? 0.25
                           : act == Activity::Observe ? 0.5
@@ -53,7 +68,7 @@ void Physiology::update(double dt, double ambientTempC, Activity act, double haz
 
   // Metabolism: energy burns with activity, much slower asleep. Without food/water the
   // organism can survive ~2-3 days on reserves + sleep recovery (Phase 2 adds foraging).
-  energy_ -= 0.0018 * dt * (sleeping_ ? 0.35 : 1.0) * (0.6 + 0.4 * activity);
+  energy_ -= 0.0018 * dt * metabMul * (0.6 + 0.4 * activity);
 
   // Thermoregulation: maintaining core temperature against cold/warm ambient costs
   // energy (hard winter is genuine pressure until shelter/clothes exist in later phases).
@@ -63,23 +78,31 @@ void Physiology::update(double dt, double ambientTempC, Activity act, double haz
   }
 
   // Drives accumulate when awake (thirst kills in ~2 days, hunger in ~3, without input).
-  hunger_ += 0.0012 * dt * (sleeping_ ? 0.5 : 1.0);
-  thirst_ += 0.0013 * dt * (sleeping_ ? 0.4 : 1.0);
+  hunger_ += 0.0012 * dt * driveMul;
+  thirst_ += 0.0013 * dt * driveMul;
 
-  // Fatigue: exertion builds it, rest and sleep clear it.
+  // Fatigue: exertion builds it, rest and sleep clear it (deeper sleep clears faster).
   fatigue_ += 0.022 * dt * activity;
-  fatigue_ -= 0.06 * dt * (sleeping_ ? 1.0 : 0.25) * (1.0 - 0.5 * activity);
+  const double fatigueClear = sleepStage() == SleepStage::Deep ? 1.5
+                              : sleepStage() == SleepStage::Light ? 1.0
+                              : sleepStage() == SleepStage::Rem ? 0.75
+                              : sleepStage() == SleepStage::Drowsy ? 0.6
+                                                                   : 0.25; // awake
+  fatigue_ -= 0.06 * dt * fatigueClear * (1.0 - 0.5 * activity);
   fatigue_ = std::max(0.0, fatigue_);
 
   // Sleep pressure: rises awake, clears during sleep.
-  sleepPressure_ += 0.0016 * dt * (1.0 - asleep);
-  sleepPressure_ -= 0.0035 * dt * asleep;
+  sleepPressure_ += 0.0016 * dt * (asleep ? 0.0 : 1.0);
+  sleepPressure_ -= 0.0035 * dt * (asleep ? 1.0 : 0.0);
 
-  // Sleep restores energy and health slowly (a full night recovers ~80%).
-  if (sleeping_) {
-    energy_ += 0.0028 * dt;
-    health_ += 0.0025 * dt;
+  // Sleep restores energy and health (slow; a full deep-sleep night recovers ~80%).
+  if (asleep) {
+    energy_ += 0.0028 * dt * recoverMul;
+    health_ += 0.0025 * dt * recoverMul;
   }
+
+  // Advance the sleep architecture (drowsy → light → deep → rem → light …).
+  if (asleep) advanceSleepStages(dt);
 
   // Thermoregulation: strong pull toward the setpoint, weak pull from ambient. Core
   // temperature only collapses when ambient is extreme; cold mainly drains energy above.
@@ -152,6 +175,28 @@ void Physiology::update(double dt, double ambientTempC, Activity act, double haz
   clamp();
 }
 
+void Physiology::advanceSleepStages(double dt) noexcept {
+  sleepStageElapsed_ += dt;
+  // Deterministic progression thresholds (sim-seconds in each stage). A night naturally
+  // descends drowsy → light → deep, then oscillates deep ↔ rem in a ~1 h ultradian cycle.
+  switch (stage_) {
+    case SleepStage::Drowsy:
+      if (sleepStageElapsed_ >= 120.0) { stage_ = SleepStage::Light; sleepStageElapsed_ = 0.0; }
+      break;
+    case SleepStage::Light:
+      if (sleepStageElapsed_ >= 1800.0) { stage_ = SleepStage::Deep; sleepStageElapsed_ = 0.0; }
+      break;
+    case SleepStage::Deep:
+      if (sleepStageElapsed_ >= 2700.0) { stage_ = SleepStage::Rem; sleepStageElapsed_ = 0.0; }
+      break;
+    case SleepStage::Rem:
+      if (sleepStageElapsed_ >= 900.0) { stage_ = SleepStage::Light; sleepStageElapsed_ = 0.0; }
+      break;
+    case SleepStage::Awake:
+      break; // stage only advances while asleep
+  }
+}
+
 void Physiology::addWound(double severity, uint8_t source) {
   const double s = std::max(0.0, std::min(severity, 1.0));
   if (s < 0.02) return;
@@ -216,7 +261,8 @@ void Physiology::serialize(BinaryWriter& w) const {
   w.f64(bodyTemp_);
   w.f64(health_);
   w.f64(pain_);
-  w.u8(sleeping_ ? 1 : 0);
+  w.u8(static_cast<uint8_t>(stage_));
+  w.f64(sleepStageElapsed_);
   w.f64(immunity_);
   w.f64(exposure_);
   w.u32(static_cast<uint32_t>(wounds_.size()));
@@ -231,9 +277,10 @@ bool Physiology::deserialize(BinaryReader& r) {
       !r.f64(pain_)) {
     return false;
   }
-  uint8_t sleeping;
-  if (!r.u8(sleeping)) return false;
-  sleeping_ = sleeping != 0;
+  uint8_t stageByte;
+  if (!r.u8(stageByte) || stageByte > 4) return false;
+  stage_ = static_cast<SleepStage>(stageByte);
+  if (!r.f64(sleepStageElapsed_) || sleepStageElapsed_ < 0.0) return false;
   if (!r.f64(immunity_) || !r.f64(exposure_)) return false;
   uint32_t n;
   if (!r.u32(n)) return false;

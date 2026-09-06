@@ -21,6 +21,18 @@ enum class Activity : uint8_t {
   Drink = 5,
 };
 
+// Sleep architecture (DESIGN §13): a real night is not a single on/off flag. The organism
+// descends through drowsy → light → deep (slow-wave) sleep, cycles into REM, and rises on
+// wake. Each stage has its own metabolic/recovery profile. Transitions are deterministic
+// (driven by elapsed time in stage + homeostatic pressure), so replays stay bit-exact.
+enum class SleepStage : uint8_t {
+  Awake = 0,  // not sleeping
+  Drowsy = 1, // falling asleep; residual arousal, partial metabolic slowdown
+  Light = 2,  // N1/N2 shallow sleep; ordinary recovery
+  Deep = 3,   // N3 slow-wave; strongest energy/health recovery, slowest drives
+  Rem = 4,    // REM; dreaming/consolidation (cognitive), cyclic with Light
+};
+
 // A localized injury (predator bite, fall). `severity` is the 0..1 damage share that
 // contributes chronic pain and gates healing; `infection` is the 0..1 pathogen load the
 // immune system fights. `age` is sim-seconds since the injury. `source`: 0=predator,
@@ -98,8 +110,13 @@ public:
   bool needsSleep() const {
     return sleepPressure() >= 55.0 || (energy() < 30.0 && fatigue() > 40.0);
   }
-  bool isSleeping() const { return sleeping_; }
-  void setSleeping(bool s) { sleeping_ = s; }
+  bool isSleeping() const { return stage_ != SleepStage::Awake; }
+  void setSleeping(bool s) { stage_ = s ? SleepStage::Drowsy : SleepStage::Awake; }
+  // Current sleep stage (Drowsy/Light/Deep/Rem); Awake while not sleeping. Exposed so the
+  // engine can gate dream/consolidation on REM and report stage in chat/status.
+  SleepStage sleepStage() const { return stage_; }
+  // True while in REM (dreaming / memory consolidation phase).
+  bool dreaming() const { return stage_ == SleepStage::Rem; }
 
   double energy() const { return energy_; }
   double hunger() const { return hunger_; }
@@ -132,6 +149,9 @@ public:
 
 private:
   void clamp() noexcept;
+  // Advance the sleep architecture deterministically (drowsy → light → deep → rem → light
+  // …) based on `dt` spent asleep; never uses RNG so replays stay bit-exact.
+  void advanceSleepStages(double dt) noexcept;
 
   double energy_ = 70.0;
   double hunger_ = 0.0;
@@ -141,7 +161,8 @@ private:
   double bodyTemp_ = kBodyTempC;
   double health_ = 100.0;
   double pain_ = 0.0;
-  bool sleeping_ = false;
+  SleepStage stage_ = SleepStage::Awake;
+  double sleepStageElapsed_ = 0.0; // sim-seconds spent in the current stage
   // Phase 5 hazards.
   double immunity_ = 0.5;  // 0..1 immune strength (nutrition/rest), fights infection
   double exposure_ = 0.0;  // 0..1 disease-vector exposure accumulator

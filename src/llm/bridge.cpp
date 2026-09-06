@@ -351,6 +351,16 @@ CognitiveSnapshot makeSnapshot(const Engine& engine) {
     s.physiologicalState = "fine";
   }
 
+  // Grounded sleep architecture (DESIGN §13): the organism is in a specific sleep stage,
+  // not a flat "asleep". Lets chat name deep sleep vs REM vs just-drifting.
+  switch (b.sleepStage()) {
+    case SleepStage::Drowsy: s.sleepStage = "drowsy"; break;
+    case SleepStage::Light:  s.sleepStage = "light_sleep"; break;
+    case SleepStage::Deep:   s.sleepStage = "deep_sleep"; break;
+    case SleepStage::Rem:    s.sleepStage = "rem"; break;
+    case SleepStage::Awake:  s.sleepStage = "awake"; break;
+  }
+
   // Primary need — whichever drive is closest to its critical threshold right now.
   if (s.thirst > 55.0) s.primaryNeed = "thirsty";
   else if (s.hunger > 50.0) s.primaryNeed = "hungry";

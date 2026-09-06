@@ -109,6 +109,8 @@ struct CognitiveSnapshot {
   std::string physiologicalState; // "rested"/"drowsy"/"tired"/"exhausted"/"asleep"/
                                   // "pained"/"sick"/"fine"
   std::string primaryNeed;    // "thirsty"/"hungry"/"tired"/"fine" — most pressing need
+  std::string sleepStage;    // "awake"/"drowsy"/"light_sleep"/"deep_sleep"/"rem" — grounded
+                             // sleep architecture (DESIGN §13), derived from Physiology
   std::string circadianTone;  // one-word tone hint: "groggy"/"calm"/"alert"/"tense"/
                               // "agitated"/"peaceful"/"weary"
 };

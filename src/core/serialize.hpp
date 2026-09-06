@@ -21,7 +21,9 @@ constexpr uint32_t kSnapshotMagic = 0x4549444C; // "EIDL"
 //      bounce in a corner to death when no food/water is in perception range.
 // v10: Engine::lastAction_ persisted so the LLM bridge's CognitiveSnapshot has the
 //      correct currentAction after a snapshot load (was always "active" placeholder).
-constexpr uint32_t kSnapshotVersion = 10;
+// v11: Sleep architecture: Physiology::sleeping_ bool replaced by SleepStage (+ elapsed
+//      time in stage) so drowsy/light/deep/REM stages persist across save/load.
+constexpr uint32_t kSnapshotVersion = 11;
 
 struct BinaryWriter {
 public:
