@@ -108,6 +108,8 @@ public:
   std::string browseFetchJson(const std::string& jsonBody, std::string& err);
 
   std::string savePriorJson(const std::string& name);
+  // Wildlife domestication: feed/tame the nearest prey; returns whether a companion was made.
+  std::string tameJson();
 
 private:
   void simLoop();

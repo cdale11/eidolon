@@ -217,6 +217,12 @@ bool loadPolicyPrior(const std::string& path);
   // optionally inject as a goal/policy bias. Returns whether instruction was valid.
   bool processUserInstruction(const std::string& text, uint64_t tick);
 
+  // Wildlife domestication: feed/tame the nearest live prey within `radius` tiles. Feeding
+  // reduces its hunger and fear; once fear drops below the taming threshold the prey
+  // becomes a companion (tamed=true: follows the organism, ignores it as a threat). Returns
+  // true if any prey was fed (and reports whether it became tamed via `tamedNow`).
+  bool tameNearestPrey(int radius, bool& tamedNow) noexcept;
+
 private:
   void stepClock(StepKind kind) noexcept;
   void logStatus(EventLog& log) noexcept;

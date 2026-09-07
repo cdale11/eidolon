@@ -148,17 +148,19 @@ void WildlifeAgent::serialize(BinaryWriter& w) const {
   w.u64(s[2]);
   w.u64(s[3]);
   w.u8(alive ? 1 : 0);
+  w.u8(tamed ? 1 : 0);
 }
 
 bool WildlifeAgent::deserialize(BinaryReader& r) {
   uint32_t idv;
-  uint8_t spec, st, alv;
+  uint8_t spec, st, alv, tmd;
   int64_t x, y, since, cd;
   double e, hg, fr;
   std::array<uint64_t, 4> s;
   if (!r.u32(idv) || !r.u8(spec) || !r.i64(x) || !r.i64(y) || !r.f64(e) ||
       !r.f64(hg) || !r.f64(fr) || !r.u8(st) || !r.i64(since) || !r.i64(cd) ||
-      !r.u64(s[0]) || !r.u64(s[1]) || !r.u64(s[2]) || !r.u64(s[3]) || !r.u8(alv))
+      !r.u64(s[0]) || !r.u64(s[1]) || !r.u64(s[2]) || !r.u64(s[3]) || !r.u8(alv) ||
+      !r.u8(tmd))
     return false;
   id = idv;
   species = static_cast<Species>(spec);
@@ -171,6 +173,7 @@ bool WildlifeAgent::deserialize(BinaryReader& r) {
   attackCooldownUntil = cd;
   rng = Rng::fromState(s);
   alive = alv != 0;
+  tamed = tmd != 0;
   return true;
 }
 
@@ -340,9 +343,12 @@ void Wildlife::step(World& w, int64_t now, bool organismAlive,
     a.hunger = std::min(100.0, a.hunger + (isWolf ? kWolfHungerRate : kRabbitHungerRate));
     a.energy = std::max(0.0, a.energy - (isWolf ? kWolfEnergyRate : kRabbitEnergyRate));
 
-    // Sense.
+// Sense.
     int threatDist = std::numeric_limits<int>::max();
     const WildlifeAgent* threat = nullptr;
+    // Domestication: a tamed prey treats the organism as a companion, not a threat, so
+    // it ignores the organism's approach instead of fleeing.
+    const bool trustsOrganism = a.tamed;
     if (!isWolf) {
       const WildlifeAgent* wolf = nearestPredator(a.pos, senseRadius);
       if (wolf) {
@@ -351,11 +357,12 @@ void Wildlife::step(World& w, int64_t now, bool organismAlive,
       }
       const int od = organismAlive ? distCheb(organismPos, a.pos)
                                    : std::numeric_limits<int>::max();
-      if (organismAlive && od < threatDist) threatDist = od;
+      if (organismAlive && !trustsOrganism && od < threatDist) threatDist = od;
       a.fear = threatDist <= kRabbitFearRadius
                    ? std::min(1.0, 1.0 - static_cast<double>(threatDist) /
-                                                static_cast<double>(kRabbitFearRadius + 1))
+                                                 static_cast<double>(kRabbitFearRadius + 1))
                    : std::max(0.0, a.fear - 0.2);
+      if (trustsOrganism) a.fear = std::max(0.0, a.fear - 0.5); // tamed: fear decays fast
     } else {
       const WildlifeAgent* prey = nearestPrey(a.pos, senseRadius);
       const int pd = prey ? distCheb(prey->pos, a.pos) : std::numeric_limits<int>::max();
@@ -374,7 +381,7 @@ void Wildlife::step(World& w, int64_t now, bool organismAlive,
       else if (a.hunger > kHuntHunger && preyNear) next = AnimalState::Hunt;
     } else {
       if ((threat && threatDist <= kRabbitFleeRadius) ||
-          (organismAlive && threatDist <= kRabbitFearRadius)) {
+          (organismAlive && !a.tamed && threatDist <= kRabbitFearRadius)) {
         next = AnimalState::Flee;
       } else if (next == AnimalState::Hunt) {
         next = AnimalState::Forage;
@@ -385,7 +392,20 @@ void Wildlife::step(World& w, int64_t now, bool organismAlive,
 
     // Goal direction from state.
     double gx = 0.0, gy = 0.0, goalWeight = 1.0;
-    switch (a.state) {
+    // Domestication: a tamed prey follows the organism as its primary goal (companion
+    // behaviour), holding a short distance rather than fleeing or wandering off.
+    if (!isWolf && a.tamed && organismAlive) {
+      const int d = std::max(1, distCheb(organismPos, a.pos));
+      if (d > 2) { // keep a couple tiles of personal space while staying close
+        gx = static_cast<double>(organismPos.x - a.pos.x) / d;
+        gy = static_cast<double>(organismPos.y - a.pos.y) / d;
+        goalWeight = 1.2;
+      } else {
+        gx = gy = 0.0;
+        goalWeight = 0.0;
+      }
+    } else {
+      switch (a.state) {
       case AnimalState::Forage: {
         const Plant* pl = w.nearestEdiblePlant(a.pos, senseRadius);
         if (pl) {
@@ -430,6 +450,7 @@ void Wildlife::step(World& w, int64_t now, bool organismAlive,
         gy = a.rng.unit() * 2.0 - 1.0;
         goalWeight = 0.5;
         break;
+      }
     }
 
     // Boids (same-species flocking): separation + cohesion.

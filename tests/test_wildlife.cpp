@@ -245,3 +245,37 @@ TEST(wildlife_organism_engine_integration) {
   CHECK(e.body().health() < 100.0); // it took at least one hit
   CHECK(e.stats().actionsFlee > 0); // it fled
 }
+
+TEST(wildlife_domestication_tames_prey) {
+  // Repeated friendly feeding lowers a rabbit's fear until it becomes a tamed companion.
+  Engine e;
+  e.init(31, true, 64, 64);
+  World& w = const_cast<World&>(e.world());
+
+  WildlifeAgent* rabbit = nullptr;
+  for (WildlifeAgent& a : w.wildlife().agents()) {
+    if (a.species == Species::Rabbit) { rabbit = &a; break; }
+  }
+  CHECK(rabbit);
+  rabbit->pos = {w.organismPos().x, w.organismPos().y + 1}; // adjacent
+  rabbit->fear = 1.0;
+  rabbit->hunger = 80.0;
+  CHECK(!rabbit->tamed);
+
+  bool tamedNow = false;
+  CHECK(e.tameNearestPrey(3, tamedNow));  // feeds
+  CHECK(rabbit->hunger < 80.0);           // fed (hunger reduced)
+  CHECK(rabbit->fear < 1.0);              // fear reduced
+  CHECK(!tamedNow);                       // not yet below the taming threshold
+
+  // Repeat until tamed; fear drops 0.4 per feed and tames at <=0.15.
+  int guard = 0;
+  while (!rabbit->tamed && guard++ < 10) {
+    bool tn = false;
+    e.tameNearestPrey(3, tn);
+    if (tn) tamedNow = true;
+  }
+  CHECK(rabbit->tamed);
+  CHECK(tamedNow);
+  CHECK(rabbit->fear <= 0.15);
+}

@@ -23,7 +23,8 @@ constexpr uint32_t kSnapshotMagic = 0x4549444C; // "EIDL"
 //      correct currentAction after a snapshot load (was always "active" placeholder).
 // v11: Sleep architecture: Physiology::sleeping_ bool replaced by SleepStage (+ elapsed
 //      time in stage) so drowsy/light/deep/REM stages persist across save/load.
-constexpr uint32_t kSnapshotVersion = 11;
+// v12: Wildlife domestication: WildlifeAgent gains a `tamed` flag (companion state).
+constexpr uint32_t kSnapshotVersion = 12;
 
 struct BinaryWriter {
 public:

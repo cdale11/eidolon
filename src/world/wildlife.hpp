@@ -47,6 +47,7 @@ struct WildlifeAgent {
   AnimalState state = AnimalState::Wander;
   int64_t stateSince = 0;
   int64_t attackCooldownUntil = 0; // predators only: earliest time of next attack
+  bool tamed = false;   // domesticated: trusts the organism, follows and warns it (prey)
   Rng rng; // per-agent stream (persisted for bit-exact restore)
   bool alive = true;
 

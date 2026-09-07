@@ -1068,13 +1068,15 @@ std::string Server::worldSummaryJson() {
   root.setNumber("water_sources", static_cast<double>(w.waterSources().size()));
 
   // Wildlife census (the only other autonomous population; single-humanoid invariant).
-  int rabbits = 0, wolves = 0;
+  int rabbits = 0, wolves = 0, tamed = 0;
   for (const WildlifeAgent& a : w.wildlife().agents()) {
     if (!a.alive) continue;
-    if (a.species == Species::Rabbit) ++rabbits; else ++wolves;
+    if (a.species == Species::Rabbit) { ++rabbits; if (a.tamed) ++tamed; }
+    else ++wolves;
   }
   root.setNumber("rabbits", static_cast<double>(rabbits));
   root.setNumber("wolves", static_cast<double>(wolves));
+  root.setNumber("tamed", static_cast<double>(tamed));
   root.setNumber("structures", static_cast<double>(w.structures().size()));
   return root.dump();
 }
@@ -1223,6 +1225,23 @@ std::string Server::savePriorJson(const std::string& name) {
     return "{\"ok\":true,\"path\":\"" + jsonEscape(path) + "\"}";
   }
   return "{\"ok\":false,\"error\":\"failed to write prior\"}";
+}
+
+std::string Server::tameJson() {
+  bool tamed = false;
+  bool fed = false;
+  {
+    std::lock_guard<std::mutex> lock(engineMu_);
+    fed = engine_.tameNearestPrey(3, tamed);
+  }
+  if (!fed) {
+    return "{\"ok\":false,\"error\":\"no tameable prey nearby\"}";
+  }
+  if (tamed) {
+    log_.line(engine_.clock().now(), "tamed", "a prey companion now follows the organism");
+    log_.flush();
+  }
+  return std::string("{\"ok\":true,\"tamed\":") + (tamed ? "true" : "false") + "}";
 }
 
 std::string Server::messagesJson(const std::string& conversationIdStr,
@@ -1759,6 +1778,10 @@ int Server::run() {
       return;
     }
     res.set_content(savePriorJson(body.str("name")), "application/json");
+  });
+  // Wildlife domestication: feed/tame the nearest prey companion.
+  svr.Post("/api/tame", [this](const httplib::Request&, httplib::Response& res) {
+    res.set_content(tameJson(), "application/json");
   });
   svr.Get("/api/messages", [this](const httplib::Request& req,
                                   httplib::Response& res) {

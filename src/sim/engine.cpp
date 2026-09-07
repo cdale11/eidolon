@@ -1302,6 +1302,31 @@ bool Engine::processUserInstruction(const std::string& text, uint64_t tick) {
   return valid;
 }
 
+bool Engine::tameNearestPrey(int radius, bool& tamedNow) noexcept {
+  tamedNow = false;
+  const Vec2i p = world_.organismPos();
+  auto& agents = world_.wildlife().agents();
+  WildlifeAgent* best = nullptr;
+  int bestDist = radius + 1;
+  for (WildlifeAgent& a : agents) {
+    if (!a.alive || a.species != Species::Rabbit) continue;
+    const int d = distCheb(a.pos, p);
+    if (d < bestDist) { bestDist = d; best = &a; }
+  }
+  if (!best) return false;
+
+  // Feeding a prey lowers its hunger and fear of the organism. Repeated friendly contact
+  // builds trust; below the threshold the prey becomes a companion (follows, warns).
+  best->hunger = std::max(0.0, best->hunger - 25.0);
+  best->energy = std::min(100.0, best->energy + 10.0);
+  best->fear = std::max(0.0, best->fear - 0.4);
+  if (!best->tamed && best->fear <= 0.15) {
+    best->tamed = true;
+    tamedNow = true;
+  }
+  return true;
+}
+
 } // namespace eidolon
 
 // DEBUG TEST HOOK
