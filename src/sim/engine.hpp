@@ -236,6 +236,9 @@ private:
                        float socialRelevance = 0.0f, Relevance relevance = Relevance::None) noexcept;
   bool aversiveTick(const Physiology& before) const noexcept;
   bool safeTick(float reward) const noexcept;
+  // Environment-driven goal emergence (slow layer): build world opportunities and
+  // re-evaluate goals; called on a throttled cadence from tick().
+  void evaluateGoals() noexcept;
   std::string determineCauseOfDeath() const noexcept;
   void dumpExperience(PolicyAction pa, bool agentic, float reward, float novelty,
                       bool aversive, bool safe, double eaten, bool drank) noexcept;
@@ -267,11 +270,18 @@ private:
   // chat-grounding state — the LLM bridge reads it via `lastAction()` to populate
   // CognitiveSnapshot::currentAction instead of the hardcoded "active" placeholder.
   Action lastAction_ = Action::Observe;
+  // Health events: previous-tick sickness state, so illness/recovery episodes fire once
+  // per transition (not every tick). Serialised for a bit-exact resume.
+  bool wasSick_ = false;
   // Directed-exploration state: when no food/water is in perception range, the organism
   // walks in a fixed `exploreDir_` for up to `exploreTicks_` ticks then re-rolls — this
   // actually traverses terrain instead of bouncing randomly in a corner. Serialised.
   Vec2i exploreDir_{1, 0};
   int exploreTicks_ = 0;
+  // Goal-emergence throttle: re-evaluate drives/opportunities into goals every
+  // kGoalEvalInterval sim-seconds (slow layer); environment-driven goal priorities also
+  // react to weather/season on this cadence. Serialised.
+  int64_t lastGoalEvalAt_ = 0;
   Archive* archive_ = nullptr; // optional durable sink; never owned
   std::FILE* experienceOut_ = nullptr; // optional offline teacher-data dump (CLI only)
   // Feature buffers (decision + TD learning; fixed size, no heap churn).

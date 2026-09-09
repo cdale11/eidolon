@@ -1,4 +1,5 @@
 #include "mind/goal_emergence.hpp"
+#include "world/world.hpp"
 #include <algorithm>
 #include <cmath>
 #include <sstream>
@@ -37,9 +38,14 @@ bool Goal::is_expired(uint64_t current_tick) const {
 }
 
 float GoalEmergence::compute_priority(GoalType type, const Physiology& body,
-                                      const class World& /*world*/,
+                                      const class World& world,
                                       const std::vector<Opportunity>& opportunities) const {
   float base_priority = 0.0f;
+  const Weather& weather = world.weather();
+  const bool harshWeather = weather.storming() || weather.snowing();
+  const bool wet = weather.raining() || weather.storming();
+  const bool winter = weather.season() == 3;
+  const bool summer = weather.season() == 1;
 
   switch (type) {
     case GoalType::Survive:
@@ -50,6 +56,9 @@ float GoalEmergence::compute_priority(GoalType type, const Physiology& body,
       break;
     case GoalType::FindWater:
       base_priority = std::min(1.0f, static_cast<float>(body.thirst() / 100.0f * 2.0f));
+      // Environment-driven: heat/dryness makes hydration more pressing even before the
+      // thirst drive is critical, so the organism prepares during hot summer weather.
+      if (summer) base_priority = std::min(1.0f, base_priority + 0.25f);
       break;
     case GoalType::Rest:
       base_priority = std::min(1.0f, static_cast<float>(body.fatigue() / 100.0f));
@@ -62,8 +71,13 @@ float GoalEmergence::compute_priority(GoalType type, const Physiology& body,
       base_priority = 0.3f; // curiosity
       break;
     case GoalType::BuildShelter:
+      // Environment-driven: shelter becomes urgent in storms/snow (and as a preparation
+      // against the coming cold of winter), not merely a long-term safety nice-to-have.
       base_priority = 0.4f;
       if (body.fatigue() > 70.0f) base_priority += 0.3f;
+      if (harshWeather) base_priority = std::min(1.0f, base_priority + 0.5f);
+      else if (wet) base_priority = std::min(1.0f, base_priority + 0.3f);
+      else if (winter) base_priority = std::min(1.0f, base_priority + 0.2f);
       break;
     case GoalType::CraftTool:
       base_priority = 0.2f;

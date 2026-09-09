@@ -163,6 +163,22 @@ Action Engine::tick() noexcept {
   body_.update(dt, world_.weather().ambientTempC(clock_), act, hazardDose(), nearbyInfected);
   stats_.infections += static_cast<uint64_t>(std::max(0, body_.infectedWounds() - infectedBefore));
 
+  // Health events: observable illness/recovery transitions. Record a single Illness
+  // episode when the organism becomes sick (infection crosses the sick threshold), and a
+  // single Recovery episode when it recovers; deduped by the tracked previous-sick state.
+  const bool sickNow = body_.sick();
+  if (sickNow && !wasSick_) {
+    recordEpisode(EventKind::Illness, static_cast<uint8_t>(std::min(255.0, body_.totalInfection() * 255.0)),
+                  0.7, 255, Participant::Self, Outcome::Failure, 0.0f, 0.0f, -0.6f, 0.0f,
+                  Relevance::Aversive | Relevance::GoalRelated);
+    wasSick_ = true;
+  } else if (!sickNow && wasSick_) {
+    recordEpisode(EventKind::Recovery, static_cast<uint8_t>(std::min(100.0, body_.health())),
+                  0.6, 255, Participant::Self, Outcome::Success, 0.0f, 0.0f, 0.6f, 0.0f,
+                  Relevance::Rewarding | Relevance::GoalRelated);
+    wasSick_ = false;
+  }
+
   const uint64_t berriesBefore = stats_.berriesEaten;
   const uint64_t drinksBefore = stats_.drinks;
   execute(action);
@@ -215,6 +231,12 @@ Action Engine::tick() noexcept {
   const bool safe = safeTick(reward);
   learn_.learnStep(featsBefore_, featsAfter_, pa, agentic, reward, novelty, aversive, safe);
   learn_.updateDaily(clock_.now());
+
+  // Environment-driven goal emergence (slow layer): re-evaluate drives + world
+  // opportunities into goals on a throttled cadence (never in the hot decision path).
+  if (clock_.now() - lastGoalEvalAt_ >= 60) {
+    evaluateGoals();
+  }
 
   // Offline teacher-data dump (CLI only): one JSONL record per tick.
   if (experienceOut_)
@@ -1124,6 +1146,9 @@ void Engine::serializeState(BinaryWriter& w) const {
   // v10: last action chosen by decide()/execute(); used by the LLM bridge's
   // CognitiveSnapshot::currentAction after a resume.
   w.u8(static_cast<uint8_t>(lastAction_));
+  // v12: goal-emergence throttle (environment-driven goal evaluation cadence).
+  w.i64(lastGoalEvalAt_);
+  w.u8(wasSick_ ? 1 : 0);
 }
 
 bool Engine::deserializeState(BinaryReader& r, std::string& err) {
@@ -1191,6 +1216,17 @@ bool Engine::deserializeState(BinaryReader& r, std::string& err) {
     return false;
   }
   lastAction_ = static_cast<Action>(lastActionByte);
+  // v12: goal-emergence throttle.
+  if (!r.i64(lastGoalEvalAt_)) {
+    err = "snapshot goal-eval corrupt";
+    return false;
+  }
+  uint8_t wasSickByte;
+  if (!r.u8(wasSickByte)) {
+    err = "snapshot sick-state corrupt";
+    return false;
+  }
+  wasSick_ = wasSickByte != 0;
   return r.done();
 }
 
@@ -1323,8 +1359,46 @@ bool Engine::tameNearestPrey(int radius, bool& tamedNow) noexcept {
   if (!best->tamed && best->fear <= 0.15) {
     best->tamed = true;
     tamedNow = true;
+    recordEpisode(EventKind::Tamed, 0, 0.6, 255, Participant::Self | Participant::Prey,
+                  Outcome::Success, 0.0f, 0.0f, 0.7f, 0.6f,
+                  Relevance::Rewarding | Relevance::Social | Relevance::GoalRelated);
   }
   return true;
+}
+
+void Engine::evaluateGoals() noexcept {
+  const Vec2i p = world_.organismPos();
+  std::vector<Opportunity> opps;
+
+  const Plant* plant = world_.nearestEdiblePlant(p, Perception::kHearingRadius);
+  if (plant) {
+    Opportunity o;
+    o.type = Opportunity::Type::FoodSource;
+    o.position = plant->pos;
+    o.value = 0.5f + static_cast<float>(std::min(1.0, plant->amount / plant->maxAmount)) * 0.5f;
+    opps.push_back(o);
+  }
+  const WaterSource* water = world_.nearestWaterSource(p, Perception::kHearingRadius);
+  if (water) {
+    Opportunity o;
+    o.type = Opportunity::Type::WaterSource;
+    o.position = water->pos;
+    o.value = 0.6f;
+    opps.push_back(o);
+  }
+  const WildlifeAgent* predator =
+      world_.nearestPredator(p, Perception::kHearingRadius);
+  if (predator) {
+    Opportunity o;
+    o.type = Opportunity::Type::Threat;
+    o.position = predator->pos;
+    o.value = 0.9f;
+    opps.push_back(o);
+  }
+  // Environment-driven emerge: BuildShelter/FindWater priorities now react to weather
+  // and season inside compute_priority (storm/snow/winter/summer).
+  goal_emergence_.evaluate(body_, world_, opps, clock_.now(), rngCognition_);
+  lastGoalEvalAt_ = clock_.now();
 }
 
 } // namespace eidolon

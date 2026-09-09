@@ -5,6 +5,7 @@
 
 #include "mind/goal_emergence.hpp"
 #include "body/physiology.hpp"
+#include "sim/engine.hpp"
 #include "world/world.hpp"
 #include "core/rng.hpp"
 #include "core/serialize.hpp"
@@ -39,4 +40,24 @@ TEST(goal_emergence_basic) {
   }
   CHECK(has_survive);
   CHECK(has_food);
+}
+
+// Environment-driven goal emergence is wired into the engine tick: after a short run the
+// organism's goal system has populated active goals from drives + world opportunities
+// (no LLM/user input), so scarcity/weather shape behaviour autonomously.
+TEST(engine_goal_emergence_wired) {
+  Engine e;
+  e.init(17, true, 64, 64);
+  for (int i = 0; i < 200 && e.isAlive(); ++i) e.tick();
+  const auto& goals = e.goalEmergence().active_goals();
+  CHECK(!goals.empty());
+  bool hasSurviveOrFoodOrWater = false;
+  for (const auto& g : goals) {
+    if (g.type == GoalType::Survive || g.type == GoalType::FindFood ||
+        g.type == GoalType::FindWater) {
+      hasSurviveOrFoodOrWater = true;
+      break;
+    }
+  }
+  CHECK(hasSurviveOrFoodOrWater);
 }

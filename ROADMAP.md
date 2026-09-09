@@ -499,19 +499,18 @@ and "client does the maximum work" invariants apply to all of them.
         fallback greeting ("Good morning/afternoon/evening/night") follows the *user's*
         local time while the organism's circadian content stays grounded in its own sim
         clock (invariant: the organism exists independently).
-- **Wildlife domestication / pets**: repeated non-threatening contact with individual prey
-  (feeding, no hunting nearby) lowers their fear of the organism over time; a tamed
-  individual follows the organism, warns of predators, and can be kept as a companion.
-  Builds on the existing per-individual wildlife familiarity/fear model (Phase 8) and the
-  wildlife ABM (Phase 5); the organism's social cognition treats pets as social partners.
-- **Environment-driven goals**: the organism proactively prepares for weather — gathering
-  firewood before winter, taking shelter before a storm, storing water in dry season —
-  through its existing goal/planning loop, so scarcity and climate shape behavior beyond
-  immediate drive satisfaction.
-- **Health events**: observable illness episodes and recovery arcs (infection, wound
-  healing, immune response) the user can witness and help with (bring food, avoid
-  exertion), extending the existing health/infection/immune model into eventful,
-  conversational experiences.
+- **Wildlife domestication / pets** *(implemented)*: repeated friendly feeding lowers a
+  prey's fear of the organism; below a threshold the prey becomes a companion (`tamed` —
+  follows at a short distance, ignores the organism as a threat, and its tame is recorded
+  as a social Tamed episode). Feed via `POST /api/tame` or the engine's `tameNearestPrey`.
+- **Environment-driven goals** *(implemented)*: goal emergence is now wired into the tick
+  (throttled, slow layer) and its priorities react to weather/season — shelter becomes
+  urgent in storms/snow/winter and hydration is prioritised in hot summer, so scarcity and
+  climate shape behaviour beyond immediate drive satisfaction. (Firewood/stockpiling is a
+  later material-economy refinement.)
+- **Health events** *(implemented)*: concrete Illness/Recovery episodes fire on
+  infection/recovery transitions and are stored as aversive/rewarding memories the user
+  can witness in the event log and chat timeline (extending the health/immune model).
 - **Embodiment feedback**: the organism's state rendered visually in the UI (avatar,
   mood/state indicators, weather-worn appearance) — the aural layer (audio cues for
   alert/calm/distress) is now live; the richer visual avatar/mood rendering remains.

@@ -5,6 +5,20 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 
 ## [Unreleased]
 
+### World richness — wildlife domestication, environment-driven goals, health events
+- **Wildlife domestication (pets)**: repeated friendly feeding lowers a prey's fear of the
+  organism; below a threshold it becomes a `tamed` companion that follows at a short
+  distance and no longer treats the organism as a threat. Feed via `POST /api/tame` (or the
+  engine's `tameNearestPrey`); taming is recorded as a social memory event. `tamed` count
+  appears in `/api/world/summary` (snapshot v12).
+- **Environment-driven goals**: goal emergence is now wired into the tick (throttled slow
+  layer) and its priorities react to weather/season — shelter becomes urgent in
+  storms/snow/winter, hydration is prioritised in hot summer — so climate shapes behaviour
+  beyond immediate drives.
+- **Health events**: illness onset and recovery are recorded as concrete `Illness`/
+  `Recovery` memory episodes, so infection arcs are observable in the event log and chat
+  timeline, not just a health number.
+
 ### Interactions — audio cues, shared-world observation, timezone-aware chat
 - **Audio cues**: soft, non-blocking WebAudio tones fire on key state transitions —
   distress (low/steeply-dropping health), alert (predator closing in), calm (wake). They

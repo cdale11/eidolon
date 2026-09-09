@@ -292,7 +292,10 @@ lives here.
 
 ### Intermediate layer (throttled, e.g. every 2–10 s or on events)
 - Goal selection: goals emerge from drives + state + learned opportunities; a goal has a
-  structured representation and a priority from expected value.
+  structured representation and a priority from expected value. Priorities are
+  **environment-driven** — shelter becomes urgent in storms/snow/winter and hydration is
+  prioritised in hot summer — so scarcity and climate shape behaviour beyond immediate
+  drives (`GoalEmergence::evaluate`, throttled in `Engine::tick`).
 - Planning: forward/beam search over action primitives (≤ ~200 node expansions) using
   WorldPredictor + ValueNet; replan on surprise.
 - Memory retrieval for context; social reasoning via SocialModels; prediction of outcomes.

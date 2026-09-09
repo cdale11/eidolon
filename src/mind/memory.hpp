@@ -19,7 +19,10 @@ enum class EventKind : uint8_t {
   Weather = 5,
   NearDeath = 6,
   Death = 7,
-  Attack = 8, // predator attack on the organism (Phase 5)
+  Attack = 8,    // predator attack on the organism (Phase 5)
+  Illness = 9,   // infection/disease onset (sick) (health events)
+  Recovery = 10, // recovery from illness (health events)
+  Tamed = 11,    // domesticated a prey companion (wildlife domestication)
 };
 
 // Participants in the episode (bitmask for compact storage).
