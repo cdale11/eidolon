@@ -423,6 +423,30 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
 ## Future directions (deferred by design)
 Logged from user requirements; not yet sequenced into phases. No LLM in the hot path
 and "client does the maximum work" invariants apply to all of them.
+- **Audit findings to implement next** *(repository audit, 2026-09-11)*:
+  - [ ] Snapshot all declared runtime counters: `Engine::Stats` now includes advanced
+        action/outcome counters (`actionsFarm`, `itemsCrafted`, `structuresBuilt`, etc.)
+        but snapshot v13 only persists the older survival counters. Persist them or mark
+        them explicitly derived/ephemeral, then add a field-specific round-trip test.
+  - [ ] Persist `LearnSystem::successRate_` or remove it from durable semantics. It is
+        updated and exposed, but omitted from `LearnSystem::serialize`/`deserialize`.
+  - [ ] Serialize or eliminate `EventQueue events_`. Most CLI events are drained by
+        `tickAndLog`, but a snapshot taken after raw `tick()` and before log draining can
+        lose queued timeline/archive events.
+  - [ ] Consolidate the two structure stores: engine `StructureManager` is now the real
+        construction system, while `World::SimpleStructure` is separate, unsaved by
+        `World::serialize`, and still queried by some water-collection logic.
+  - [ ] Make grounded offline past-tense chat truly archive-backed. The server routes
+        "what did you do" questions to `GroundedLanguage`, but SQL event extraction is
+        still shallow/stub-like, so answers can fall back to uncertainty instead of the
+        durable timeline.
+  - [ ] Tighten replay semantics around non-policy overrides: `LearnSystem::learnStep`
+        documents `agentic=false` for hardwired sleep/wake/emergency ticks, but `Engine`
+        currently sets `agentic` to false only while the body is sleeping.
+  - [ ] Fix minor determinism/portability debts found in the audit: validate restored
+        organism position, initialize wildlife per-agent RNG before randomized spawn
+        attributes, avoid `reinterpret_cast` coordinate serialization in construction,
+        and clarify that policy/action mapping intentionally excludes `Sleep`.
 - **Deeper world / playground**: hobbies with real procedural depth — gardening (plant,
   tend, harvest over days/weeks, seasonal yield, skill progression), reading books (world
   artifacts with retrievable content the organism actually learns from, not cosmetic

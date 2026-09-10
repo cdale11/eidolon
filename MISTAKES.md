@@ -346,3 +346,20 @@ the field-specific test does. Verified for this commit:
   `--dump-experiences` immediately.
 - **Fix**: completed the 12-entry bijection in `engine.cpp`, expanded `kActionNames`,
   added `engine_policy_action_roundtrip_all12` regression test, and gated the encoder.
+
+## 2026-09-11 — Snapshot coverage must include new observability/state fields
+
+- **What happened**: repository audit after snapshot v13 found several fields whose
+  durable intent is unclear or incomplete: advanced `Engine::Stats` counters are declared
+  and incremented but not serialized; `LearnSystem::successRate_` is updated/exposed but
+  omitted from learner snapshots; `EventQueue events_` is not serialized; and structures
+  are split between engine `StructureManager` and unsaved `World::SimpleStructure`.
+- **Impact**: deterministic resume tests can still pass while observability or timeline
+  details silently reset across save/load. The risk is especially high for fields that are
+  surfaced to chat/status (`lifeStatsSummary`, current activity, grounded timeline), where
+  a restored organism may under-report what it actually did.
+- **Lesson**: whenever a field is added, classify it immediately as durable, derived, or
+  intentionally ephemeral. Durable fields need snapshot serialization and a field-specific
+  round-trip assertion; derived fields need a comment explaining their source of truth;
+  ephemeral fields should not be exposed as long-lived facts.
+- **Follow-up**: tracked in `ROADMAP.md` under "Audit findings to implement next".

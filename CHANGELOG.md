@@ -5,6 +5,10 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 
 ## [Unreleased]
 
+### Audit findings
+- Recorded concrete follow-up implementation tasks for snapshot coverage, structure-store
+  consolidation, grounded archive-backed replies, and replay/determinism cleanup.
+
 ### Integrated mind/body systems + snapshot v13
 - **Standalone systems are now wired into the organism**: world prediction,
   metacognition, self-model updates, concept formation, attachment, belief coherence,
