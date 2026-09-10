@@ -311,7 +311,7 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 - All tests pass; snapshot version 8
 
 ### Phase 7 — Planning & world model
-- **WorldPredictor** (`src/mind/world_predictor.hpp/.cpp`): Linear one-step transition model (43 features × 50 inputs → 43 outputs), predicts next features given current features + action, outputs confidence. Online training with SGD.
+- **WorldPredictor** (`src/mind/world_predictor.hpp/.cpp`): Linear one-step transition model over the canonical learner vector (`LearnSystem::kFeatures`, currently 45) plus 7 planning primitives, predicts next features given current features + action, outputs confidence. Online training with SGD.
 - **Planner** (`src/mind/world_predictor.hpp/.cpp`): Greedy and beam search (configurable width/horizon) over action primitives using WorldPredictor. Replan-on-surprise (prediction error > threshold).
 - **GoalEmergence** (`src/mind/goal_emergence.hpp/.cpp`): Drive-based goal generation from physiology state + environmental opportunities. 8 goal types (Survive, FindFood, FindWater, Rest, FleeThreat, Explore, BuildShelter, CraftTool). Priority computed from drives + opportunity proximity. Snapshot serialization.
 - **LLM Planner** (`src/mind/llm_planner.hpp/.cpp`): LLM-assisted high-level plan proposals. `LLMPlanner` with prompt building, response parsing, validation hooks. `LLMPlanProposal` with steps, confidence, validation hooks. Ready for LLM integration (callback-based, no hot-path LLM calls).
@@ -326,13 +326,13 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 - **Affordance discovery** (`src/body/affordance.hpp/.cpp`): Tool/material affordance registration, unexpected usage detection, procedure generation hooks.
 - All tests pass; snapshot version 10
 
-### Phase 9 — Self-model, concepts, metacognition (current session)
+### Phase 9 — Self-model, concepts, metacognition
 - **Self-model** (`src/mind/self_model.hpp/.cpp`): Capability assessment, autobiographical summary, preferences, reputation, future expectations. Metacognitive state (uncertainty, prediction confidence, reflection triggers). Experience-based updates from physiology and goals.
 - **Metacognition** (`src/mind/metacognition.hpp/.cpp`): Prediction tracking, error detection, surprise detection, reflection triggers, confidence/uncertainty dynamics. Prediction history with MSE tracking, reflection triggers on surprise, confidence/uncertainty dynamics.
 - **Concept formation** (`src/mind/concept_formation.hpp/.cpp`): Incremental K-means clustering in embedding space, experience buffering, concept merging, LLM-assisted naming hooks, concept activation lookup.
 - **Graph rewriting** (`src/mind/graph_rewriting.hpp/.cpp`): Typed graph for concept ontology (Concept/Relation/Property/Event/Category nodes; IsA/HasProperty/Causes/PartOf/RelatedTo/Opposes/Enables edges), `RewriteRule` with pattern matching and replacement, incremental `match_pattern` / `apply_rules`, `sync_with_concepts` hook, full snapshot serialization.
 - **Ising belief coherence** (`src/mind/belief_ising.hpp/.cpp`): Binary beliefs as spins (+1/-1/0), evidence as external fields, consistency as couplings. Glauber dynamics with seeded RNG, coherent clusters, energy computation, cognitive dissonance metric. Full serialization.
-- All tests pass; snapshot version 12
+- Integrated into the engine slow layer and persisted in snapshot v13; all tests pass.
 
 ### Phase 10 — Dreams v2, reflection, narrative language (in progress)
 - **Dreams v2** (`src/mind/memory_system.cpp`): Enhanced associative recombination during sleep. Episodes sharing location, participants, outcome, action, or kind are paired; dream traces strengthen source episodes and perturb policy toward recombined action sequences. Deterministic via seeded RNG.

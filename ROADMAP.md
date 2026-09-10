@@ -177,7 +177,8 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
 - [x] Skill models (Beta/Bernoulli competence), procedural store, habit formation (`src/body/skill.hpp/.cpp`)
 - [x] Crafting with learned recipes (seeded basics: fire, sharp stone, spear, shelter) (`src/body/crafting.hpp/.cpp`)
 - [x] Construction: persistent structures on grid (shelter, walls, campfire, storage, farm
-  plots), stored/retrieved in snapshot (`src/body/construction.hpp/.cpp`)
+  plots), stored/retrieved in snapshot and exercised by engine Build/Farm actions
+  (`src/body/construction.hpp/.cpp`, `src/sim/engine.cpp`)
 - [x] Affordance discovery: tool used in unexpected ways → new procedures (`src/body/affordance.hpp/.cpp`: `AffordanceSystem` with tool/material affordance registration, discovery from unexpected usage, procedure generation hooks)
 - Gate: organism builds a shelter that persists across save/load; discovers at least one
   novel tool use in a seeded run; skill competence improves with practice.
@@ -197,7 +198,8 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
   one novel recipe per seeded run; the recipe graph is inspectable and reproducible.
 
 ## Phase 7 — Planning & world model
-- [x] WorldPredictor (one-step transition MLP) + confidence
+- [x] WorldPredictor (one-step transition model) + confidence, trained from the engine's
+      bounded slow layer
 - [x] Forward/beam planning over primitives using learned models; replan on surprise
 - [x] Goal emergence from drives + state + opportunities (goals not specified by us appear)
 - [x] LLM-assisted high-level plan proposals (validated, executed by runtime only)
@@ -230,8 +232,9 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
       reputation, future expectations — all experience-updated (`src/mind/self_model.hpp/.cpp`)
 - [x] Metacognition: uncertainty, confidence, self-prediction, failed-prediction recognition →
       reflection triggers (`src/mind/metacognition.hpp/.cpp`)
-- [x] Concept formation: incremental clustering in embedding space, expandable ontology,
-      LLM-assisted naming (rare) (`src/mind/concept_formation.hpp/.cpp`)
+- [x] Concept formation: incremental bounded clustering in embedding space, expandable
+      ontology, LLM-assisted naming (rare), wired into the engine slow layer
+      (`src/mind/concept_formation.hpp/.cpp`, `src/sim/engine.cpp`)
 - Gate: organism forms and names a concept it was never told about; self-model changes after
       significant events; it reports uncertainty honestly in conversation.
 

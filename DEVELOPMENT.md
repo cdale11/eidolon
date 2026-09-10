@@ -275,7 +275,7 @@ curl -X POST http://localhost:8081/api/world/reset -d '{}'  # Fresh organism
 - `DEVELOPMENT.md` — This file (update procedures as they evolve)
 
 ### 10.2 Versioning
-- Snapshot version: bump on schema change (`kSnapshotVersion` in `engine.cpp`)
+- Snapshot version: bump on schema change (`kSnapshotVersion` in `src/core/serialize.hpp`)
 - SQLite schema: version table with migrations
 - Prior format: `.eprp` header includes feature/action count
 
