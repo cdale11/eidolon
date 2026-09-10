@@ -31,7 +31,9 @@ constexpr uint32_t kSnapshotMagic = 0x4549444C; // "EIDL"
 //      and WildlifeSocialSystem (their learned state was silently dropped on save/load).
 // v14: Completed snapshot coverage for advanced Engine::Stats counters and
 //      LearnSystem::successRate_ so user-visible life summaries survive resume.
-constexpr uint32_t kSnapshotVersion = 14;
+// v15: Engine snapshots persist the pending EventQueue so raw tick() then save/load then
+//      tickAndLog() cannot silently drop due timeline/archive events.
+constexpr uint32_t kSnapshotVersion = 15;
 
 struct BinaryWriter {
 public:

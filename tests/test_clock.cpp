@@ -78,3 +78,24 @@ TEST(event_queue_capacity_bounded) {
   for (int i = 0; i < 200; ++i) q.push({static_cast<int64_t>(i), 1, 0});
   CHECK(q.size() <= 64);
 }
+
+TEST(event_queue_serialize_roundtrip) {
+  EventQueue q;
+  q.push({100, 2, 20});
+  q.push({50, 1, 10});
+  const std::vector<uint8_t> blob = packSnapshot(kSnapshotVersion, [&](BinaryWriter& w) {
+    q.serialize(w);
+  });
+
+  EventQueue restored;
+  std::string err;
+  CHECK(unpackSnapshot(blob, kSnapshotVersion,
+                       [&](BinaryReader& r) { return restored.deserialize(r); }, err));
+  EventQueue::Event e;
+  CHECK(restored.popDue(50, e));
+  CHECK_EQ(e.kind, 1);
+  CHECK_EQ(e.payload, 10);
+  CHECK(restored.popDue(100, e));
+  CHECK_EQ(e.kind, 2);
+  CHECK_EQ(e.payload, 20);
+}

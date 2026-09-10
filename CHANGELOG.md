@@ -14,6 +14,8 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   `StructureManager`, and the unused unsaved `World::SimpleStructure` store was removed.
 - Offline past-tense replies such as "what did you do today?" now query the durable
   SQLite-backed archive timeline and summarize recorded events deterministically.
+- Snapshot v15 persists pending `EventQueue` entries, preventing raw `tick()` save/load
+  cycles from dropping due timeline/archive events before `tickAndLog()` drains them.
 
 ### Audit findings
 - Recorded concrete follow-up implementation tasks for snapshot coverage, structure-store

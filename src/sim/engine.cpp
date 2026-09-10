@@ -1236,6 +1236,7 @@ void Engine::serializeState(BinaryWriter& w) const {
   world_.serialize(w);
   body_.serialize(w);
   memorySys_.serialize(w);
+  events_.serialize(w);
   learn_.serialize(w);
   goal_emergence_.serialize(w);
   w.u64(stats_.ticksFine);
@@ -1325,7 +1326,7 @@ bool Engine::deserializeState(BinaryReader& r, std::string& err) {
     return false;
   }
   if (!world_.deserialize(r) || !body_.deserialize(r) || !memorySys_.deserialize(r) ||
-       !learn_.deserialize(r) || !goal_emergence_.deserialize(r)) {
+       !events_.deserialize(r) || !learn_.deserialize(r) || !goal_emergence_.deserialize(r)) {
     err = "snapshot world/body/memory corrupt";
     return false;
   }

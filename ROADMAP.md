@@ -429,9 +429,10 @@ and "client does the maximum work" invariants apply to all of them.
         and snapshot v14 persists them with a field-specific round-trip test.
   - [x] Persist `LearnSystem::successRate_`: snapshot v14 writes/reads it, exposes it via
         `lifeStats()`, and verifies field-specific round-trip coverage.
-  - [ ] Serialize or eliminate `EventQueue events_`. Most CLI events are drained by
+  - [x] Serialize or eliminate `EventQueue events_`. Most CLI events are drained by
         `tickAndLog`, but a snapshot taken after raw `tick()` and before log draining can
-        lose queued timeline/archive events.
+        lose queued timeline/archive events. Snapshot v15 now persists pending queued
+        events, with queue round-trip coverage.
   - [x] Consolidate the two structure stores: engine `StructureManager` is now the real
         construction system, while `World::SimpleStructure` is separate, unsaved by
         `World::serialize`, and still queried by some water-collection logic. The unsaved

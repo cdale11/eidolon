@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <queue>
 
+#include "core/serialize.hpp"
+
 namespace eidolon {
 
 class SimClock {
@@ -81,6 +83,27 @@ public:
     return size_ == 0 ? -1 : buf_[0].at;
   }
   std::size_t size() const noexcept { return size_; }
+
+  void serialize(BinaryWriter& w) const {
+    w.u32(static_cast<uint32_t>(size_));
+    for (std::size_t i = 0; i < size_; ++i) {
+      w.i64(buf_[i].at);
+      w.u16(buf_[i].kind);
+      w.u16(buf_[i].payload);
+    }
+  }
+
+  bool deserialize(BinaryReader& r) {
+    uint32_t n = 0;
+    if (!r.u32(n) || n > kCapacity) return false;
+    size_ = 0;
+    for (uint32_t i = 0; i < n; ++i) {
+      Event e;
+      if (!r.i64(e.at) || !r.u16(e.kind) || !r.u16(e.payload)) return false;
+      push(e);
+    }
+    return true;
+  }
 
 private:
   static constexpr std::size_t kCapacity = 64;
