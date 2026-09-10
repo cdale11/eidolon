@@ -4,11 +4,44 @@
 
 #include <cstdio>
 #include <cstring>
+#include <algorithm>
 
 namespace eidolon {
 
 namespace {
 constexpr int kSchemaVersion = 1;
+
+EventKind kindFromType(const std::string& type) {
+  if (type == "forage") return EventKind::Forage;
+  if (type == "drink") return EventKind::Drink;
+  if (type == "attack") return EventKind::Attack;
+  if (type == "weather") return EventKind::Weather;
+  if (type == "sleep") return EventKind::Sleep;
+  if (type == "wake") return EventKind::Wake;
+  if (type == "death") return EventKind::Death;
+  if (type == "illness") return EventKind::Illness;
+  if (type == "recovery") return EventKind::Recovery;
+  if (type == "tamed") return EventKind::Tamed;
+  return EventKind::Birth;
+}
+
+std::string typeFromKind(EventKind kind) {
+  switch (kind) {
+    case EventKind::Forage: return "forage";
+    case EventKind::Drink: return "drink";
+    case EventKind::Sleep: return "sleep";
+    case EventKind::Wake: return "wake";
+    case EventKind::Attack: return "attack";
+    case EventKind::Birth: return "birth";
+    case EventKind::Death: return "death";
+    case EventKind::Weather: return "weather";
+    case EventKind::NearDeath: return "near_death";
+    case EventKind::Illness: return "illness";
+    case EventKind::Recovery: return "recovery";
+    case EventKind::Tamed: return "tamed";
+    default: return "event";
+  }
+}
 }
 
 SQLiteArchive::SQLiteArchive(const std::string& path, std::string& err) {
@@ -110,6 +143,64 @@ void SQLiteArchive::event(int64_t t, const char* type, const char* text) {
   sqlite3_bind_text(stmt, 2, type, -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt, 3, text, -1, SQLITE_TRANSIENT);
   runStatement(stmt);
+}
+
+std::vector<ArchivedEvent> SQLiteArchive::timeline(int64_t startTick, int64_t endTick,
+                                                   size_t limit) const {
+  std::lock_guard<std::mutex> lock(mu_);
+  std::vector<ArchivedEvent> out;
+  if (!db_ || limit == 0 || endTick < startTick) return out;
+  const int sqlLimit = static_cast<int>(std::min<size_t>(limit, 512));
+
+  sqlite3_stmt* stmt = nullptr;
+  if (prepare("SELECT t, x, y, kind, importance, detail FROM episodes "
+              "WHERE t>=? AND t<=? ORDER BY t ASC LIMIT ?", &stmt) && stmt) {
+    sqlite3_bind_int64(stmt, 1, startTick);
+    sqlite3_bind_int64(stmt, 2, endTick);
+    sqlite3_bind_int(stmt, 3, sqlLimit);
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+      ArchivedEvent e;
+      e.t = sqlite3_column_int64(stmt, 0);
+      e.x = static_cast<int16_t>(sqlite3_column_int(stmt, 1));
+      e.y = static_cast<int16_t>(sqlite3_column_int(stmt, 2));
+      e.kind = static_cast<EventKind>(sqlite3_column_int(stmt, 3));
+      e.importance = sqlite3_column_double(stmt, 4);
+      e.detail = static_cast<uint8_t>(sqlite3_column_int(stmt, 5));
+      e.type = typeFromKind(e.kind);
+      e.text = e.type;
+      e.fromEpisode = true;
+      out.push_back(std::move(e));
+    }
+    sqlite3_finalize(stmt);
+  }
+
+  stmt = nullptr;
+  if (out.size() < static_cast<size_t>(sqlLimit) &&
+      prepare("SELECT t, type, text FROM events WHERE t>=? AND t<=? ORDER BY t ASC LIMIT ?",
+              &stmt) && stmt) {
+    sqlite3_bind_int64(stmt, 1, startTick);
+    sqlite3_bind_int64(stmt, 2, endTick);
+    sqlite3_bind_int(stmt, 3, sqlLimit - static_cast<int>(out.size()));
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+      ArchivedEvent e;
+      e.t = sqlite3_column_int64(stmt, 0);
+      const unsigned char* type = sqlite3_column_text(stmt, 1);
+      const unsigned char* text = sqlite3_column_text(stmt, 2);
+      e.type = type ? reinterpret_cast<const char*>(type) : "event";
+      e.text = text ? reinterpret_cast<const char*>(text) : "";
+      e.kind = kindFromType(e.type);
+      e.fromEpisode = false;
+      out.push_back(std::move(e));
+    }
+    sqlite3_finalize(stmt);
+  }
+
+  std::sort(out.begin(), out.end(), [](const ArchivedEvent& a, const ArchivedEvent& b) {
+    if (a.t != b.t) return a.t < b.t;
+    return a.fromEpisode && !b.fromEpisode;
+  });
+  if (out.size() > static_cast<size_t>(sqlLimit)) out.resize(static_cast<size_t>(sqlLimit));
+  return out;
 }
 
 int64_t SQLiteArchive::createConversation(const std::string& title, int64_t t) {

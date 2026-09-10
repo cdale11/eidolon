@@ -1,4 +1,5 @@
 #include "mind/grounded_language.hpp"
+#include "mind/archive.hpp"
 #include <algorithm>
 #include <sstream>
 #include <unordered_map>
@@ -83,12 +84,23 @@ GroundedUtterance GroundedLanguage::make_uncertainty_response(uint64_t tick) con
 }
 
 std::vector<GroundedLanguage::ExtractedEvent> GroundedLanguage::extract_events(
-    const Archive& /*archive*/,
-    uint64_t /*startTick*/,
-    uint64_t /*endTick*/) const {
-  // In a full implementation, this would query the Archive for events in the time range
-  // For now, return empty - the engine will integrate this
+    const Archive& archive,
+    uint64_t startTick,
+    uint64_t endTick) const {
   std::vector<ExtractedEvent> events;
+  for (const ArchivedEvent& ae : archive.timeline(static_cast<int64_t>(startTick),
+                                                  static_cast<int64_t>(endTick), 128)) {
+    ExtractedEvent e;
+    e.description = ae.text.empty() ? ae.type : ae.text;
+    e.tick = static_cast<uint64_t>(std::max<int64_t>(0, ae.t));
+    e.x = ae.x;
+    e.y = ae.y;
+    e.kind = ae.kind;
+    e.action = 255;
+    e.outcome = Outcome::Unknown;
+    e.importance = ae.importance;
+    events.push_back(std::move(e));
+  }
   return events;
 }
 
@@ -103,6 +115,9 @@ std::string GroundedLanguage::event_kind_to_terminal(EventKind kind) const {
     case EventKind::Death: return "died";
     case EventKind::Weather: return "experienced weather";
     case EventKind::NearDeath: return "nearly died";
+    case EventKind::Illness: return "became sick";
+    case EventKind::Recovery: return "recovered";
+    case EventKind::Tamed: return "befriended wildlife";
     default: return "did something";
   }
 }
@@ -153,7 +168,12 @@ std::vector<GroundedLanguage::ExtractedEvent> GroundedLanguage::select_relevant_
     std::transform(eventDesc.begin(), eventDesc.end(), eventDesc.begin(), ::tolower);
     
     for (const auto& kw : keywords) {
-      if (eventDesc.find(kw) != std::string::npos) {
+      const bool match = eventDesc.find(kw) != std::string::npos ||
+                         (kw == "food" && e.kind == EventKind::Forage) ||
+                         (kw == "water" && e.kind == EventKind::Drink) ||
+                         (kw == "rest" && (e.kind == EventKind::Sleep || e.kind == EventKind::Wake)) ||
+                         (kw == "predator" && e.kind == EventKind::Attack);
+      if (match) {
         relevant.push_back(e);
         break;
       }
@@ -170,13 +190,43 @@ std::string GroundedLanguage::build_summary_from_events(
     return "Today I rested and conserved energy.";
   }
   
-  // Use the summary grammar to generate a summary
-  auto derivation = summaryEngine_.deriveStochastic(rng_);
-  std::string result = derivation.result;
-  
-  // Replace placeholders with actual event data where possible
-  // For now, return the grammar-generated result
-  return result;
+  int forage = 0, drink = 0, sleep = 0, attack = 0, illness = 0, recovery = 0, tame = 0;
+  for (const auto& e : events) {
+    switch (e.kind) {
+      case EventKind::Forage: ++forage; break;
+      case EventKind::Drink: ++drink; break;
+      case EventKind::Sleep: ++sleep; break;
+      case EventKind::Attack: ++attack; break;
+      case EventKind::Illness: ++illness; break;
+      case EventKind::Recovery: ++recovery; break;
+      case EventKind::Tamed: ++tame; break;
+      default: break;
+    }
+  }
+
+  std::vector<std::string> parts;
+  auto add = [&](int count, const char* singular, const char* plural) {
+    if (count <= 0) return;
+    parts.push_back(std::to_string(count) + " " + (count == 1 ? singular : plural));
+  };
+  add(forage, "foraging success", "foraging successes");
+  add(drink, "drink", "drinks");
+  add(sleep, "sleep period", "sleep periods");
+  add(attack, "predator attack", "predator attacks");
+  add(illness, "illness", "illnesses");
+  add(recovery, "recovery", "recoveries");
+  add(tame, "wildlife bond", "wildlife bonds");
+
+  if (parts.empty()) return "Today I have records, but no major survival events stand out.";
+  std::ostringstream oss;
+  oss << "Today I remember ";
+  for (size_t i = 0; i < parts.size(); ++i) {
+    if (i > 0 && parts.size() > 2) oss << ",";
+    if (i > 0) oss << (i + 1 == parts.size() ? " and " : " ");
+    oss << parts[i];
+  }
+  oss << ".";
+  return oss.str();
 }
 
 std::string GroundedLanguage::build_utterance_from_template(
@@ -210,18 +260,8 @@ std::optional<GroundedUtterance> GroundedLanguage::answer_what_did_you_do(
   GroundedUtterance u;
   u.generatedAtTick = currentTick;
   
-  // Build a grounded response using the grammar
   std::string summary = build_summary_from_events(events);
-  
-  // Also generate via utterance grammar for variety
-  auto utterance = build_utterance_from_template(events);
-  
-  // Combine: use the summary as primary, utterance as alternative
-  if (!summary.empty() && summary != "Today I .") {
-    u.text = summary;
-  } else {
-    u.text = utterance;
-  }
+  u.text = summary;
   
   // Record source events
   for (const auto& e : events) {

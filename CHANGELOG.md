@@ -12,6 +12,8 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   policy had selected them, and night sleep hysteresis avoids rapid sleep/wake flapping.
 - Structures now have a single persisted owner: well collection and world summaries use
   `StructureManager`, and the unused unsaved `World::SimpleStructure` store was removed.
+- Offline past-tense replies such as "what did you do today?" now query the durable
+  SQLite-backed archive timeline and summarize recorded events deterministically.
 
 ### Audit findings
 - Recorded concrete follow-up implementation tasks for snapshot coverage, structure-store

@@ -39,6 +39,8 @@ public:
   // Archive interface.
   void episode(const Episode& e) override;
   void event(int64_t t, const char* type, const char* text) override;
+  std::vector<ArchivedEvent> timeline(int64_t startTick, int64_t endTick,
+                                      size_t limit = 128) const override;
 
   // Conversations.
   int64_t createConversation(const std::string& title, int64_t t);

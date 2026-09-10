@@ -7,6 +7,7 @@
 #include <cstdio>
 
 #include "store/sqlite_archive.hpp"
+#include "mind/grounded_language.hpp"
 
 using namespace eidolon;
 
@@ -59,6 +60,31 @@ TEST(sqlite_archive_episodes_events) {
   a.event(150, "weather", "rain");
   CHECK_EQ(a.episodeCount(), 1);
   CHECK_EQ(a.eventCount(), 1);
+  const auto timeline = a.timeline(0, 200);
+  CHECK_EQ(timeline.size(), 2u);
+  CHECK_EQ(timeline[0].kind, EventKind::Forage);
+  CHECK_EQ(timeline[1].kind, EventKind::Weather);
+}
+
+TEST(sqlite_archive_backs_grounded_past_tense_reply) {
+  const std::string path = tmpDbPath();
+  std::string err;
+  SQLiteArchive a(path, err);
+  Episode forage;
+  forage.t = 100;
+  forage.kind = EventKind::Forage;
+  forage.importance = 0.7;
+  a.episode(forage);
+  a.event(120, "drink", "water=8.0");
+
+  MemoryRing memory;
+  GroundedLanguage grounded(7);
+  auto reply = grounded.answer_what_did_you_do(a, memory, 1000);
+  CHECK(reply.has_value());
+  CHECK(reply->text.find("foraging") != std::string::npos);
+  CHECK(reply->text.find("drink") != std::string::npos);
+  CHECK(!reply->honestUncertainty);
+  CHECK_EQ(reply->sourceEvents.size(), 2u);
 }
 
 TEST(sqlite_archive_conversations) {

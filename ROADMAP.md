@@ -437,10 +437,10 @@ and "client does the maximum work" invariants apply to all of them.
         `World::serialize`, and still queried by some water-collection logic. The unsaved
         world store is removed; well collection and `/api/world/summary` now use the
         persisted `StructureManager`.
-  - [ ] Make grounded offline past-tense chat truly archive-backed. The server routes
+  - [x] Make grounded offline past-tense chat truly archive-backed. The server routes
         "what did you do" questions to `GroundedLanguage`, but SQL event extraction is
-        still shallow/stub-like, so answers can fall back to uncertainty instead of the
-        durable timeline.
+        now backed by a bounded `Archive::timeline()` query implemented by SQLite, so
+        replies summarize durable episode/event facts instead of a stub.
   - [x] Tighten replay semantics around non-policy overrides: `LearnSystem::learnStep`
         documents `agentic=false` for hardwired sleep/wake/emergency ticks, but `Engine`
         now tracks whether the decision came directly from the learned policy and suppresses
