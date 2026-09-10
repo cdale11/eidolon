@@ -23,6 +23,21 @@ void hashMix(uint64_t& h, uint64_t v) noexcept {
   h *= 0x100000001b3ULL;
 }
 
+void writePolicyPriorForAction(const char* path, PolicyAction preferred) {
+  std::FILE* f = std::fopen(path, "wb");
+  CHECK(f != nullptr);
+  std::fwrite("EPRP", 1, 4, f);
+  uint32_t v = 1, nf = LearnSystem::kFeatures, na = 12;
+  std::fwrite(&v, 4, 1, f);
+  std::fwrite(&nf, 4, 1, f);
+  std::fwrite(&na, 4, 1, f);
+  float w[12 * (LearnSystem::kFeatures + 1)] = {};
+  float* row = &w[static_cast<int>(preferred) * (LearnSystem::kFeatures + 1)];
+  row[LearnSystem::kFeatures] = 20.0f;
+  std::fwrite(w, sizeof(float), 12 * (LearnSystem::kFeatures + 1), f);
+  std::fclose(f);
+}
+
 RunResult runTicks(Engine& e, int ticks) {
   RunResult r;
   for (int i = 0; i < ticks; ++i) {
@@ -129,6 +144,23 @@ TEST(engine_circadian_sleep_wake_rhythm) {
   CHECK(e.stats().ticksFine > 0);  // and was actively doing things by day
 }
 
+TEST(engine_night_sleep_has_hysteresis) {
+  Engine e;
+  e.init(42, true, 128, 128);
+  bool wasSleeping = e.body().isSleeping();
+  int transitions = 0;
+  while (e.isAlive() && e.clock().now() < 4 * 3600) {
+    e.tick();
+    const bool sleeping = e.body().isSleeping();
+    if (sleeping != wasSleeping) {
+      ++transitions;
+      wasSleeping = sleeping;
+    }
+  }
+  CHECK(e.isAlive());
+  CHECK(transitions <= 4);
+}
+
 TEST(engine_lastAction_default_then_updates) {
   // Before the first tick, lastAction is a safe default (Observe). After a few
   // ticks, lastAction must reflect whatever decide()/execute() actually chose —
@@ -193,4 +225,27 @@ TEST(engine_policy_action_roundtrip_all12) {
   CHECK(Engine::policyToAction(PolicyAction::Build) == Action::Build);
   CHECK(Engine::policyToAction(PolicyAction::Preserve) == Action::Preserve);
   CHECK(Engine::actionToPolicy(Action::CollectWater) == PolicyAction::CollectWater);
+}
+
+TEST(engine_advanced_stats_survive_snapshot_roundtrip) {
+  Engine e;
+  e.init(42, true, 64, 64);
+  while (e.isAlive() && e.clock().now() < 7 * 3600) e.tick();
+
+  char pathbuf[128];
+  std::snprintf(pathbuf, sizeof(pathbuf), "/tmp/eidolon_test_build_prior_%d.eprp",
+                static_cast<int>(::getpid()));
+  writePolicyPriorForAction(pathbuf, PolicyAction::Build);
+  CHECK(e.loadPolicyPrior(pathbuf));
+  std::remove(pathbuf);
+
+  for (int i = 0; i < 50 && e.stats().actionsBuild == 0; ++i) e.tick();
+  CHECK(e.stats().actionsBuild > 0);
+  CHECK(e.stats().structuresBuilt > 0);
+
+  std::string err;
+  Engine restored;
+  CHECK(restored.restore(e.snapshot(), err));
+  CHECK_EQ(restored.stats().actionsBuild, e.stats().actionsBuild);
+  CHECK_EQ(restored.stats().structuresBuilt, e.stats().structuresBuilt);
 }

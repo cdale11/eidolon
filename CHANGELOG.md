@@ -5,6 +5,12 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 
 ## [Unreleased]
 
+### Snapshot v14 durability
+- Advanced action/outcome counters in `Engine::Stats` and
+  `LearnSystem::successRate_` now survive save/load, with field-specific round-trip tests.
+- Hardwired sleep/wake/survival overrides no longer train the policy as if the learned
+  policy had selected them, and night sleep hysteresis avoids rapid sleep/wake flapping.
+
 ### Audit findings
 - Recorded concrete follow-up implementation tasks for snapshot coverage, structure-store
   consolidation, grounded archive-backed replies, and replay/determinism cleanup.

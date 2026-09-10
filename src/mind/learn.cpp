@@ -244,6 +244,7 @@ LifeStats LearnSystem::lifeStats() const {
   s.forageRate = forageRate_;
   s.drinkRate = drinkRate_;
   s.restRate = restRate_;
+  s.successRate = successRate_;
   s.avgPain = avgPain_;
   return s;
 }
@@ -276,6 +277,7 @@ void LearnSystem::serialize(BinaryWriter& w) const {
   w.f32(forageRate_);
   w.f32(drinkRate_);
   w.f32(restRate_);
+  w.f32(successRate_);
   w.f32(avgPain_);
   w.u64(lifeTicks_);
 }
@@ -294,8 +296,8 @@ bool LearnSystem::deserialize(BinaryReader& r) {
   if (!r.i64(lastDailyUpdate_)) return false;
   return r.f32(avgReward_) && r.f32(rewardVar_) && r.f32(avgNovelty_) &&
          r.f32(threatRate_) && r.f32(avgValence_) && r.f32(forageRate_) &&
-         r.f32(drinkRate_) && r.f32(restRate_) && r.f32(avgPain_) &&
-         r.u64(lifeTicks_);
+         r.f32(drinkRate_) && r.f32(restRate_) && r.f32(successRate_) &&
+         r.f32(avgPain_) && r.u64(lifeTicks_);
 }
 
 } // namespace eidolon

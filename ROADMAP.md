@@ -424,12 +424,11 @@ Seedable, allocation-light generative content; no LLM, bit-exact replays preserv
 Logged from user requirements; not yet sequenced into phases. No LLM in the hot path
 and "client does the maximum work" invariants apply to all of them.
 - **Audit findings to implement next** *(repository audit, 2026-09-11)*:
-  - [ ] Snapshot all declared runtime counters: `Engine::Stats` now includes advanced
+  - [x] Snapshot all declared runtime counters: `Engine::Stats` now includes advanced
         action/outcome counters (`actionsFarm`, `itemsCrafted`, `structuresBuilt`, etc.)
-        but snapshot v13 only persists the older survival counters. Persist them or mark
-        them explicitly derived/ephemeral, then add a field-specific round-trip test.
-  - [ ] Persist `LearnSystem::successRate_` or remove it from durable semantics. It is
-        updated and exposed, but omitted from `LearnSystem::serialize`/`deserialize`.
+        and snapshot v14 persists them with a field-specific round-trip test.
+  - [x] Persist `LearnSystem::successRate_`: snapshot v14 writes/reads it, exposes it via
+        `lifeStats()`, and verifies field-specific round-trip coverage.
   - [ ] Serialize or eliminate `EventQueue events_`. Most CLI events are drained by
         `tickAndLog`, but a snapshot taken after raw `tick()` and before log draining can
         lose queued timeline/archive events.
@@ -440,9 +439,11 @@ and "client does the maximum work" invariants apply to all of them.
         "what did you do" questions to `GroundedLanguage`, but SQL event extraction is
         still shallow/stub-like, so answers can fall back to uncertainty instead of the
         durable timeline.
-  - [ ] Tighten replay semantics around non-policy overrides: `LearnSystem::learnStep`
+  - [x] Tighten replay semantics around non-policy overrides: `LearnSystem::learnStep`
         documents `agentic=false` for hardwired sleep/wake/emergency ticks, but `Engine`
-        currently sets `agentic` to false only while the body is sleeping.
+        now tracks whether the decision came directly from the learned policy and suppresses
+        policy updates for hardwired overrides. Night sleep hysteresis was widened to avoid
+        rapid sleep/wake flapping found during smoke-log inspection.
   - [ ] Fix minor determinism/portability debts found in the audit: validate restored
         organism position, initialize wildlife per-agent RNG before randomized spawn
         attributes, avoid `reinterpret_cast` coordinate serialization in construction,

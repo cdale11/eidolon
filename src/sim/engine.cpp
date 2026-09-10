@@ -51,6 +51,7 @@ void Engine::init(uint64_t masterSeed, bool deterministic, int worldW, int world
   clock_.set(0);
   died_ = false;
   resting_ = false;
+  lastDecisionAgentic_ = false;
   lastAction_ = Action::Observe; // safe default until the first tick chooses one
   lastStatusAt_ = 0;
   statusInterval_ = 600;
@@ -255,7 +256,7 @@ Action Engine::tick() noexcept {
   learn_.buildFeatures(world_.perceive(world_.organismPos(), clock_), body_, featsAfter_);
   const float novelty = learn_.novelty(featsAfter_);
   const float reward = learn_.computeReward(body_, before, novelty, eaten, drank);
-  const bool agentic = !body_.isSleeping();
+  const bool agentic = lastDecisionAgentic_ && !body_.isSleeping();
   const PolicyAction pa = actionToPolicy(action);
   const bool aversive = aversiveTick(before);
   const bool safe = safeTick(reward);
@@ -539,6 +540,7 @@ PolicyAction Engine::actionToPolicy(Action a) noexcept {
 }
 
 Action Engine::decide() noexcept {
+  lastDecisionAgentic_ = false;
   const double light = clock_.daylight();
   const bool night = light < 0.5;
   if (body_.isSleeping()) {
@@ -550,7 +552,7 @@ Action Engine::decide() noexcept {
     if (body_.thirst() > 55.0 || body_.hunger() > 70.0) {
       body_.setSleeping(false); // wake to drink/eat, then re-sleep
     } else if ((!night && body_.sleepPressure() < 25.0 && body_.fatigue() < 30.0) ||
-               (body_.sleepPressure() < 12.0 && body_.fatigue() < 15.0)) {
+               (body_.sleepPressure() < 3.0 && body_.fatigue() < 5.0)) {
       // Circadian wake: a rested organism surfaces at daybreak even before sleep
       // pressure fully clears (diurnal rhythm); at night it stays down until truly
       // recovered. Survival valves above still override either way.
@@ -570,7 +572,7 @@ Action Engine::decide() noexcept {
   // wakes it, and the active branch flees before sleep when threat is high.)
   const bool sleepVeto = body_.thirst() > 55.0 || body_.hunger() > 70.0 ||
                          body_.pain() > 40.0;
-  const bool justRested = body_.sleepPressure() < 10.0 && body_.fatigue() < 25.0;
+  const bool justRested = body_.sleepPressure() < 20.0 && body_.fatigue() < 25.0;
   const bool nightSleep = night && !sleepVeto && !justRested;
   const bool dayNap = !night && body_.needsSleep() && body_.thirst() < 55.0 &&
                       body_.hunger() < 60.0;
@@ -638,6 +640,8 @@ Action Engine::decide() noexcept {
     } else {
       a = Action::Rest;
     }
+  } else {
+    lastDecisionAgentic_ = true;
   }
   return a;
 }
@@ -1243,6 +1247,12 @@ void Engine::serializeState(BinaryWriter& w) const {
   w.u64(stats_.actionsForage);
   w.u64(stats_.actionsDrink);
   w.u64(stats_.actionsFlee);
+  w.u64(stats_.actionsFarm);
+  w.u64(stats_.actionsCook);
+  w.u64(stats_.actionsCraft);
+  w.u64(stats_.actionsBuild);
+  w.u64(stats_.actionsCollectWater);
+  w.u64(stats_.actionsPreserve);
   w.u64(stats_.predatorAttacks);
   w.u64(stats_.berriesEaten);
   w.u64(stats_.drinks);
@@ -1251,6 +1261,12 @@ void Engine::serializeState(BinaryWriter& w) const {
   w.u64(stats_.infections);
   w.u64(stats_.waterskinFills);
   w.u64(stats_.waterskinDrinks);
+  w.u64(stats_.cropsHarvested);
+  w.u64(stats_.mealsCooked);
+  w.u64(stats_.itemsCrafted);
+  w.u64(stats_.structuresBuilt);
+  w.u64(stats_.waterCollected);
+  w.u64(stats_.foodPreserved);
   w.u8(resting_ ? 1 : 0);
   w.i64(static_cast<int64_t>(exploreDir_.x));
   w.i64(static_cast<int64_t>(exploreDir_.y));
@@ -1318,10 +1334,16 @@ bool Engine::deserializeState(BinaryReader& r, std::string& err) {
       !r.u64(stats_.actionsRest) || !r.u64(stats_.actionsSleep) ||
       !r.u64(stats_.actionsObserve) || !r.u64(stats_.actionsForage) ||
       !r.u64(stats_.actionsDrink) || !r.u64(stats_.actionsFlee) ||
+      !r.u64(stats_.actionsFarm) || !r.u64(stats_.actionsCook) ||
+      !r.u64(stats_.actionsCraft) || !r.u64(stats_.actionsBuild) ||
+      !r.u64(stats_.actionsCollectWater) || !r.u64(stats_.actionsPreserve) ||
       !r.u64(stats_.predatorAttacks) || !r.u64(stats_.berriesEaten) ||
       !r.u64(stats_.drinks) || !r.u64(stats_.fallsTaken) ||
-       !r.u64(stats_.woundsSustained) || !r.u64(stats_.infections) ||
-       !r.u64(stats_.waterskinFills) || !r.u64(stats_.waterskinDrinks)) {
+      !r.u64(stats_.woundsSustained) || !r.u64(stats_.infections) ||
+      !r.u64(stats_.waterskinFills) || !r.u64(stats_.waterskinDrinks) ||
+      !r.u64(stats_.cropsHarvested) || !r.u64(stats_.mealsCooked) ||
+      !r.u64(stats_.itemsCrafted) || !r.u64(stats_.structuresBuilt) ||
+      !r.u64(stats_.waterCollected) || !r.u64(stats_.foodPreserved)) {
     err = "snapshot stats corrupt";
     return false;
   }

@@ -179,6 +179,19 @@ TEST(engine_identical_seed_identical_latent_and_learning) {
   CHECK_EQ(a.learn().threatEstimate(), b.learn().threatEstimate());
 }
 
+TEST(engine_learning_success_rate_survives_snapshot_roundtrip) {
+  Engine e;
+  e.init(42, true, 64, 64);
+  for (int i = 0; i < 1000; ++i) e.tick();
+  CHECK(e.learn().lifeTicks() == 1000);
+
+  std::string err;
+  Engine restored;
+  CHECK(restored.restore(e.snapshot(), err));
+  CHECK_EQ(restored.learn().successRate(), e.learn().successRate());
+  CHECK_EQ(restored.learn().lifeStats().successRate, e.learn().lifeStats().successRate);
+}
+
 TEST(engine_same_seed_different_experience_diverges_latent) {
   // Gate: two identical seeds with different experiences produce different latent
   // vectors. Same seed, but different worlds -> different life histories (food-dense

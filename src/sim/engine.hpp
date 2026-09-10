@@ -306,6 +306,9 @@ private:
   // chat-grounding state — the LLM bridge reads it via `lastAction()` to populate
   // CognitiveSnapshot::currentAction instead of the hardcoded "active" placeholder.
   Action lastAction_ = Action::Observe;
+  // True only when the last decision came directly from the learned policy. Hardwired
+  // sleep/wake/survival overrides must not train policy weights as if they were chosen.
+  bool lastDecisionAgentic_ = false;
   // Health events: previous-tick sickness state, so illness/recovery episodes fire once
   // per transition (not every tick). Serialised for a bit-exact resume.
   bool wasSick_ = false;
