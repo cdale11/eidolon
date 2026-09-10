@@ -9,16 +9,16 @@ namespace eidolon {
 void PredictionRecord::serialize(struct BinaryWriter& w) const {
   w.u64(tick);
   w.str(context);
-  for (int i = 0; i < 43; ++i) w.f32(predicted_features[i]);
-  for (int i = 0; i < 43; ++i) w.f32(actual_features[i]);
+  for (int i = 0; i < kFeatureDim; ++i) w.f32(predicted_features[i]);
+  for (int i = 0; i < kFeatureDim; ++i) w.f32(actual_features[i]);
   w.f32(mse);
   w.u8(was_surprising ? 1 : 0);
 }
 
 bool PredictionRecord::deserialize(struct BinaryReader& r) {
   if (!r.u64(tick) || !r.str(context)) return false;
-  for (int i = 0; i < 43; ++i) if (!r.f32(predicted_features[i])) return false;
-  for (int i = 0; i < 43; ++i) if (!r.f32(actual_features[i])) return false;
+  for (int i = 0; i < kFeatureDim; ++i) if (!r.f32(predicted_features[i])) return false;
+  for (int i = 0; i < kFeatureDim; ++i) if (!r.f32(actual_features[i])) return false;
   if (!r.f32(mse)) return false;
   uint8_t s;
   if (!r.u8(s)) return false;
@@ -53,22 +53,22 @@ MetacognitionSystem::MetacognitionSystem(uint64_t seed) {
 }
 
 void MetacognitionSystem::record_prediction(const std::string& context,
-                                            const std::array<float, 43>& predicted,
-                                            const std::array<float, 43>& actual,
+                                            const std::array<float, kFeatureDim>& predicted,
+                                            const std::array<float, kFeatureDim>& actual,
                                             uint64_t tick) {
   PredictionRecord record;
   record.tick = tick;
   record.context = context;
   record.predicted_features = predicted;
   record.actual_features = actual;
-  
+
   // Compute MSE
   float mse = 0.0f;
-  for (int i = 0; i < 43; ++i) {
+  for (int i = 0; i < kFeatureDim; ++i) {
     float diff = predicted[i] - actual[i];
     mse += diff * diff;
   }
-  mse /= 43.0f;
+  mse /= static_cast<float>(kFeatureDim);
   record.mse = mse;
   record.was_surprising = mse > surprise_threshold_;
   

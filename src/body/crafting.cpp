@@ -268,10 +268,14 @@ void CraftingSystem::tryDiscoverRecipe(const CraftingContext& ctx, class Rng& rn
 }
 
 void CraftingSystem::serialize(struct BinaryWriter& w) const {
-  w.u32(static_cast<uint32_t>(recipes_.size()));
-  for (const auto& kv : recipes_) {
-    kv.second.serialize(w);
-  }
+  // Deterministic ordering by recipe id (unordered_map iteration order is not stable).
+  std::vector<const Recipe*> recs;
+  recs.reserve(recipes_.size());
+  for (const auto& kv : recipes_) recs.push_back(&kv.second);
+  std::sort(recs.begin(), recs.end(),
+            [](const Recipe* a, const Recipe* b) { return a->id < b->id; });
+  w.u32(static_cast<uint32_t>(recs.size()));
+  for (const Recipe* r : recs) r->serialize(w);
   w.u32(nextRecipeId_);
 }
 

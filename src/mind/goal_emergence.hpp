@@ -85,6 +85,9 @@ public:
   
   // Get current active goals (not satisfied, not expired)
   const std::vector<Goal>& active_goals() const { return active_goals_; }
+  // Sim-time of the last evaluate() pass (0 = never evaluated); proves the engine tick
+  // is actually invoking goal emergence.
+  uint64_t last_update_tick() const { return last_update_tick_; }
 
   // Update goal priorities based on new information
   void update_priorities(const Physiology& body, const class World& world);

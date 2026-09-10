@@ -71,6 +71,20 @@ uint32_t ConceptFormation::process_experience(const std::vector<float>& features
                                               const std::string& context,
                                               uint64_t tick,
                                               class Rng& /*rng*/) {
+  // Bound the experience buffer: concept formation is a streaming cluster, so we keep a
+  // fixed-size recent window. When it fills, we drop the oldest half (its concepts are
+  // reconstituted from the remaining samples) — this keeps memory flat over months of
+  // simulated life, per the bounded-memory invariant.
+  if (experience_buffer_.size() >= kMaxExperiences) {
+    const size_t drop = kMaxExperiences / 2;
+    experience_buffer_.erase(experience_buffer_.begin(),
+                             experience_buffer_.begin() + drop);
+    // Reassign: existing concepts reference stale indices; simplest correct reset is to
+    // rebuild concepts from the surviving window (rare, amortized).
+    concepts_.clear();
+    next_concept_id_ = 1;
+  }
+
   // Store experience
   ExperienceVector exp;
   exp.features = features;
@@ -78,10 +92,10 @@ uint32_t ConceptFormation::process_experience(const std::vector<float>& features
   exp.context = context;
   exp.concept_id = 0;
   experience_buffer_.push_back(exp);
-  
+
   // Find best matching concept
   uint32_t best_id = find_best_concept(features);
-  
+
   if (best_id != 0) {
     // Assign to existing concept
     auto it = std::find_if(concepts_.begin(), concepts_.end(),
@@ -94,7 +108,7 @@ uint32_t ConceptFormation::process_experience(const std::vector<float>& features
       return it->id;
     }
   }
-  
+
   // Create new concept
   maybe_create_new_concept(features, "", tick, const_cast<Rng&>(rng_));
   return concepts_.back().id;

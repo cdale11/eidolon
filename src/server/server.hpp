@@ -15,6 +15,8 @@
 #include "llm/bridge.hpp"
 #include "llm/web_browser.hpp"
 #include "mind/compute_profile.hpp"
+#include "mind/grounded_language.hpp"
+#include "mind/reflection.hpp"
 #include "sim/engine.hpp"
 #include "store/sqlite_archive.hpp"
 
@@ -115,6 +117,9 @@ private:
   void simLoop();
   void autosave();
   int64_t currentConversation();
+  // Grounded-language reply from the event timeline (empty if the message isn't a
+  // past/personal-history question or has no archive). Deterministic, no LLM.
+  std::string groundedReply(const std::string& text);
 
   Options opts_;
   Engine engine_;
@@ -124,6 +129,11 @@ private:
   std::unique_ptr<WebBrowser> browser_;
   std::atomic<bool> stop_ = false;
   std::thread simThread_;
+  // Grounded, deterministic language (no LLM) + slow-layer reflection for the chat path:
+  // "what did you do today?" and similar past-tense questions resolve to the actual event
+  // timeline, with honest uncertainty for anything unrecorded (DESIGN §10/§14).
+  GroundedLanguage grounded_;
+  ReflectionSystem reflection_;
 
   mutable std::mutex engineMu_; // guards engine_ (sim thread vs HTTP handlers)
   int64_t conversationId_ = -1;

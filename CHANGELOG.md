@@ -5,6 +5,20 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 
 ## [Unreleased]
 
+### Integrated mind/body systems + snapshot v13
+- **Standalone systems are now wired into the organism**: world prediction,
+  metacognition, self-model updates, concept formation, attachment, belief coherence,
+  skills, crafting and construction now advance from the engine's bounded slow layer
+  instead of existing only as isolated modules.
+- **Advanced actions are real behaviours**: Farm/Cook/Craft/Build/Preserve now exercise
+  the construction, material, recipe and skill systems rather than falling back to plain
+  exploration whenever selected.
+- **Snapshot v13** persists the newly integrated learned/social state, including
+  previously unsaved user/instruction/wildlife-social state, while keeping deterministic
+  native/WASM replay intact.
+- **Grounded offline chat replies** can answer past-tense questions such as "what did you
+  do today?" from the event timeline before falling back to state summaries.
+
 ### World richness — wildlife domestication, environment-driven goals, health events
 - **Wildlife domestication (pets)**: repeated friendly feeding lowers a prey's fear of the
   organism; below a threshold it becomes a `tamed` companion that follows at a short

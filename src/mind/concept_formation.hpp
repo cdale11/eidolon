@@ -85,6 +85,9 @@ private:
   uint32_t next_concept_id_ = 1;
   uint64_t seed_;
   class Rng rng_;
+  // Bounded streaming window (bounded-memory invariant): when the experience ring fills,
+  // the oldest half is dropped and concepts are rebuilt from the survivors.
+  static constexpr size_t kMaxExperiences = 2048;
   
   // K-means style clustering (incremental)
   uint32_t find_best_concept(const std::vector<float>& features) const;

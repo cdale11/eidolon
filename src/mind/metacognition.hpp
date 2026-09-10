@@ -12,23 +12,25 @@
 #include "body/physiology.hpp"
 #include "mind/self_model.hpp"
 #include "mind/world_predictor.hpp"
+#include "mind/learn.hpp"
 
 namespace eidolon {
 
 // Metacognition system: monitors own cognitive processes, detects prediction failures,
 // and triggers reflection
 
-struct PredictionRecord {
-  uint64_t tick = 0;
-  std::string context;          // what was being predicted
-  std::array<float, 43> predicted_features;
-  std::array<float, 43> actual_features;
-  float mse = 0.0f;
-  bool was_surprising = false;
-  
-  void serialize(struct BinaryWriter& w) const;
-  bool deserialize(struct BinaryReader& r);
-};
+static constexpr int kFeatureDim = LearnSystem::kFeatures;
+  struct PredictionRecord {
+    uint64_t tick = 0;
+    std::string context;          // what was being predicted
+    std::array<float, kFeatureDim> predicted_features;
+    std::array<float, kFeatureDim> actual_features;
+    float mse = 0.0f;
+    bool was_surprising = false;
+
+    void serialize(struct BinaryWriter& w) const;
+    bool deserialize(struct BinaryReader& r);
+  };
 
 struct ReflectionEvent {
   uint64_t tick = 0;
@@ -49,8 +51,8 @@ public:
   
   // Record a prediction and its outcome
   void record_prediction(const std::string& context,
-                         const std::array<float, 43>& predicted,
-                         const std::array<float, 43>& actual,
+                         const std::array<float, kFeatureDim>& predicted,
+                         const std::array<float, kFeatureDim>& actual,
                          uint64_t tick);
   
   // Update metacognitive state based on recent prediction errors

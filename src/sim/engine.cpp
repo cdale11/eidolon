@@ -58,6 +58,32 @@ void Engine::init(uint64_t masterSeed, bool deterministic, int worldW, int world
   memorySys_ = MemorySystem(256);
   scheduler_.reset();
   goal_emergence_ = GoalEmergence(masterSeed_);
+  // The world predictor draws its initialization weights from a dedicated stream, NOT the
+  // shared learning RNG — consuming rngLearn_ here would shift every downstream policy/
+  // threat/threat-extinction draw and break replays and the phase-5 survival gate.
+  {
+    uint64_t ps = masterSeed_ ^ 0x9E3779B97F4A7C15ULL;
+    Rng predictorRng(splitmix64(ps));
+    predictor_ = WorldPredictor(predictorRng);
+  }
+  metacognition_ = MetacognitionSystem(masterSeed_);
+  concepts_ = ConceptFormation(masterSeed_);
+  conceptGraph_ = GraphRewritingSystem(masterSeed_);
+  attachment_.initialize(masterSeed_);
+  selfModel_ = SelfModel{};
+  skills_ = SkillStore{};
+  habits_ = HabitStore{};
+  structures_ = StructureManager{};
+  crafting_ = CraftingSystem{};
+  materials_ = MaterialInventory{};
+  // A small starting stash so the crafting/construction systems are reachable without a
+  // full material economy: the organism knows how to gather a little and experiment.
+  materials_.add(MaterialType::Wood, 6);
+  materials_.add(MaterialType::Stone, 4);
+  materials_.add(MaterialType::Fiber, 3);
+  materials_.add(MaterialType::Vine, 2);
+  lastSlowMindAt_ = 0;
+  selfModel_.autobiography.birth_tick = 0;
 
   rngWorld_ = subsystemStream(masterSeed_, Subsystem::World);
   rngWeather_ = subsystemStream(masterSeed_, Subsystem::Weather);
@@ -65,6 +91,10 @@ void Engine::init(uint64_t masterSeed, bool deterministic, int worldW, int world
   rngCognition_ = subsystemStream(masterSeed_, Subsystem::Cognition);
   rngLearn_ = subsystemStream(masterSeed_, Subsystem::Learning);
   rngEvents_ = subsystemStream(masterSeed_, Subsystem::Events);
+  {
+    uint64_t cs = masterSeed_ ^ 0xC1A661A1ULL;
+    rngCrafting_ = Rng(splitmix64(cs));
+  }
 
   world_.generate(worldW > 0 ? worldW : kDefaultWorldW,
                   worldH > 0 ? worldH : kDefaultWorldH, rngWorld_);
@@ -237,6 +267,10 @@ Action Engine::tick() noexcept {
   if (clock_.now() - lastGoalEvalAt_ >= 60) {
     evaluateGoals();
   }
+
+  // Slow-layer mind systems (world model, metacognition, self-model, concepts,
+  // attachment, belief coherence) — bounded cadence, never the fine-tick hot path.
+  stepSlowMind(featsBefore_, featsAfter_, actionToPolicy(action));
 
   // Offline teacher-data dump (CLI only): one JSONL record per tick.
   if (experienceOut_)
@@ -936,28 +970,107 @@ void Engine::execute(Action a) noexcept {
     }
     case Action::Farm: {
       ++stats_.actionsFarm;
-      // Farm: simple planting/harvesting on farm plots
-      // For now, just explore toward farm plots
-      exploreStep();
+      // Farm: plant/tend/harvest on farm plots via the construction + skill systems.
+      const Vec2i p = world_.organismPos();
+      const auto plots = structures_.structuresOfType(StructureType::FarmPlot);
+      uint32_t target = 0;
+      for (uint32_t id : plots) {
+        if (const Structure* s = structures_.getStructure(id);
+            s && s->position == p) {
+          target = id;
+          break;
+        }
+      }
+      if (target == 0) {
+        // No plot here yet: place a farm plot if we have the materials, else fall through
+        // to exploration (the old behaviour).
+        if (materials_.has(MaterialType::Stone, 2)) {
+          materials_.remove(MaterialType::Stone, 2);
+          const uint32_t placed = structures_.placeStructure(
+              StructureType::FarmPlot, p, 0, clock_.now(), 0);
+          const bool ok = structures_.workOnStructure(placed, 0, 20.0f, &skills_, rngCrafting_);
+          skills_.practice(SkillType::Farming, ok);
+        } else {
+          exploreStep();
+        }
+      } else {
+        const bool ok = structures_.workOnStructure(target, 0, 15.0f, &skills_, rngCrafting_);
+        skills_.practice(SkillType::Farming, ok);
+        if (ok) ++stats_.cropsHarvested;
+      }
       break;
     }
     case Action::Cook: {
       ++stats_.actionsCook;
-      // Cook: process raw food into cooked meals
-      // Requires campfire - explore to find one
-      exploreStep();
+      bool campfire = !structures_.structuresOfType(StructureType::Campfire).empty();
+      if (campfire && body_.hunger() > 10.0) {
+        body_.eat(2.0);
+        skills_.practice(SkillType::Cooking, true);
+        ++stats_.mealsCooked;
+      } else {
+        skills_.practice(SkillType::Cooking, false);
+        exploreStep();
+      }
       break;
     }
     case Action::Craft: {
       ++stats_.actionsCraft;
-      // Craft: make tools, containers
-      exploreStep();
+      // Attempt a discovered recipe, else experiment to discover one. Both exercise the
+      // crafting + skill systems; failures teach (Beta posterior) as much as successes.
+      CraftingContext ctx;
+      ctx.skills = &skills_;
+      ctx.position = world_.organismPos();
+      ctx.hasFire = !structures_.structuresOfType(StructureType::Campfire).empty();
+      ctx.hasWater = world_.adjacentToWater(world_.organismPos());
+      ctx.weatherModifier = (world_.weather().storming() || world_.weather().snowing()) ? 0.7f : 1.0f;
+      // Copy the material counts into the crafting context's map.
+      for (uint8_t m = 0; m < static_cast<uint8_t>(MaterialType::Count); ++m) {
+        const uint32_t c = materials_.count(static_cast<MaterialType>(m));
+        if (c > 0) ctx.availableMaterials[static_cast<MaterialType>(m)] = c;
+      }
+      const auto avail = crafting_.getAvailableRecipes(ctx);
+      if (!avail.empty()) {
+        const auto* chosen = avail[0];
+        CraftingResult res = crafting_.attemptCraft(chosen->id, ctx, rngCrafting_);
+        if (res.success) {
+          if (res.producedMaterial != MaterialType::None)
+            materials_.add(res.producedMaterial, res.producedQuantity);
+          if (res.producedStructure != StructureType::None)
+            structures_.placeStructure(res.producedStructure, ctx.position, 0, clock_.now(), 0);
+          skills_.practice(SkillType::ToolUse, true);
+          ++stats_.itemsCrafted;
+        } else {
+          skills_.practice(SkillType::RecipeDiscovery, false);
+        }
+      } else {
+        crafting_.experiment(ctx, rngCrafting_);
+      }
       break;
     }
     case Action::Build: {
       ++stats_.actionsBuild;
-      // Build: construct farm plots, wells, shelters
-      exploreStep();
+      // Build a shelter at the current position via the construction manager, consuming
+      // materials and advancing the shelter-building skill.
+      const Vec2i p = world_.organismPos();
+      auto shelters = structures_.structuresOfType(StructureType::Shelter);
+      uint32_t sid = 0;
+      for (uint32_t id : shelters) {
+        if (const Structure* s = structures_.getStructure(id); s && s->position == p) { sid = id; break; }
+      }
+      if (sid == 0) {
+        if (materials_.has(MaterialType::Wood, 2)) {
+          sid = structures_.placeStructure(StructureType::Shelter, p, 0, clock_.now(), 0);
+          materials_.remove(MaterialType::Wood, 2);
+        }
+      }
+      if (sid != 0) {
+        const bool ok = structures_.workOnStructure(sid, 0, 20.0f, &skills_, rngCrafting_);
+        skills_.practice(SkillType::ShelterBuilding, ok);
+        if (ok) ++stats_.structuresBuilt;
+      } else {
+        skills_.practice(SkillType::ShelterBuilding, false);
+        exploreStep();
+      }
       break;
     }
     case Action::CollectWater: {
@@ -1001,15 +1114,13 @@ void Engine::execute(Action a) noexcept {
     }
     case Action::Preserve: {
       ++stats_.actionsPreserve;
-      // Preserve: dry, smoke, ferment food
-      // Requires campfire
-      bool hasCampfire = false;
-      for (const auto& s : world_.structures()) {
-        if (s.type == StructureType::Campfire) { hasCampfire = true; break; }
-      }
+      // Preserve: dry/smoke food — requires a campfire, practises the cooking skill.
+      const bool hasCampfire = !structures_.structuresOfType(StructureType::Campfire).empty();
       if (hasCampfire) {
         ++stats_.foodPreserved;
+        skills_.practice(SkillType::Cooking, true);
       } else {
+        skills_.practice(SkillType::Cooking, false);
         exploreStep();
       }
       break;
@@ -1116,6 +1227,7 @@ void Engine::serializeState(BinaryWriter& w) const {
   serializeRng(w, rngCognition_);
   serializeRng(w, rngLearn_);
   serializeRng(w, rngEvents_);
+  serializeRng(w, rngCrafting_);
   world_.serialize(w);
   body_.serialize(w);
   memorySys_.serialize(w);
@@ -1149,6 +1261,23 @@ void Engine::serializeState(BinaryWriter& w) const {
   // v12: goal-emergence throttle (environment-driven goal evaluation cadence).
   w.i64(lastGoalEvalAt_);
   w.u8(wasSick_ ? 1 : 0);
+  // v13: integrated standalone systems + previously-unsaved learned/social state.
+  w.i64(lastSlowMindAt_);
+  userModel_.serialize(w);
+  instructionLearning_.serialize(w);
+  wildlife_social_.serialize(w);
+  attachment_.serialize(w);
+  selfModel_.serialize(w);
+  metacognition_.serialize(w);
+  concepts_.serialize(w);
+  predictor_.serialize(w);
+  skills_.serialize(w);
+  habits_.serialize(w);
+  crafting_.serialize(w);
+  structures_.serialize(w);
+  materials_.serialize(w);
+  beliefs_.serialize(w);
+  conceptGraph_.serialize(w);
 }
 
 bool Engine::deserializeState(BinaryReader& r, std::string& err) {
@@ -1173,7 +1302,8 @@ bool Engine::deserializeState(BinaryReader& r, std::string& err) {
   prevMode_ = prevMode;
   if (!deserializeRng(r, rngWorld_) || !deserializeRng(r, rngWeather_) ||
       !deserializeRng(r, rngBody_) || !deserializeRng(r, rngCognition_) ||
-      !deserializeRng(r, rngLearn_) || !deserializeRng(r, rngEvents_)) {
+      !deserializeRng(r, rngLearn_) || !deserializeRng(r, rngEvents_) ||
+      !deserializeRng(r, rngCrafting_)) {
     err = "snapshot rng corrupt";
     return false;
   }
@@ -1227,6 +1357,22 @@ bool Engine::deserializeState(BinaryReader& r, std::string& err) {
     return false;
   }
   wasSick_ = wasSickByte != 0;
+  // v13: integrated standalone systems + previously-unsaved learned/social state.
+  if (!r.i64(lastSlowMindAt_)) {
+    err = "snapshot slow-mind corrupt";
+    return false;
+  }
+  if (!userModel_.deserialize(r) || !instructionLearning_.deserialize(r) ||
+      !wildlife_social_.deserialize(r) || !attachment_.deserialize(r) ||
+      !selfModel_.deserialize(r) || !metacognition_.deserialize(r) ||
+      !concepts_.deserialize(r) || !predictor_.deserialize(r) ||
+      !skills_.deserialize(r) || !habits_.deserialize(r) ||
+      !crafting_.deserialize(r) || !structures_.deserialize(r) ||
+      !materials_.deserialize(r) ||
+      !beliefs_.deserialize(r) || !conceptGraph_.deserialize(r)) {
+    err = "snapshot integrated-system corrupt";
+    return false;
+  }
   return r.done();
 }
 
@@ -1364,6 +1510,76 @@ bool Engine::tameNearestPrey(int radius, bool& tamedNow) noexcept {
                   Relevance::Rewarding | Relevance::Social | Relevance::GoalRelated);
   }
   return true;
+}
+
+void Engine::stepSlowMind(const float* featsBefore, const float* featsAfter, PolicyAction pa) noexcept {
+  // Bounded cadence: 30 sim-seconds. Deterministic, allocation-light (reuses fixed
+  // arrays and small pre-allocated buffers).
+  const int64_t now = clock_.now();
+  if (now - lastSlowMindAt_ < 30) return;
+  lastSlowMindAt_ = now;
+
+  // Map the chosen policy action onto a planning-primitive index (0..6). The 6 advanced
+  // actions (Farm/Cook/Craft/Build/CollectWater/Preserve) fold onto "hold" for the world
+  // model — they are compound behaviours, not atomic transitions the predictor models.
+  auto primitive = [](PolicyAction a) -> uint8_t {
+    switch (a) {
+      case PolicyAction::Forage: return 0;
+      case PolicyAction::Drink: return 1;
+      case PolicyAction::Rest: return 2;
+      case PolicyAction::Wander: return 3;
+      case PolicyAction::Observe: return 4;
+      case PolicyAction::Flee: return 5;
+      default: return 6; // hold (sleep / advanced compound actions)
+    }
+  };
+
+  std::array<float, WorldPredictor::kFeatureDim> before{}, after{};
+  for (int i = 0; i < WorldPredictor::kFeatureDim; ++i) {
+    before[i] = featsBefore[i];
+    after[i] = featsAfter[i];
+  }
+  const uint8_t prim = primitive(pa);
+
+  // 1) Predict next state, then train the world model on the observed transition.
+  const auto prediction = predictor_.predict(before, prim, rngLearn_);
+  const auto& predicted = prediction.first;
+  predictor_.train(before, prim, after, rngLearn_);
+
+  // 2) Metacognition: record the prediction error and, when surprising, reflect (updates
+  //    self-uncertainty/confidence, occasionally triggering the self-model reflection).
+  metacognition_.record_prediction("world", predicted, after, now);
+  if (metacognition_.should_reflect()) {
+    metacognition_.trigger_reflection("world", [&] {
+      float mse = 0.0f;
+      for (int i = 0; i < WorldPredictor::kFeatureDim; ++i) {
+        const float d = predicted[i] - after[i];
+        mse += d * d;
+      }
+      return mse / static_cast<float>(WorldPredictor::kFeatureDim);
+    }());
+  }
+
+  // 3) Self-model: update capabilities/autobiography/preferences from current body state.
+  //    (prev body is unused by SelfModel::update_from_experience; pass current for both.)
+  selfModel_.update_from_experience(body_, goal_emergence_, body_, now);
+  selfModel_.self_uncertainty = metacognition_.get_uncertainty();
+  selfModel_.prediction_confidence = metacognition_.get_confidence();
+  selfModel_.prediction_errors = metacognition_.get_prediction_errors();
+  selfModel_.reflection_count = metacognition_.get_reflection_count();
+
+  // 4) Concept formation: cluster the current experience (throttled; keeps the buffer
+  //    bounded by only feeding one experience per slow step).
+  std::vector<float> feats(WorldPredictor::kFeatureDim);
+  for (int i = 0; i < WorldPredictor::kFeatureDim; ++i) feats[i] = featsAfter[i];
+  concepts_.process_experience(feats, "tick", now, rngCrafting_);
+  conceptGraph_.sync_with_concepts(concepts_);
+
+  // 5) Attachment + belief coherence tick (attachment pressure decays/grows; beliefs
+  //    settle toward coherence). Use the isolated slow-system stream so this cannot
+  //    perturb core cognition/exploration draws.
+  attachment_.update(now);
+  beliefs_.update(rngCrafting_, 1.0f);
 }
 
 void Engine::evaluateGoals() noexcept {

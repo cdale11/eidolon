@@ -8,6 +8,7 @@
 
 #include "core/serialize.hpp"
 #include "mind/mlp.hpp"
+#include "mind/learn.hpp"
 
 namespace eidolon {
 
@@ -15,8 +16,15 @@ namespace eidolon {
 // given current features and action. Also outputs confidence/uncertainty.
 class WorldPredictor {
 public:
-  static constexpr int kInputSize = 43 + 7;  // 43 features + 7 action one-hot
-  static constexpr int kOutputSize = 43;     // predicts next 43 features
+  // Feature dimension is the canonical learner state vector (LearnSystem::kFeatures),
+  // plus a one-hot over the planning primitive actions. Planning only considers the
+  // 7 basic primitives (Forage/Drink/Rest/Wander/Observe/Flee + Hold) — the advanced
+  // Farm/Cook/Craft/Build/CollectWater/Preserve actions are compound behaviours the
+  // planner composes from the primitives, not atomic fantasy steps.
+  static constexpr int kFeatureDim = LearnSystem::kFeatures;
+  static constexpr int kPlanPrimitives = 7;
+  static constexpr int kInputSize = kFeatureDim + kPlanPrimitives;
+  static constexpr int kOutputSize = kFeatureDim;
   static constexpr int kHiddenSize = 64;
 
   WorldPredictor() = default;
@@ -24,14 +32,14 @@ public:
 
   // Predict next features given current features and action
   // Returns {predicted_features, confidence}
-  std::pair<std::array<float, 43>, float> predict(
-      const std::array<float, 43>& current_features, uint8_t action,
+  std::pair<std::array<float, kFeatureDim>, float> predict(
+      const std::array<float, kFeatureDim>& current_features, uint8_t action,
       class Rng& rng) const;
 
   // Train on a transition (features, action, next_features)
   // Returns prediction error (MSE)
-  float train(const std::array<float, 43>& current_features, uint8_t action,
-              const std::array<float, 43>& next_features,
+  float train(const std::array<float, kFeatureDim>& current_features, uint8_t action,
+              const std::array<float, kFeatureDim>& next_features,
               class Rng& rng, float learning_rate = 0.001f);
 
   // Serialize/deserialize
@@ -39,16 +47,16 @@ public:
   bool deserialize(struct BinaryReader& r);
 
 private:
-  // Use linear model for each output feature (43 separate linear models)
+  // Use linear model for each output feature (kFeatureDim separate linear models)
   // weights[i][j] = weight from input j to output i
   // bias[i] = bias for output i
-  std::vector<std::vector<float>> weights_; // [43][50]
-  std::vector<float> bias_; // [43]
+  std::vector<std::vector<float>> weights_; // [kFeatureDim][kInputSize]
+  std::vector<float> bias_; // [kFeatureDim]
   bool initialized_ = false;
 
   void init(class Rng& rng);
   std::array<float, kInputSize> buildInput(
-      const std::array<float, 43>& features, uint8_t action) const;
+      const std::array<float, kFeatureDim>& features, uint8_t action) const;
 };
 
 // Planner: forward/beam search over action primitives using WorldPredictor
@@ -57,7 +65,7 @@ public:
   struct PlanStep {
     uint8_t action;
     float predicted_value;
-    std::array<float, 43> predicted_features;
+    std::array<float, WorldPredictor::kFeatureDim> predicted_features;
   };
 
   struct Plan {
@@ -71,19 +79,19 @@ public:
   explicit Planner(const WorldPredictor* predictor, class Rng& rng);
 
   // Beam search planning
-  Plan plan(const std::array<float, 43>& current_features,
+  Plan plan(const std::array<float, WorldPredictor::kFeatureDim>& current_features,
             int horizon, int beam_width,
-            const std::array<float, 43>& goal_features,
+            const std::array<float, WorldPredictor::kFeatureDim>& goal_features,
             class Rng& rng) const;
 
   // Forward search (greedy)
-  Plan planGreedy(const std::array<float, 43>& current_features,
-                  int horizon, const std::array<float, 43>& goal_features,
+  Plan planGreedy(const std::array<float, WorldPredictor::kFeatureDim>& current_features,
+                  int horizon, const std::array<float, WorldPredictor::kFeatureDim>& goal_features,
                   class Rng& rng) const;
 
   // Replan on surprise (prediction error > threshold)
-  bool shouldReplan(const std::array<float, 43>& predicted,
-                    const std::array<float, 43>& actual,
+  bool shouldReplan(const std::array<float, WorldPredictor::kFeatureDim>& predicted,
+                    const std::array<float, WorldPredictor::kFeatureDim>& actual,
                     float surprise_threshold) const;
 
 private:
@@ -91,8 +99,8 @@ private:
   [[maybe_unused]] class Rng* rng_; // reserved: stochastic replan jitters
   [[maybe_unused]] float surprise_threshold_ = 0.5f; // replan() takes it by argument
 
-  float computeValue(const std::array<float, 43>& features,
-                     const std::array<float, 43>& goal) const;
+  float computeValue(const std::array<float, WorldPredictor::kFeatureDim>& features,
+                     const std::array<float, WorldPredictor::kFeatureDim>& goal) const;
 };
 
 } // namespace eidolon

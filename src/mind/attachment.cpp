@@ -1,58 +1,62 @@
 #include "mind/attachment.hpp"
+#include "core/rng.hpp"
 #include <algorithm>
 #include <cmath>
-#include <random>
 
 namespace eidolon {
 
 void AttachmentSystem::initialize(uint64_t seed) {
-  std::mt19937 rng(seed);
-  std::uniform_real_distribution<float> dist(0.0f, 1.0f);
-  
+  // Deterministic, portable RNG (xoshiro256++ with splitmix seeding) — never std::mt19937
+  // or rand(), which permute differently across libstdc++/libc++ and would break the
+  // native/WASM bit-exact parity invariant.
+  Rng rng(seed);
+
   // Randomly assign attachment style based on probabilities
-  float r = static_cast<float>(dist(rng));
+  const float r = static_cast<float>(rng.unit());
   if (r < 0.55f) style = AttachmentStyle::Secure;
   else if (r < 0.75f) style = AttachmentStyle::Anxious;
   else if (r < 0.90f) style = AttachmentStyle::Avoidant;
   else style = AttachmentStyle::Disorganized;
-  
+
+  const auto uni = [&]() { return static_cast<float>(rng.unit()); };
+
   // Set initial parameters based on style
   switch (style) {
     case AttachmentStyle::Secure:
-      attachment_strength = 0.6f + 0.2f * static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-      separation_anxiety = 0.2f + 0.2f * static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-      reunion_response = 0.6f + 0.3f * static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+      attachment_strength = 0.6f + 0.2f * uni();
+      separation_anxiety = 0.2f + 0.2f * uni();
+      reunion_response = 0.6f + 0.3f * uni();
       seeks_proximity_on_reunion = true;
       shows_distress_on_separation = true;
       explores_when_user_present = true;
       explores_when_user_absent = true;
       break;
     case AttachmentStyle::Anxious:
-      attachment_strength = 0.7f + 0.2f * static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-      separation_anxiety = 0.6f + 0.3f * static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-      reunion_response = 0.8f + 0.2f * static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+      attachment_strength = 0.7f + 0.2f * uni();
+      separation_anxiety = 0.6f + 0.3f * uni();
+      reunion_response = 0.8f + 0.2f * uni();
       seeks_proximity_on_reunion = true;
       shows_distress_on_separation = true;
       explores_when_user_present = true;
       explores_when_user_absent = false;
       break;
     case AttachmentStyle::Avoidant:
-      attachment_strength = 0.3f + 0.2f * static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-      separation_anxiety = 0.1f + 0.1f * static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-      reunion_response = 0.2f + 0.2f * static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+      attachment_strength = 0.3f + 0.2f * uni();
+      separation_anxiety = 0.1f + 0.1f * uni();
+      reunion_response = 0.2f + 0.2f * uni();
       seeks_proximity_on_reunion = false;
       shows_distress_on_separation = false;
       explores_when_user_present = true;
       explores_when_user_absent = true;
       break;
     case AttachmentStyle::Disorganized:
-      attachment_strength = 0.4f + 0.3f * static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-      separation_anxiety = 0.4f + 0.4f * static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-      reunion_response = 0.3f + 0.4f * static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-      seeks_proximity_on_reunion = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) > 0.5f;
+      attachment_strength = 0.4f + 0.3f * uni();
+      separation_anxiety = 0.4f + 0.4f * uni();
+      reunion_response = 0.3f + 0.4f * uni();
+      seeks_proximity_on_reunion = uni() > 0.5f;
       shows_distress_on_separation = true;
-      explores_when_user_present = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) > 0.5f;
-      explores_when_user_absent = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) > 0.5f;
+      explores_when_user_present = uni() > 0.5f;
+      explores_when_user_absent = uni() > 0.5f;
       break;
   }
 }

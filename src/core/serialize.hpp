@@ -24,7 +24,12 @@ constexpr uint32_t kSnapshotMagic = 0x4549444C; // "EIDL"
 // v11: Sleep architecture: Physiology::sleeping_ bool replaced by SleepStage (+ elapsed
 //      time in stage) so drowsy/light/deep/REM stages persist across save/load.
 // v12: Wildlife domestication: WildlifeAgent gains a `tamed` flag (companion state).
-constexpr uint32_t kSnapshotVersion = 12;
+// v13: Integrated the standalone mind/body systems into the engine and persisted their
+//      state: WorldPredictor, SelfModel, Metacognition, ConceptFormation, AttachmentSystem,
+//      BeliefIsingModel, GraphRewritingSystem, SkillStore, HabitStore, CraftingSystem,
+//      StructureManager — plus the previously-unserialized UserModel, InstructionMemory
+//      and WildlifeSocialSystem (their learned state was silently dropped on save/load).
+constexpr uint32_t kSnapshotVersion = 13;
 
 struct BinaryWriter {
 public:

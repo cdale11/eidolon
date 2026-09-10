@@ -1106,6 +1106,13 @@ std::string Server::sendMessage(const std::string& conversationIdStr,
   {
     std::lock_guard<std::mutex> lock(engineMu_);
     snap = makeSnapshot(engine_);
+    // A user message marks the user present: it resets separation and drives a reunion
+    // response through the attachment system, so the organism's attitude toward the user
+    // (and its behaviour around presence/absence) evolves from real interaction.
+    const int64_t t = engine_.clock().now();
+    engine_.userModel().set_user_present(true, t);
+    engine_.userModel().record_interaction(true, t);
+    engine_.attachment().on_user_returns(t);
   }
 
   if (archive_) {
@@ -1129,7 +1136,10 @@ std::string Server::sendMessage(const std::string& conversationIdStr,
       reply = fallbackReply(snap, trimmed, userHour);
     }
   } else {
-    reply = fallbackReply(snap, trimmed, userHour);
+    // Offline: prefer grounded language for past-tense questions ("what did you do
+    // today?") resolved from the real event timeline, then the state-based fallback.
+    reply = groundedReply(trimmed);
+    if (reply.empty()) reply = fallbackReply(snap, trimmed, userHour);
   }
 
   if (archive_) {
@@ -1139,6 +1149,30 @@ std::string Server::sendMessage(const std::string& conversationIdStr,
   std::string out = "{\"conversation_id\":" + std::to_string(convId) +
                     ",\"reply\":\"" + jsonEscape(reply) + "\"}";
   return out;
+}
+
+std::string Server::groundedReply(const std::string& text) {
+  if (!archive_) return "";
+  // Only route past-tense/personal-history questions to the grounded timeline; everything
+  // else returns "" so the caller falls through to the state-based fallback reply.
+  const bool asksAboutDay = text.find("what did you do") != std::string::npos ||
+                            text.find("did you do") != std::string::npos;
+  const bool asksPast = text.find("what happened") != std::string::npos ||
+                        text.find("while i was away") != std::string::npos ||
+                        text.find("while I was away") != std::string::npos;
+  if (!asksAboutDay && !asksPast) return "";
+
+  std::lock_guard<std::mutex> lock(engineMu_);
+  const MemoryRing& mem = engine_.memory();
+  const uint64_t now = static_cast<uint64_t>(engine_.clock().now());
+  std::optional<GroundedUtterance> u;
+  if (asksAboutDay) {
+    u = grounded_.answer_what_did_you_do(*archive_, mem, now);
+  } else {
+    u = grounded_.answer_about_past(*archive_, mem, text, now);
+  }
+  if (!u) return "";
+  return u->text;
 }
 
 std::string Server::conversationsJson() {

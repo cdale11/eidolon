@@ -13,19 +13,19 @@ TEST(world_predictor_basic) {
   Rng rng(42);
   WorldPredictor predictor(rng);
 
-  std::array<float, 43> features{};
-  for (int i = 0; i < 43; ++i) features[i] = static_cast<float>(i) / 43.0f;
+  std::array<float, WorldPredictor::kFeatureDim> features{};
+  for (int i = 0; i < WorldPredictor::kFeatureDim; ++i) features[i] = static_cast<float>(i) / static_cast<float>(WorldPredictor::kFeatureDim);
 
   // Test prediction
   auto [predicted, conf] = predictor.predict(features, 0, rng);
   CHECK(conf >= 0.0f && conf <= 1.0f);
-  for (int i = 0; i < 43; ++i) {
+  for (int i = 0; i < WorldPredictor::kFeatureDim; ++i) {
     CHECK(!std::isnan(predicted[i]));
   }
 
   // Test training
-  std::array<float, 43> next_features{};
-  for (int i = 0; i < 43; ++i) next_features[i] = features[i] + 0.1f;
+  std::array<float, WorldPredictor::kFeatureDim> next_features{};
+  for (int i = 0; i < WorldPredictor::kFeatureDim; ++i) next_features[i] = features[i] + 0.1f;
 
   Rng train_rng(123);
   float mse = predictor.train(features, 0, next_features, train_rng, 0.01f);
@@ -40,7 +40,7 @@ TEST(world_predictor_basic) {
 // WorldPredictor predictor2(rng2);
 // CHECK(predictor2.deserialize(r));
 // auto [predicted2, conf2] = predictor2.predict(features, 0, rng);
-// for (int i = 0; i < 43; ++i) {
+// for (int i = 0; i < WorldPredictor::kFeatureDim; ++i) {
 //   CHECK(std::abs(predicted2[i] - predicted[i]) < 1e-4f); // relaxed tolerance
 // }
 }
@@ -49,11 +49,11 @@ TEST(world_predictor_training_converges) {
   Rng rng(123);
   WorldPredictor predictor(rng);
 
-  std::array<float, 43> features{};
-  for (int i = 0; i < 43; ++i) features[i] = 0.5f;
+  std::array<float, WorldPredictor::kFeatureDim> features{};
+  for (int i = 0; i < WorldPredictor::kFeatureDim; ++i) features[i] = 0.5f;
 
-  std::array<float, 43> target{};
-  for (int i = 0; i < 43; ++i) target[i] = 1.0f;
+  std::array<float, WorldPredictor::kFeatureDim> target{};
+  for (int i = 0; i < WorldPredictor::kFeatureDim; ++i) target[i] = 1.0f;
 
   float prev_mse = 1e9f;
   for (int epoch = 0; epoch < 200; ++epoch) {
@@ -74,11 +74,11 @@ TEST(planner_greedy) {
   WorldPredictor predictor(rng);
   Planner planner(&predictor, rng);
 
-  std::array<float, 43> current{};
-  for (int i = 0; i < 43; ++i) current[i] = 0.1f;
+  std::array<float, WorldPredictor::kFeatureDim> current{};
+  for (int i = 0; i < WorldPredictor::kFeatureDim; ++i) current[i] = 0.1f;
 
-  std::array<float, 43> goal{};
-  for (int i = 0; i < 43; ++i) goal[i] = 1.0f;
+  std::array<float, WorldPredictor::kFeatureDim> goal{};
+  for (int i = 0; i < WorldPredictor::kFeatureDim; ++i) goal[i] = 1.0f;
 
   auto plan = planner.planGreedy(current, 5, goal, rng);
   CHECK(plan.valid);
@@ -92,11 +92,11 @@ TEST(planner_beam_search) {
   WorldPredictor predictor(rng);
   Planner planner(&predictor, rng);
 
-  std::array<float, 43> current{};
-  for (int i = 0; i < 43; ++i) current[i] = 0.1f;
+  std::array<float, WorldPredictor::kFeatureDim> current{};
+  for (int i = 0; i < WorldPredictor::kFeatureDim; ++i) current[i] = 0.1f;
 
-  std::array<float, 43> goal{};
-  for (int i = 0; i < 43; ++i) goal[i] = 1.0f;
+  std::array<float, WorldPredictor::kFeatureDim> goal{};
+  for (int i = 0; i < WorldPredictor::kFeatureDim; ++i) goal[i] = 1.0f;
 
   auto plan = planner.plan(current, 4, 3, goal, rng);
   CHECK(plan.valid);
@@ -109,17 +109,17 @@ TEST(planner_replan_on_surprise) {
   WorldPredictor predictor(rng);
   Planner planner(&predictor, rng);
 
-  std::array<float, 43> predicted{};
-  for (int i = 0; i < 43; ++i) predicted[i] = 0.5f;
+  std::array<float, WorldPredictor::kFeatureDim> predicted{};
+  for (int i = 0; i < WorldPredictor::kFeatureDim; ++i) predicted[i] = 0.5f;
 
-  std::array<float, 43> actual{};
-  for (int i = 0; i < 43; ++i) actual[i] = 0.0f; // big difference
+  std::array<float, WorldPredictor::kFeatureDim> actual{};
+  for (int i = 0; i < WorldPredictor::kFeatureDim; ++i) actual[i] = 0.0f; // big difference
 
   // Low threshold should trigger replan
   CHECK(planner.shouldReplan(predicted, actual, 0.1f));
 
   // High threshold should not trigger replan
-  std::array<float, 43> actual2{};
-  for (int i = 0; i < 43; ++i) actual2[i] = 0.49f; // small difference
+  std::array<float, WorldPredictor::kFeatureDim> actual2{};
+  for (int i = 0; i < WorldPredictor::kFeatureDim; ++i) actual2[i] = 0.49f; // small difference
   CHECK(!planner.shouldReplan(predicted, actual2, 0.1f));
 }

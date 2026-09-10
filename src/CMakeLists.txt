@@ -40,6 +40,12 @@ add_library(eidolon_core STATIC
   mind/wildlife_social.cpp
   mind/attachment.cpp
   mind/belief_ising.cpp
+  mind/self_model.cpp
+  mind/metacognition.cpp
+  mind/concept_formation.cpp
+  mind/graph_rewriting.cpp
+  mind/grounded_language.cpp
+  mind/reflection.cpp
   mind/compute_profile.cpp
   mind/compute_scheduler.cpp
   sim/engine.cpp)

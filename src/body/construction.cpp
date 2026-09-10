@@ -111,6 +111,41 @@ StructureManager::StructureManager() {
   initDefaultBlueprints();
 }
 
+// Seed blueprints for the basic survival structures (shelter/farm/well/campfire/lean-to).
+// These are the "known-for-certain" recipes DESIGN §4 seeds; others are discovered
+// through the crafting system's experiment() path.
+void StructureManager::initDefaultBlueprints() {
+  auto add = [&](StructureType type, const char* name, uint32_t maxProgress,
+                 uint32_t maxHealth, bool shelter, bool storage, bool warmth,
+                 uint32_t storageCap, bool walkable,
+                 std::initializer_list<RecipeIngredient> mats) {
+    StructureBlueprint bp;
+    bp.type = type;
+    bp.name = name;
+    bp.maxProgress = maxProgress;
+    bp.maxHealth = maxHealth;
+    bp.providesShelter = shelter;
+    bp.providesStorage = storage;
+    bp.providesWarmth = warmth;
+    bp.storageCapacity = storageCap;
+    bp.isWalkable = walkable;
+    bp.materials.assign(mats.begin(), mats.end());
+    bp.footprint = {{0, 0}};
+    blueprints_[type] = bp;
+  };
+
+  add(StructureType::Shelter, "shelter", 100, 200, true, true, true, 8, false,
+      {{MaterialType::Wood, 6}, {MaterialType::Vine, 3}});
+  add(StructureType::FarmPlot, "farm plot", 40, 50, false, false, false, 0, false,
+      {{MaterialType::Stone, 2}, {MaterialType::Sand, 1}});
+  add(StructureType::Well, "well", 60, 80, false, true, false, 4, false,
+      {{MaterialType::Stone, 5}, {MaterialType::Clay, 2}});
+  add(StructureType::Campfire, "campfire", 20, 30, false, false, true, 0, false,
+      {{MaterialType::Wood, 3}});
+  add(StructureType::LeanTo, "lean-to", 50, 90, true, false, false, 0, false,
+      {{MaterialType::Wood, 4}, {MaterialType::Fiber, 2}});
+}
+
 std::vector<Vec2i> StructureManager::computeFootprint(StructureType type, Vec2i pos, uint8_t /*rotation*/) const {
   auto it = blueprints_.find(type);
   if (it == blueprints_.end()) return {};
@@ -298,15 +333,26 @@ const StructureBlueprint* StructureManager::getBlueprint(StructureType type) con
 }
 
 void StructureManager::serialize(struct BinaryWriter& w) const {
-  w.u32(static_cast<uint32_t>(structures_.size()));
-  for (const auto& kv : structures_) {
-    kv.second.serialize(w);
-  }
+  // Deterministic ordering (unordered_map iteration order is not stable across rebuilds).
+  std::vector<const Structure*> structs;
+  structs.reserve(structures_.size());
+  for (const auto& kv : structures_) structs.push_back(&kv.second);
+  std::sort(structs.begin(), structs.end(),
+            [](const Structure* a, const Structure* b) { return a->id < b->id; });
+  w.u32(static_cast<uint32_t>(structs.size()));
+  for (const Structure* s : structs) s->serialize(w);
+
+  std::vector<const StructureBlueprint*> bps;
+  bps.reserve(blueprints_.size());
+  for (const auto& kv : blueprints_) bps.push_back(&kv.second);
+  std::sort(bps.begin(), bps.end(),
+            [](const StructureBlueprint* a, const StructureBlueprint* b) {
+              return static_cast<uint8_t>(a->type) < static_cast<uint8_t>(b->type);
+            });
+  w.u32(static_cast<uint32_t>(bps.size()));
+  for (const StructureBlueprint* b : bps) b->serialize(w);
+
   w.u32(nextId_);
-  w.u32(static_cast<uint32_t>(blueprints_.size()));
-  for (const auto& kv : blueprints_) {
-    kv.second.serialize(w);
-  }
 }
 
 bool StructureManager::deserialize(struct BinaryReader& r) {
@@ -318,13 +364,15 @@ bool StructureManager::deserialize(struct BinaryReader& r) {
     if (!s.deserialize(r)) return false;
     structures_[s.id] = s;
   }
-  if (!r.u32(nextId_)) return false;
-  if (!r.u32(n)) return false;
-  for (size_t i = 0; i < static_cast<size_t>(n); ++i) {
+  uint32_t m;
+  if (!r.u32(m)) return false;
+  blueprints_.clear();
+  for (size_t i = 0; i < static_cast<size_t>(m); ++i) {
     StructureBlueprint bp;
     if (!bp.deserialize(r)) return false;
     blueprints_[bp.type] = bp;
   }
+  if (!r.u32(nextId_)) return false;
   return true;
 }
 

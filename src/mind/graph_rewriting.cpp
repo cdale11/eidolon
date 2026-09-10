@@ -11,7 +11,11 @@ void GraphNode::serialize(struct BinaryWriter& w) const {
   w.u8(static_cast<uint8_t>(type));
   w.str(label);
   w.u32(static_cast<uint32_t>(properties.size()));
-  for (const auto& kv : properties) {
+  // Deterministic key order (unordered_map iteration order is not stable across builds).
+  std::vector<std::pair<std::string, std::string>> props(properties.begin(), properties.end());
+  std::sort(props.begin(), props.end(),
+            [](const auto& a, const auto& b) { return a.first < b.first; });
+  for (const auto& kv : props) {
     w.str(kv.first);
     w.str(kv.second);
   }
@@ -513,12 +517,17 @@ bool GraphRewritingSystem::apply_rule_at_match(const RewriteRule& rule, const st
 }
 
 void GraphRewritingSystem::sync_with_concepts(const ConceptFormation& concepts) {
+  // Idempotent: the concept-graph mirrors the concept-formation output, not a growing
+  // log. Remove every existing Concept node first, then re-add one per concept so the
+  // node set stays bounded and round-trips deterministically.
+  for (uint32_t id : get_nodes_by_type(NodeType::Concept)) {
+    remove_node_internal(id);
+  }
   for (const auto& c : concepts.get_concepts()) {
     std::unordered_map<std::string, std::string> props;
     props["cohesion"] = std::to_string(c.cohesion);
     props["separation"] = std::to_string(c.separation);
     props["usage"] = std::to_string(c.usage_count);
-    
     add_node(NodeType::Concept, c.name, props);
   }
 }
@@ -529,18 +538,31 @@ GraphRewritingSystem::Subgraph GraphRewritingSystem::get_subgraph_for_concept(ui
 }
 
 void GraphRewritingSystem::serialize(struct BinaryWriter& w) const {
-  w.u32(static_cast<uint32_t>(nodes_.size()));
-  for (const auto& kv : nodes_) {
-    kv.second.data.serialize(w);
-  }
-  w.u32(static_cast<uint32_t>(edges_.size()));
-  for (const auto& kv : edges_) {
-    kv.second.data.serialize(w);
-  }
-  w.u32(static_cast<uint32_t>(rules_.size()));
-  for (const auto& kv : rules_) {
-    kv.second.serialize(w);
-  }
+  // Deterministic ordering by id (unordered_map iteration order is not stable).
+  std::vector<const Node*> nodes;
+  nodes.reserve(nodes_.size());
+  for (const auto& kv : nodes_) nodes.push_back(&kv.second);
+  std::sort(nodes.begin(), nodes.end(),
+            [](const Node* a, const Node* b) { return a->data.id < b->data.id; });
+  w.u32(static_cast<uint32_t>(nodes.size()));
+  for (const Node* n : nodes) n->data.serialize(w);
+
+  std::vector<const Edge*> edges;
+  edges.reserve(edges_.size());
+  for (const auto& kv : edges_) edges.push_back(&kv.second);
+  std::sort(edges.begin(), edges.end(),
+            [](const Edge* a, const Edge* b) { return a->data.id < b->data.id; });
+  w.u32(static_cast<uint32_t>(edges.size()));
+  for (const Edge* e : edges) e->data.serialize(w);
+
+  std::vector<const RewriteRule*> rules;
+  rules.reserve(rules_.size());
+  for (const auto& kv : rules_) rules.push_back(&kv.second);
+  std::sort(rules.begin(), rules.end(),
+            [](const RewriteRule* a, const RewriteRule* b) { return a->id < b->id; });
+  w.u32(static_cast<uint32_t>(rules.size()));
+  for (const RewriteRule* r : rules) r->serialize(w);
+
   w.u32(next_node_id_);
   w.u32(next_edge_id_);
   w.u32(next_rule_id_);

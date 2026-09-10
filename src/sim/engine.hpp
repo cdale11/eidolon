@@ -19,8 +19,16 @@
 #include "mind/memory_system.hpp"
 #include "mind/heredity.hpp"
 #include "mind/wildlife_social.hpp"
+#include "mind/world_predictor.hpp"
+#include "mind/self_model.hpp"
+#include "mind/metacognition.hpp"
+#include "mind/concept_formation.hpp"
+#include "mind/attachment.hpp"
+#include "mind/belief_ising.hpp"
+#include "mind/graph_rewriting.hpp"
 #include "body/crafting.hpp"
 #include "body/construction.hpp"
+#include "body/skill.hpp"
 #include "llm/instruction_learning.hpp"
 #include "mind/goal_emergence.hpp"
 #include "world/world.hpp"
@@ -223,6 +231,30 @@ bool loadPolicyPrior(const std::string& path);
   // true if any prey was fed (and reports whether it became tamed via `tamedNow`).
   bool tameNearestPrey(int radius, bool& tamedNow) noexcept;
 
+  // --- Integrated standalone systems (Phase 7-9 onwards) ---
+  WorldPredictor& predictor() { return predictor_; }
+  const WorldPredictor& predictor() const { return predictor_; }
+  SelfModel& selfModel() { return selfModel_; }
+  const SelfModel& selfModel() const { return selfModel_; }
+  MetacognitionSystem& metacognition() { return metacognition_; }
+  const MetacognitionSystem& metacognition() const { return metacognition_; }
+  ConceptFormation& concepts() { return concepts_; }
+  const ConceptFormation& concepts() const { return concepts_; }
+  AttachmentSystem& attachment() { return attachment_; }
+  const AttachmentSystem& attachment() const { return attachment_; }
+  BeliefIsingModel& beliefs() { return beliefs_; }
+  const BeliefIsingModel& beliefs() const { return beliefs_; }
+  GraphRewritingSystem& conceptGraph() { return conceptGraph_; }
+  const GraphRewritingSystem& conceptGraph() const { return conceptGraph_; }
+  SkillStore& skills() { return skills_; }
+  const SkillStore& skills() const { return skills_; }
+  HabitStore& habits() { return habits_; }
+  const HabitStore& habits() const { return habits_; }
+  CraftingSystem& crafting() { return crafting_; }
+  const CraftingSystem& crafting() const { return crafting_; }
+  StructureManager& structures() { return structures_; }
+  const StructureManager& structures() const { return structures_; }
+
 private:
   void stepClock(StepKind kind) noexcept;
   void logStatus(EventLog& log) noexcept;
@@ -239,6 +271,10 @@ private:
   // Environment-driven goal emergence (slow layer): build world opportunities and
   // re-evaluate goals; called on a throttled cadence from tick().
   void evaluateGoals() noexcept;
+  // Slow-layer mind systems (world predictor, metacognition, self-model, concept
+  // formation, attachment, belief coherence) on a bounded cadence. Uses the shared
+  // feature buffers; never runs on the fine-tick hot path.
+  void stepSlowMind(const float* featsBefore, const float* featsAfter, PolicyAction pa) noexcept;
   std::string determineCauseOfDeath() const noexcept;
   void dumpExperience(PolicyAction pa, bool agentic, float reward, float novelty,
                       bool aversive, bool safe, double eaten, bool drank) noexcept;
@@ -289,6 +325,10 @@ private:
   float featsAfter_[LearnSystem::kFeatures] = {};
   // Per-subsystem RNG streams (isolated so subsystem randomness never perturbs others).
   Rng rngWorld_, rngWeather_, rngBody_, rngCognition_, rngLearn_, rngEvents_;
+  // Dedicated stream for the crafting/construction/skill systems (Farm/Cook/Craft/Build)
+  // so making those actions live does not perturb the core survival/exploration randomness
+  // that the phase-5 survival and determinism gates are tuned against.
+  Rng rngCrafting_;
   // Phase 11 compute scheduler + profiling (diagnostics only; never gates tick output).
   ComputeScheduler scheduler_;
   InstructionLearningSystem instructionLearning_;
@@ -307,6 +347,26 @@ private:
 
   // Crafting system for tools, structures, food processing
   CraftingSystem crafting_;
+  // Material inventory (what the organism has gathered/crafted) — bounded, serialized.
+  MaterialInventory materials_;
+  // Construction manager (persistent structures on the grid)
+  StructureManager structures_;
+  // Skill/habit models (Beta competence + associative habit formation)
+  SkillStore skills_;
+  HabitStore habits_;
+  // World-prediction + planning + metacognition + self-model + concept formation.
+  WorldPredictor predictor_;
+  SelfModel selfModel_;
+  MetacognitionSystem metacognition_;
+  ConceptFormation concepts_;
+  // Attachment to the user (secure/anxious/avoidant/disorganized).
+  AttachmentSystem attachment_;
+  // Belief coherence (Ising) + concept ontology (graph rewriting).
+  BeliefIsingModel beliefs_;
+  GraphRewritingSystem conceptGraph_;
+  // Slow-layer throttle for the integrated mind systems (predictor/metacognition/self)
+  // so they run on a bounded cadence, not on the allocation-light fine-tick path.
+  int64_t lastSlowMindAt_ = 0;
 
   // Survival helper functions
   bool hasMaterialsForFarmPlot() const noexcept;
