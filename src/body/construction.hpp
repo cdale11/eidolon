@@ -5,6 +5,7 @@
 #include <string>
 #include <unordered_map>
 #include <cstdint>
+#include <cstddef>
 
 #include "core/vec2.hpp"
 #include "core/serialize.hpp"
@@ -96,6 +97,8 @@ public:
 
   // Get all structures of a type
   std::vector<uint32_t> structuresOfType(StructureType type) const;
+
+  size_t count() const { return structures_.size(); }
 
   // Update structures (decay, weather effects)
   void update(uint64_t currentTick);

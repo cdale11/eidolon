@@ -10,6 +10,8 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   `LearnSystem::successRate_` now survive save/load, with field-specific round-trip tests.
 - Hardwired sleep/wake/survival overrides no longer train the policy as if the learned
   policy had selected them, and night sleep hysteresis avoids rapid sleep/wake flapping.
+- Structures now have a single persisted owner: well collection and world summaries use
+  `StructureManager`, and the unused unsaved `World::SimpleStructure` store was removed.
 
 ### Audit findings
 - Recorded concrete follow-up implementation tasks for snapshot coverage, structure-store

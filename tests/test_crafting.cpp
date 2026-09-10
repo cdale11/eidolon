@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 #include "body/crafting.hpp"
+#include "body/construction.hpp"
 
 using namespace eidolon;
 
@@ -58,4 +59,28 @@ TEST(crafting_import_missing_file) {
   CraftingSystem cs;
   CHECK_EQ(cs.loadEvolvedRecipes("/tmp/definitely_missing_gp_artifacts.json"), 0);
   CHECK_EQ(cs.loadEvolvedRecipes("/tmp/"), 0);
+}
+
+TEST(structure_manager_count_and_well_lookup_roundtrip) {
+  StructureManager sm;
+  const uint32_t id = sm.placeStructure(StructureType::Well, Vec2i{4, 5}, 0, 123, 0);
+  CHECK_EQ(sm.count(), 1u);
+  const auto at = sm.structuresAt(Vec2i{4, 5});
+  CHECK_EQ(at.size(), 1u);
+  CHECK_EQ(at[0], id);
+
+  std::vector<uint8_t> blob = packSnapshot(kSnapshotVersion, [&](BinaryWriter& w) {
+    sm.serialize(w);
+  });
+  StructureManager restored;
+  std::string err;
+  CHECK(unpackSnapshot(blob, kSnapshotVersion,
+                       [&](BinaryReader& r) { return restored.deserialize(r); }, err));
+  CHECK_EQ(restored.count(), 1u);
+  const Structure* well = restored.getStructure(id);
+  CHECK(well != nullptr);
+  if (well) {
+    CHECK(well->type == StructureType::Well);
+    CHECK(well->position == (Vec2i{4, 5}));
+  }
 }

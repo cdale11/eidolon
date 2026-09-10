@@ -1102,8 +1102,9 @@ void Engine::execute(Action a) noexcept {
       }
       // Well collection
       if (!collected) {
-        for (const auto& s : world_.structures()) {
-          if (s.type == StructureType::Well && s.pos == world_.organismPos()) {
+        for (const uint32_t id : structures_.structuresAt(world_.organismPos())) {
+          const Structure* s = structures_.getStructure(id);
+          if (s && s->type == StructureType::Well && s->state != StructureState::Ruined) {
             if (body_.waterCarried() < body_.waterCapacity()) {
               body_.refillWater();
               ++stats_.waterCollected;

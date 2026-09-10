@@ -1077,7 +1077,7 @@ std::string Server::worldSummaryJson() {
   root.setNumber("rabbits", static_cast<double>(rabbits));
   root.setNumber("wolves", static_cast<double>(wolves));
   root.setNumber("tamed", static_cast<double>(tamed));
-  root.setNumber("structures", static_cast<double>(w.structures().size()));
+  root.setNumber("structures", static_cast<double>(engine_.structures().count()));
   return root.dump();
 }
 

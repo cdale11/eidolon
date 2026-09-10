@@ -432,9 +432,11 @@ and "client does the maximum work" invariants apply to all of them.
   - [ ] Serialize or eliminate `EventQueue events_`. Most CLI events are drained by
         `tickAndLog`, but a snapshot taken after raw `tick()` and before log draining can
         lose queued timeline/archive events.
-  - [ ] Consolidate the two structure stores: engine `StructureManager` is now the real
+  - [x] Consolidate the two structure stores: engine `StructureManager` is now the real
         construction system, while `World::SimpleStructure` is separate, unsaved by
-        `World::serialize`, and still queried by some water-collection logic.
+        `World::serialize`, and still queried by some water-collection logic. The unsaved
+        world store is removed; well collection and `/api/world/summary` now use the
+        persisted `StructureManager`.
   - [ ] Make grounded offline past-tense chat truly archive-backed. The server routes
         "what did you do" questions to `GroundedLanguage`, but SQL event extraction is
         still shallow/stub-like, so answers can fall back to uncertainty instead of the
