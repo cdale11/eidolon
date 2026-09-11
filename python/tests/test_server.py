@@ -5,6 +5,7 @@ import http.server as http_server
 import json
 import os
 import shutil
+import sqlite3
 import socketserver
 import subprocess
 import sys
@@ -333,6 +334,66 @@ def test_conversation_history_reaches_llm(work):
                 "first reply missing from history"
             # the current message itself is not duplicated into history
             assert hist["history"].count("what was I building?") == 0
+        finally:
+            proc.kill()
+            proc.wait()
+    finally:
+        srv.shutdown()
+
+
+def test_memory_question_passes_grounded_archive_to_llm(work):
+    """Q2: with the LLM enabled, memory questions still get their facts from
+    the SQLite archive before the model phrases the reply."""
+    respond_payloads = []
+
+    class RHandler(http_server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", 0))
+            req = json.loads(self.rfile.read(length) or b"{}")
+            mt = int(req.get("max_tokens", 0))
+            if mt <= 200:
+                msg = {"content": "{\"intent\":\"question\",\"topic\":\"past\","
+                                  "\"tone\":\"neutral\",\"references_memory\":true}"}
+            else:
+                respond_payloads.append(req)
+                payload = json.loads(req["messages"][-1]["content"])
+                msg = {"content": payload.get("grounded_memory", "") or "I do not remember."}
+            body = json.dumps({"choices": [{"message": msg}]}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    class Srv(socketserver.ThreadingMixIn, http_server.HTTPServer):
+        daemon_threads = True
+
+    srv = Srv(("127.0.0.1", 0), RHandler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        base = f"http://127.0.0.1:{srv.server_address[1]}/v1"
+        port = PORT_BASE + 11
+        proc = start_server(work, port, extra=["--llm", base, "--llm-timeout", "5000"])
+        try:
+            # Seed the archive while the server is running; SQLite WAL makes the
+            # committed episode visible to the server archive connection.
+            db = sqlite3.connect(os.path.join(work, "memory.db"))
+            try:
+                db.execute("INSERT INTO episodes VALUES (?,?,?,?,?,?)", (0, 3, 4, 1, 0.8, 0))
+                db.commit()
+            finally:
+                db.close()
+
+            r = http(port, "/api/send", {"message": "what did you do today?"})
+            assert r["reply"].strip()
+            assert len(respond_payloads) == 1
+            payload = json.loads(respond_payloads[0]["messages"][-1]["content"])
+            grounded = payload["grounded_memory"]
+            assert "foraging" in grounded, grounded
+            assert "I remember" in grounded, grounded
         finally:
             proc.kill()
             proc.wait()

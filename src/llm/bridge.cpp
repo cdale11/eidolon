@@ -32,8 +32,19 @@ std::string episodeText(const Episode& e) {
     case EventKind::Recovery: what = "recovered from illness"; break;
     case EventKind::Tamed: what = "tamed a companion"; break;
   }
-  char buf[128];
-  std::snprintf(buf, sizeof(buf), "%s (t=%lld)", what, static_cast<long long>(e.t));
+  const char* outcome = "unknown";
+  switch (e.outcome) {
+    case Outcome::Success: outcome = "success"; break;
+    case Outcome::Failure: outcome = "failure"; break;
+    case Outcome::Partial: outcome = "partial"; break;
+    case Outcome::Interrupted: outcome = "interrupted"; break;
+    case Outcome::Unknown: break;
+  }
+  char buf[192];
+  const char* owner = e.sourceIndividualId ? "predecessor" : "self";
+  std::snprintf(buf, sizeof(buf), "%s %s near (%d,%d) on day %lld, outcome=%s",
+                owner, what, static_cast<int>(e.x), static_cast<int>(e.y),
+                static_cast<long long>(e.t / 86400), outcome);
   return buf;
 }
 
@@ -722,9 +733,10 @@ bool LLMBridge::parse(const std::string& userText, const CognitiveSnapshot& s,
 }
 
 bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
-                         const ParsedMessage& parsed, std::string& reply,
-                         std::string& raw,
-                         const std::vector<DialogueTurn>& history) {
+                          const ParsedMessage& parsed, std::string& reply,
+                          std::string& raw,
+                          const std::vector<DialogueTurn>& history,
+                          const std::string& groundedMemory) {
   JsonValue sys = JsonValue::makeObject();
   sys.setString("role", "system");
   sys.setString(
@@ -738,6 +750,11 @@ bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
       "just said — but they inform wording only. Facts about the world, the body, "
       "events and memories come from the state snapshot and memories alone; if the "
       "history claims something the snapshot contradicts, the snapshot wins.\n"
+      "ARCHIVE-GROUNDED MEMORY: if grounded_memory is non-empty, it is the verified "
+      "archive answer to the user's memory question. Phrase those facts naturally; do "
+      "not replace them with guesses or unstated memories. If it says there is no clear "
+      "memory, admit uncertainty. Inherited/predecessor memories must be described as "
+      "predecessor memories, not your own lived autobiography.\n"
       "TIME-OF-DAY AWARENESS: your reply must reflect the organism's circadian and "
       "physiological state. Use the phaseOfDay, timeOfDayPhrase, seasonName, "
       "physiologicalState, primaryNeed and circadianTone fields to set the tone. "
@@ -805,6 +822,8 @@ bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
   payload.setString("user_topic", parsed.topic);
   // Q1: bounded prior dialogue (empty string when there is none).
   payload.setString("history", formatDialogueHistory(history));
+  // Q2: deterministic archive-grounded facts for memory-referencing questions.
+  payload.setString("grounded_memory", groundedMemory);
   payload.setString("message", userText);
   user.setString("content", payload.dump());
   JsonValue msgs = JsonValue::makeArray();

@@ -19,6 +19,14 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   just said. History informs wording only — snapshot and archive remain the sole
   sources of world fact.
 
+### Archive-grounded memory replies (Q2)
+- Memory questions now resolve through the SQLite archive before reaching the
+  language model. With the LLM on, verified archive facts are passed as
+  `grounded_memory` for phrasing; with the LLM off, the existing deterministic
+  grounded reply path remains in use.
+- Recent memory summaries now include owner, location, day and outcome, and label
+  inherited episodes as predecessor memories instead of lived autobiography.
+
 ### Single-command build-and-run
 - `run_eidolon.sh` now configures and incrementally builds the native game targets
   before startup (toolchain/dependency checks with actionable errors), ensures the

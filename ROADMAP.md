@@ -602,15 +602,22 @@ to earlier turns, answer follow-ups, or remember what the user just told it.
 #### Q2 — Ground every reply in the archive, LLM on or off
 Today `groundedReply` (archive timeline) runs only when the LLM is down; with the LLM
 up, past-tense accuracy rests on 6 terse episode stubs (`"foraged (t=...)"`).
-- [ ] Route memory-referencing questions (`parsed.references_memory`) through
+- [x] Route memory-referencing questions (`parsed.references_memory`) through
       `GroundedLanguage`/archive first and pass the resulting grounded facts INTO the
       `respond` prompt, so the LLM phrases verified facts instead of recalling them.
-- [ ] Enrich `recentMemorySummary`: outcomes, places and elapsed time
+      (Done: `grounded_memory` is computed by the server from the archive before
+      `respond`; the prompt instructs the model to phrase those facts, not invent.)
+- [x] Enrich `recentMemorySummary`: outcomes, places and elapsed time
       ("foraged berries near (12,28) yesterday, success") instead of bare kind+tick.
-- [ ] Attribute inherited episodes in the summary (`sourceIndividualId != 0` →
+      (Done: compact entries now include owner, event, coordinates, day and outcome.)
+- [x] Attribute inherited episodes in the summary (`sourceIndividualId != 0` →
       "my predecessor …"), reusing E3 attribution rather than a second mechanism.
+      (Done: inherited hot-ring episodes are labeled `predecessor`; unit-tested.)
 - **Gate:** "what did you do yesterday / while I was away" matches the archive with
   LLM on and off; predecessor questions cite the predecessor, never the self.
+  (Done: integration test seeds the archive, enables the LLM, and verifies the
+  `respond` payload contains the archive-derived memory; existing offline path still
+  uses `GroundedLanguage`; predecessor summary attribution is unit-tested.)
 
 #### Q3 — Make the offline voice answer the question
 `fallbackReply` ignores the user text except for 3 hardcoded patterns; everything else

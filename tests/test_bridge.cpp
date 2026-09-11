@@ -29,6 +29,23 @@ TEST(snapshot_summary_includes_memories) {
   CHECK(s.energy >= 0);
 }
 
+TEST(snapshot_memory_summary_attributes_predecessor) {
+  Engine engine;
+  engine.init(12345, true, 64, 64);
+  Episode inherited;
+  inherited.t = 0;
+  inherited.x = 7;
+  inherited.y = 8;
+  inherited.kind = EventKind::Forage;
+  inherited.outcome = Outcome::Success;
+  inherited.sourceIndividualId = 42;
+  engine.memorySys().ring().add(inherited);
+  const CognitiveSnapshot s = makeSnapshot(engine);
+  CHECK(s.recentMemorySummary.find("predecessor") != std::string::npos);
+  CHECK(s.recentMemorySummary.find("foraged") != std::string::npos);
+  CHECK(s.recentMemorySummary.find("self foraged") == std::string::npos);
+}
+
 TEST(fallback_reply_dead) {
   // Can't easily test dead state without running engine to death
   // Just verify fallbackReply doesn't crash

@@ -164,10 +164,12 @@ public:
 
   // respond: snapshot + parse → grounded natural language reply. Returns false on
   // failure (caller falls back). `history` is the bounded prior dialogue tail
-  // (Q1); empty by default so offline/test callers are unaffected.
+  // (Q1). `groundedMemory` is a deterministic archive-derived answer for
+  // memory-referencing questions (Q2); empty means no archive facts were found.
   bool respond(const std::string& userText, const CognitiveSnapshot& s,
-               const ParsedMessage& parsed, std::string& reply, std::string& raw,
-               const std::vector<DialogueTurn>& history = {});
+                const ParsedMessage& parsed, std::string& reply, std::string& raw,
+                const std::vector<DialogueTurn>& history = {},
+                const std::string& groundedMemory = "");
 
   // Health: last call outcome (for observability).
   int64_t calls() const { return calls_; }

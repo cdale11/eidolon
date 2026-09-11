@@ -1199,9 +1199,16 @@ std::string Server::sendMessage(const std::string& conversationIdStr,
   if (llm_ && llm_->enabled()) {
     ParsedMessage parsed;
     std::string raw;
-    if (llm_->parse(trimmed, snap, parsed, raw) &&
-        llm_->respond(trimmed, snap, parsed, reply, raw, history)) {
-      // success path
+    if (llm_->parse(trimmed, snap, parsed, raw)) {
+      // Q2: for memory questions, resolve the facts through the deterministic
+      // archive path first. The LLM only phrases these facts; it must not recall
+      // past events from model weights or dialogue history.
+      const std::string groundedMemory = parsed.referencesMemory ? groundedReply(trimmed) : "";
+      if (llm_->respond(trimmed, snap, parsed, reply, raw, history, groundedMemory)) {
+        // success path
+      } else {
+        reply = fallbackReply(snap, trimmed, userHour);
+      }
     } else {
       reply = fallbackReply(snap, trimmed, userHour);
     }
