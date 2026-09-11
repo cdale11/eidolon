@@ -175,8 +175,19 @@ public:
   int64_t calls() const { return calls_; }
   int64_t failures() const { return failures_; }
 
-private:
-  bool chatComplete(const JsonValue& messages, int maxTokens, JsonValue& out);
+  // Provenance of the last respond() call (for the chat UI label): wall-clock
+  // latency and token usage reported by the endpoint. -1 = unknown (endpoint
+  // did not report usage, e.g. a test stub).
+  double lastRespondMs() const { return lastRespondMs_; }
+  int64_t lastRespondCompletionTokens() const { return lastRespondTokens_; }
+
+ private:
+  struct CallStats {
+    double ms = -1.0;
+    int64_t completionTokens = -1;
+  };
+  bool chatComplete(const JsonValue& messages, int maxTokens, JsonValue& out,
+                    CallStats* stats = nullptr);
   bool post(const std::string& body, std::string& response);
 
   std::string endpoint_;
@@ -184,6 +195,8 @@ private:
   std::string model_ = "eidolon-llm";
   int64_t calls_ = 0;
   int64_t failures_ = 0;
+  double lastRespondMs_ = -1.0;
+  int64_t lastRespondTokens_ = -1;
 };
 
 } // namespace eidolon

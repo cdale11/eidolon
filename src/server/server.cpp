@@ -91,6 +91,10 @@ const char* kIndexHtml = R"html(<!DOCTYPE html>
                       border-bottom-right-radius: 4px; }
   .msg.organism .bubble { background: #fff; color: #0d0d0d; border: 1px solid #ececec;
                           border-bottom-left-radius: 4px; }
+  .msg.organism .bubble.fallback { background: #fff8e6; border-color: #e8c96a; }
+  .colwrap { display: flex; flex-direction: column; min-width: 0; max-width: 100%; }
+  .meta { font-size: 11px; color: #8e8ea0; margin-top: 4px; }
+  .meta.fallback { color: #a16207; }
   #inputrow { padding: 12px 16px; background: #fff; border-top: 1px solid #ececec; }
   #inputwrap { max-width: 760px; margin: 0 auto; display: flex; gap: 8px;
                align-items: flex-end; }
@@ -236,7 +240,7 @@ async function refreshConvs() {
     }
   } catch (e) {}
 }
-function addMsg(role, text) {
+function addMsg(role, text, meta) {
   const wrap = document.createElement('div');
   wrap.className = 'msg ' + role;
   const av = document.createElement('div');
@@ -248,8 +252,30 @@ function addMsg(role, text) {
   wrap.appendChild(av);
   wrap.appendChild(b);
   chatcol.appendChild(wrap);
+  if (role !== 'user') setBubbleMeta(b, meta);
   chat.scrollTop = chat.scrollHeight;
   return b;
+}
+// Provenance label under an organism bubble: amber box + reason for offline
+// fallback replies, or "model · seconds · tok/s" for LLM replies.
+function setBubbleMeta(bubble, meta) {
+  if (!meta || !meta.label) return;
+  let col = bubble.parentElement;
+  if (!col.classList.contains('colwrap')) {
+    col = document.createElement('div');
+    col.className = 'colwrap';
+    bubble.replaceWith(col);
+    col.appendChild(bubble);
+  } else {
+    const old = col.querySelector('.meta');
+    if (old) old.remove();
+  }
+  bubble.classList.toggle('fallback', !!meta.fallback);
+  const m = document.createElement('div');
+  m.className = 'meta' + (meta.fallback ? ' fallback' : '');
+  m.textContent = meta.label;
+  col.appendChild(m);
+  chat.scrollTop = chat.scrollHeight;
 }
 async function selectConv(id) {
   convId = id;
@@ -377,6 +403,19 @@ async function send() {
     const j = await r.json();
     thinking.textContent = j.reply || j.error || '(no reply)';
     thinking.classList.remove('typing');
+    let meta = null;
+    if (j.source === 'fallback') {
+      meta = {fallback: true,
+              label: 'offline fallback · ' + (j.reason_text || j.reason || 'no LLM')};
+    } else if (j.source === 'llm') {
+      const parts = ['LLM · ' + (j.model || 'unknown model')];
+      if (typeof j.latency_ms === 'number' && j.latency_ms >= 0)
+        parts.push((j.latency_ms / 1000).toFixed(1) + 's');
+      if (typeof j.toks_per_sec === 'number')
+        parts.push(j.toks_per_sec.toFixed(1) + ' tok/s');
+      meta = {fallback: false, label: parts.join(' · ')};
+    }
+    setBubbleMeta(thinking, meta);
     if (j.conversation_id && convId !== j.conversation_id) {
       convId = j.conversation_id;
       await refreshConvs();
@@ -1195,7 +1234,16 @@ std::string Server::sendMessage(const std::string& conversationIdStr,
     while (history.size() > 10) history.erase(history.begin());
   }
 
+  // Provenance for the chat UI: which path produced this reply, and why.
+  // "llm" = model-generated (with model name, latency, throughput);
+  // "fallback" = deterministic offline reply (with a human-readable reason).
   std::string reply;
+  std::string source = "fallback";
+  std::string reason = "llm_offline";
+  std::string reasonText = "no LLM configured — deterministic offline reply";
+  std::string model;
+  double latencyMs = -1.0;
+  int64_t completionTokens = -1;
   if (llm_ && llm_->enabled()) {
     ParsedMessage parsed;
     std::string raw;
@@ -1205,11 +1253,20 @@ std::string Server::sendMessage(const std::string& conversationIdStr,
       // past events from model weights or dialogue history.
       const std::string groundedMemory = parsed.referencesMemory ? groundedReply(trimmed) : "";
       if (llm_->respond(trimmed, snap, parsed, reply, raw, history, groundedMemory)) {
-        // success path
+        source = "llm";
+        reason.clear();
+        reasonText.clear();
+        model = llm_->model();
+        latencyMs = llm_->lastRespondMs();
+        completionTokens = llm_->lastRespondCompletionTokens();
       } else {
+        reason = "respond_failed";
+        reasonText = "LLM reply request failed (timeout or bad response) — offline reply";
         reply = fallbackReply(snap, trimmed, userHour);
       }
     } else {
+      reason = "parse_failed";
+      reasonText = "LLM could not parse the message — offline reply";
       reply = fallbackReply(snap, trimmed, userHour);
     }
   } else {
@@ -1223,8 +1280,24 @@ std::string Server::sendMessage(const std::string& conversationIdStr,
     archive_->appendMessage(convId, "organism", reply, snap.simTime);
   }
 
+  char latBuf[64];
+  std::snprintf(latBuf, sizeof(latBuf), "%.0f", latencyMs); // -1 when unknown
   std::string out = "{\"conversation_id\":" + std::to_string(convId) +
-                    ",\"reply\":\"" + jsonEscape(reply) + "\"}";
+                    ",\"reply\":\"" + jsonEscape(reply) + "\"" +
+                    ",\"source\":\"" + source + "\"" +
+                    ",\"reason\":\"" + reason + "\"" +
+                    ",\"reason_text\":\"" + jsonEscape(reasonText) + "\"" +
+                    ",\"model\":\"" + jsonEscape(model) + "\"" +
+                    ",\"latency_ms\":" + latBuf +
+                    ",\"completion_tokens\":" + std::to_string(completionTokens);
+  if (source == "llm" && completionTokens >= 0 && latencyMs > 0) {
+    char perfBuf[64];
+    std::snprintf(perfBuf, sizeof(perfBuf), "%.1f",
+                  completionTokens / (latencyMs / 1000.0));
+    out += ",\"toks_per_sec\":";
+    out += perfBuf;
+  }
+  out += "}";
   return out;
 }
 

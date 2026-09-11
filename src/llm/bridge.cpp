@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <chrono>
 
 #include "httplib.h"
 #include "sim/engine.hpp"
@@ -640,8 +641,10 @@ bool LLMBridge::post(const std::string& body, std::string& response) {
   return true;
 }
 
-bool LLMBridge::chatComplete(const JsonValue& messages, int maxTokens, JsonValue& out) {
+bool LLMBridge::chatComplete(const JsonValue& messages, int maxTokens, JsonValue& out,
+                             CallStats* stats) {
   ++calls_;
+  const auto t0 = std::chrono::steady_clock::now();
   JsonValue req = JsonValue::makeObject();
   // Q0: model name from configuration (was a hardcoded dev-machine GGUF path).
   req.setString("model", model_);
@@ -677,6 +680,17 @@ bool LLMBridge::chatComplete(const JsonValue& messages, int maxTokens, JsonValue
     return false;
   }
   out = choices->asArray()[0];
+  if (stats) {
+    stats->ms = std::chrono::duration<double, std::milli>(
+                    std::chrono::steady_clock::now() - t0)
+                    .count();
+    // llama.cpp's OpenAI-compatible endpoint reports usage; test stubs may not.
+    stats->completionTokens = -1;
+    if (const JsonValue* usage = parsed.find("usage")) {
+      const double toks = usage->num("completion_tokens", -1.0);
+      if (toks >= 0) stats->completionTokens = static_cast<int64_t>(toks);
+    }
+  }
   return true;
 }
 
@@ -831,10 +845,15 @@ bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
   msgs.push(std::move(user));
 
   JsonValue choice;
-  if (!chatComplete(msgs, 1024, choice)) {
+  CallStats rs;
+  if (!chatComplete(msgs, 1024, choice, &rs)) {
     std::fprintf(stderr, "LLMBridge: chatComplete failed in respond\n");
+    lastRespondMs_ = -1.0;
+    lastRespondTokens_ = -1;
     return false;
   }
+  lastRespondMs_ = rs.ms;
+  lastRespondTokens_ = rs.completionTokens;
   const JsonValue* msg = choice.find("message");
   if (!msg) {
     std::fprintf(stderr, "LLMBridge: No message in choice\n");

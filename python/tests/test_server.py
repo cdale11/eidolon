@@ -147,6 +147,85 @@ def test_dead_llm_does_not_stop_sim(work):
         proc.wait()
 
 
+def test_send_reports_fallback_provenance(work):
+    """Every /api/send reply carries provenance: offline fallback replies are
+    labeled with the reason, so the UI can tint the bubble and explain why."""
+    port = PORT_BASE + 12
+    proc = start_server(work, port)  # no --llm: offline
+    try:
+        r = http(port, "/api/send", {"message": "hello"})
+        assert r["reply"].strip()
+        assert r["source"] == "fallback", r
+        assert r["reason"] == "llm_offline", r
+        assert r["reason_text"].strip(), r
+    finally:
+        proc.kill()
+        proc.wait()
+
+    # dead endpoint: parse fails -> fallback with a different reason
+    proc = start_server(work, port, extra=["--llm", "http://127.0.0.1:1/v1",
+                                           "--llm-timeout", "500"])
+    try:
+        r = http(port, "/api/send", {"message": "are you there?"})
+        assert r["reply"].strip()
+        assert r["source"] == "fallback", r
+        assert r["reason"] in ("parse_failed", "respond_failed"), r
+        assert r["reason_text"].strip(), r
+    finally:
+        proc.kill()
+        proc.wait()
+
+
+def test_send_reports_llm_provenance(work):
+    """With a working LLM, /api/send reports model, latency and throughput."""
+    class RHandler(http_server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", 0))
+            req = json.loads(self.rfile.read(length) or b"{}")
+            mt = int(req.get("max_tokens", 0))
+            if mt <= 200:
+                body = {"choices": [{"message": {"content":
+                    "{\"intent\":\"greet\",\"topic\":\"\",\"tone\":\"warm\","
+                    "\"references_memory\":false}"}}]}
+            else:
+                body = {"choices": [{"message": {"content": "Hello there."}}],
+                        "usage": {"prompt_tokens": 100, "completion_tokens": 20,
+                                  "total_tokens": 120}}
+            raw = json.dumps(body).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+        def log_message(self, *a):
+            pass
+
+    class Srv(socketserver.ThreadingMixIn, http_server.HTTPServer):
+        daemon_threads = True
+
+    srv = Srv(("127.0.0.1", 0), RHandler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        base = f"http://127.0.0.1:{srv.server_address[1]}/v1"
+        port = PORT_BASE + 13
+        proc = start_server(work, port, extra=["--llm", base, "--llm-timeout", "5000",
+                                               "--llm-model", "test-model"])
+        try:
+            r = http(port, "/api/send", {"message": "hi"})
+            assert r["reply"].strip()
+            assert r["source"] == "llm", r
+            assert r["model"] == "test-model", r
+            assert r["latency_ms"] >= 0, r
+            assert r["completion_tokens"] == 20, r
+            assert r["toks_per_sec"] > 0, r
+        finally:
+            proc.kill()
+            proc.wait()
+    finally:
+        srv.shutdown()
+
+
 def test_archive_written_by_server(work):
     port = PORT_BASE + 5
     proc = start_server(work, port)

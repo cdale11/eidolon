@@ -27,6 +27,14 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 - Recent memory summaries now include owner, location, day and outcome, and label
   inherited episodes as predecessor memories instead of lived autobiography.
 
+### Reply provenance in chat (UI)
+- Every chat reply now says how it was produced. Offline fallback replies render
+  in an amber bubble with a label explaining why (no LLM configured, parse
+  failure, reply failure). LLM replies show the model name, reply latency and
+  tokens/sec below the bubble. The `/api/send` response carries machine-readable
+  `source`, `reason`, `model`, `latency_ms`, `completion_tokens` and
+  `toks_per_sec` fields.
+
 ### Single-command build-and-run
 - `run_eidolon.sh` now configures and incrementally builds the native game targets
   before startup (toolchain/dependency checks with actionable errors), ensures the
