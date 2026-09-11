@@ -59,6 +59,10 @@ public:
   void deleteConversation(int64_t conversationId);
   std::vector<ConversationInfo> listConversations() const;
   std::vector<Message> listMessages(int64_t conversationId, int limit = 200) const;
+  // Q1: most recent messages, returned oldest-first (chronological) for prompt
+  // history. listMessages returns oldest-first with LIMIT, i.e. the FIRST rows —
+  // useless as a conversation tail, hence this dedicated query.
+  std::vector<Message> listRecentMessages(int64_t conversationId, int limit = 12) const;
 
   // Internet learning corpus: approved/fetched resources the organism has read.
   int64_t recordInternetResource(int64_t t, const std::string& url,

@@ -377,6 +377,38 @@ std::vector<Message> SQLiteArchive::listMessages(int64_t conversationId, int lim
   return out;
 }
 
+std::vector<Message> SQLiteArchive::listRecentMessages(int64_t conversationId,
+                                                       int limit) const {
+  std::lock_guard<std::mutex> lock(mu_);
+  std::vector<Message> out;
+  if (!db_ || limit <= 0) return out;
+  sqlite3_stmt* stmt = nullptr;
+  // Newest-first in SQL (LIMIT applies to the tail), then reversed so callers
+  // get chronological order.
+  if (!prepare("SELECT id, conversation_id, role, text, t FROM messages "
+               "WHERE conversation_id=? ORDER BY id DESC LIMIT ?",
+               &stmt) ||
+      !stmt) {
+    return out;
+  }
+  sqlite3_bind_int64(stmt, 1, conversationId);
+  sqlite3_bind_int(stmt, 2, std::min(limit, 100));
+  while (sqlite3_step(stmt) == SQLITE_ROW) {
+    Message m;
+    m.id = sqlite3_column_int64(stmt, 0);
+    m.conversationId = sqlite3_column_int64(stmt, 1);
+    const unsigned char* role = sqlite3_column_text(stmt, 2);
+    m.role = role ? reinterpret_cast<const char*>(role) : "";
+    const unsigned char* text = sqlite3_column_text(stmt, 3);
+    m.text = text ? reinterpret_cast<const char*>(text) : "";
+    m.t = sqlite3_column_int64(stmt, 4);
+    out.push_back(std::move(m));
+  }
+  sqlite3_finalize(stmt);
+  std::reverse(out.begin(), out.end());
+  return out;
+}
+
 int64_t SQLiteArchive::episodeCount() const {
   std::lock_guard<std::mutex> lock(mu_);
   if (!db_) return -1;

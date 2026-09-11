@@ -12,6 +12,13 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   first, and the request model name comes from `--llm-model` instead of a
   hardcoded dev-machine path.
 
+### Conversation memory (Q1)
+- The organism now hears the recent conversation, not just the latest message: up
+  to 10 prior dialogue turns travel with each reply request (bounded to ~400
+  tokens, newest first), so it can resolve follow-ups and refer back to what was
+  just said. History informs wording only — snapshot and archive remain the sole
+  sources of world fact.
+
 ### Single-command build-and-run
 - `run_eidolon.sh` now configures and incrementally builds the native game targets
   before startup (toolchain/dependency checks with actionable errors), ensures the

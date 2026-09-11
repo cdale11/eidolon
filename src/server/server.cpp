@@ -1180,12 +1180,27 @@ std::string Server::sendMessage(const std::string& conversationIdStr,
     archive_->appendMessage(convId, "user", trimmed, snap.simTime);
   }
 
+  // Q1: bounded prior dialogue tail (up to 10 turns) so the LLM can resolve
+  // follow-ups and refer back. The just-appended current message is excluded.
+  std::vector<DialogueTurn> history;
+  if (archive_) {
+    for (const Message& m : archive_->listRecentMessages(convId, 11)) {
+      if (m.role != "user" && m.role != "organism") continue;
+      history.push_back({m.role, m.text});
+    }
+    if (!history.empty() && history.back().role == "user" &&
+        history.back().text == trimmed) {
+      history.pop_back(); // the message being answered, not prior dialogue
+    }
+    while (history.size() > 10) history.erase(history.begin());
+  }
+
   std::string reply;
   if (llm_ && llm_->enabled()) {
     ParsedMessage parsed;
     std::string raw;
     if (llm_->parse(trimmed, snap, parsed, raw) &&
-        llm_->respond(trimmed, snap, parsed, reply, raw)) {
+        llm_->respond(trimmed, snap, parsed, reply, raw, history)) {
       // success path
     } else {
       reply = fallbackReply(snap, trimmed, userHour);

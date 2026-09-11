@@ -277,6 +277,69 @@ def test_internet_resource_learning_is_opt_in(work):
         proc.wait()
 
 
+def test_conversation_history_reaches_llm(work):
+    """Q1: the second turn's respond call must carry the first exchange as bounded
+    dialogue history, so the organism can resolve follow-ups."""
+    respond_payloads = []
+
+    class RHandler(http_server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", 0))
+            req = json.loads(self.rfile.read(length) or b"{}")
+            mt = int(req.get("max_tokens", 0))
+            if mt <= 200:  # /parse call
+                msg = {"content": "{\"intent\":\"question\",\"topic\":\"shelter\","
+                                  "\"tone\":\"neutral\",\"references_memory\":false}"}
+            else:  # /respond call: record the payload, return a fixed reply
+                respond_payloads.append(req)
+                msg = {"content": "Noted, I will remember that."}
+            body = json.dumps({"choices": [{"message": msg}]}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    class Srv(socketserver.ThreadingMixIn, http_server.HTTPServer):
+        daemon_threads = True
+
+    srv = Srv(("127.0.0.1", 0), RHandler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        base = f"http://127.0.0.1:{srv.server_address[1]}/v1"
+        port = PORT_BASE + 10
+        proc = start_server(work, port, extra=["--llm", base, "--llm-timeout", "5000"])
+        try:
+            r1 = http(port, "/api/send", {"message": "I am building a shelter"})
+            cid = r1["conversation_id"]
+            assert r1["reply"].strip()
+            assert len(respond_payloads) == 1
+            # first turn: no prior dialogue, history must be empty
+            first = json.loads(respond_payloads[0]["messages"][-1]["content"])
+            assert first["history"] == "", f"unexpected history: {first['history']!r}"
+
+            r2 = http(port, "/api/send", {"message": "what was I building?",
+                                          "conversation_id": cid})
+            assert r2["reply"].strip()
+            assert len(respond_payloads) == 2
+            hist = respond_payloads[1]["messages"][-1]["content"]
+            hist = json.loads(hist)
+            assert "I am building a shelter" in hist["history"], \
+                f"first user turn missing from history: {hist['history']!r}"
+            assert "Noted, I will remember that." in hist["history"], \
+                "first reply missing from history"
+            # the current message itself is not duplicated into history
+            assert hist["history"].count("what was I building?") == 0
+        finally:
+            proc.kill()
+            proc.wait()
+    finally:
+        srv.shutdown()
+
+
 def test_reasoning_model_replies(work):
     """Reasoning models emit long reasoning_content + a final answer. The server must
     extract the structured JSON (parse) and the prose reply (respond) correctly."""

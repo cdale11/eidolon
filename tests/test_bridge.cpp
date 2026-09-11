@@ -342,3 +342,30 @@ TEST(bridge_model_name_is_configurable) {
   bridge.setModel("qwen3-4b");
   CHECK_EQ(bridge.model(), std::string("qwen3-4b"));
 }
+
+// ---------------------------------------------------------------------------
+// Q1 — bounded conversation history for the respond prompt.
+// ---------------------------------------------------------------------------
+
+TEST(dialogue_history_formats_chronologically) {
+  CHECK_EQ(formatDialogueHistory({}), std::string(""));
+  CHECK_EQ(formatDialogueHistory({{"user", "hello"}}), std::string("user: hello"));
+  CHECK_EQ(formatDialogueHistory({{"user", "hi"}, {"organism", "hello there"}}),
+           std::string("user: hi\norganism: hello there"));
+}
+
+TEST(dialogue_history_budget_is_bounded) {
+  // One huge turn is clipped; the total stays capped no matter the input size.
+  std::string big(5000, 'x');
+  const std::string one = formatDialogueHistory({{"user", big}});
+  CHECK(one.size() < 5000);
+  CHECK(one.size() <= 1500 + 32);
+  // 50 turns of 200 chars each: capped at ~1500 total, recent context survives.
+  std::vector<DialogueTurn> many;
+  for (int i = 0; i < 50; ++i) {
+    many.push_back({"user", "turn" + std::to_string(i) + ":" + std::string(190, 'y')});
+  }
+  const std::string capped = formatDialogueHistory(many);
+  CHECK(capped.size() <= 1500 + 32);
+  CHECK(capped.find("turn49") != std::string::npos); // newest kept
+}

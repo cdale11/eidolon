@@ -118,6 +118,19 @@ struct CognitiveSnapshot {
 // Builds the comprehensive cognitive snapshot from engine state (~2-4 k tokens target).
 CognitiveSnapshot makeSnapshot(const Engine& engine);
 
+// Q1: bounded prior dialogue for the respond prompt. Roles are "user" and
+// "organism" (as stored); history informs wording only — the snapshot and
+// archive remain the only sources of world fact.
+struct DialogueTurn {
+  std::string role;
+  std::string text;
+};
+
+// Formats history oldest-first as "user: ...\norganism: ..." lines, capped at
+// ~1500 chars total (~400 tokens) and 400 chars per turn so the prompt budget
+// stays bounded no matter how long the conversation grows.
+std::string formatDialogueHistory(const std::vector<DialogueTurn>& history);
+
 // Q0: joins every significant goal for the respond prompt ("find food, rest").
 // Was: only activeGoals[0] reached the LLM, hiding competing drives.
 std::string joinGoalNames(const std::vector<std::string>& goals);
@@ -150,9 +163,11 @@ public:
              std::string& raw);
 
   // respond: snapshot + parse → grounded natural language reply. Returns false on
-  // failure (caller falls back).
+  // failure (caller falls back). `history` is the bounded prior dialogue tail
+  // (Q1); empty by default so offline/test callers are unaffected.
   bool respond(const std::string& userText, const CognitiveSnapshot& s,
-               const ParsedMessage& parsed, std::string& reply, std::string& raw);
+               const ParsedMessage& parsed, std::string& reply, std::string& raw,
+               const std::vector<DialogueTurn>& history = {});
 
   // Health: last call outcome (for observability).
   int64_t calls() const { return calls_; }

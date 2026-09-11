@@ -128,4 +128,26 @@ TEST(sqlite_archive_internet_resources) {
   CHECK_EQ(resources[0].source, std::string("user-approved"));
   CHECK(resources[0].content.find("survival") != std::string::npos);
 }
+
+TEST(sqlite_archive_recent_messages_tail) {
+  // Q1: the prompt-history query returns the TAIL chronologically, unlike
+  // listMessages (oldest-first LIMIT = the head).
+  const std::string path = tmpDbPath();
+  std::string err;
+  SQLiteArchive a(path, err);
+  CHECK(err.empty());
+
+  const int64_t cid = a.createConversation("tail chat", 0);
+  for (int i = 0; i < 6; ++i) {
+    a.appendMessage(cid, i % 2 == 0 ? "user" : "organism",
+                    "msg" + std::to_string(i), i);
+  }
+  const auto tail = a.listRecentMessages(cid, 4);
+  CHECK_EQ(tail.size(), 4u);
+  CHECK_EQ(tail[0].text, std::string("msg2"));
+  CHECK_EQ(tail[3].text, std::string("msg5"));
+  CHECK_EQ(tail[3].role, std::string("organism"));
+  // Oversized limit just returns everything, still chronological.
+  CHECK_EQ(a.listRecentMessages(cid, 100).size(), 6u);
+}
 #endif

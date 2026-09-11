@@ -585,14 +585,19 @@ fabrication sources before Q1–Q4 tune quality on top.
 #### Q1 — Give the LLM conversation memory (biggest perceived gap)
 Today `respond()` sees only the current message + snapshot: the organism cannot refer
 to earlier turns, answer follow-ups, or remember what the user just told it.
-- [ ] Attach the bounded tail of the current conversation (last ~6–10 exchanges from
+- [x] Attach the bounded tail of the current conversation (last ~6–10 exchanges from
       SQLite `messages`, token-capped) to the `respond` prompt as dialogue history.
-- [ ] Keep history bounded and attributable: truncate old turns first, never send the
+      (Done: `listRecentMessages` tail query + up-to-10-turn history in the payload,
+      ~1500 chars / ~400 tokens, newest-wins truncation, current message excluded.)
+- [x] Keep history bounded and attributable: truncate old turns first, never send the
       whole archive; history informs wording, snapshot/archive remain the only sources
       of world fact (restate the no-invention rule with history present).
+      (Done: system-prompt history clause — snapshot wins on contradiction.)
 - **Gate:** multi-turn test — "I am building a shelter" … "what did I just say I was
   building?" is answered correctly with the LLM on; token budget per reply stays under
   a documented cap; offline behavior unchanged.
+  (Done: recording-stub test asserts the second respond call carries the first
+  exchange and excludes the current message; unit tests lock format + budget.)
 
 #### Q2 — Ground every reply in the archive, LLM on or off
 Today `groundedReply` (archive timeline) runs only when the LLM is down; with the LLM

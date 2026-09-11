@@ -202,7 +202,7 @@ const char* hSlot(double hour) {
 
 } // namespace
 
-// Q0: joins every significant goal for the respond prompt ("find food, rest").
+// Q1: joins every significant goal for the respond prompt ("find food, rest").
 // Was: only activeGoals[0] reached the LLM, hiding competing drives.
 std::string joinGoalNames(const std::vector<std::string>& goals) {
   std::string out;
@@ -211,6 +211,32 @@ std::string joinGoalNames(const std::vector<std::string>& goals) {
     out += goals[i];
   }
   return out.empty() ? "none" : out;
+}
+
+std::string formatDialogueHistory(const std::vector<DialogueTurn>& history) {
+  // Token budget: ~1500 chars total (~400 tokens), 400 chars per turn. Newest
+  // turns win: iterate newest-first, then restore chronological order, so the
+  // recent context survives no matter how long the conversation grows.
+  constexpr size_t kTotalCap = 1500;
+  constexpr size_t kTurnCap = 400;
+  std::vector<std::string> kept;
+  size_t used = 0;
+  for (size_t k = history.size(); k-- > 0;) {
+    const std::string& role = history[k].role;
+    const char* who = (role == "user") ? "user" : "organism";
+    std::string text = history[k].text;
+    if (text.size() > kTurnCap) text = text.substr(0, kTurnCap) + "...";
+    std::string line = std::string(who) + ": " + text;
+    if (used + line.size() + 1 > kTotalCap) continue;
+    used += line.size() + 1;
+    kept.push_back(std::move(line));
+  }
+  std::string out;
+  for (size_t k = kept.size(); k-- > 0;) {
+    if (!out.empty()) out += "\n";
+    out += kept[k];
+  }
+  return out;
 }
 
 CognitiveSnapshot makeSnapshot(const Engine& engine) {
@@ -697,7 +723,8 @@ bool LLMBridge::parse(const std::string& userText, const CognitiveSnapshot& s,
 
 bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
                          const ParsedMessage& parsed, std::string& reply,
-                         std::string& raw) {
+                         std::string& raw,
+                         const std::vector<DialogueTurn>& history) {
   JsonValue sys = JsonValue::makeObject();
   sys.setString("role", "system");
   sys.setString(
@@ -706,6 +733,11 @@ bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
       "only speak from the provided state snapshot. Never invent events, memories, "
       "goals or relationships. If asked about something not in the snapshot or "
       "memories, say you do not remember it. Keep replies short (1-3 sentences).\n"
+      "CONVERSATION HISTORY: the prompt may include recent dialogue turns before the "
+      "current message. Use them to resolve follow-ups and refer back to what was "
+      "just said — but they inform wording only. Facts about the world, the body, "
+      "events and memories come from the state snapshot and memories alone; if the "
+      "history claims something the snapshot contradicts, the snapshot wins.\n"
       "TIME-OF-DAY AWARENESS: your reply must reflect the organism's circadian and "
       "physiological state. Use the phaseOfDay, timeOfDayPhrase, seasonName, "
       "physiologicalState, primaryNeed and circadianTone fields to set the tone. "
@@ -771,6 +803,8 @@ bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
   payload.setString("state", stateBuf);
   payload.setString("user_intent", parsed.intent);
   payload.setString("user_topic", parsed.topic);
+  // Q1: bounded prior dialogue (empty string when there is none).
+  payload.setString("history", formatDialogueHistory(history));
   payload.setString("message", userText);
   user.setString("content", payload.dump());
   JsonValue msgs = JsonValue::makeArray();
