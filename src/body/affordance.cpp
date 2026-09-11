@@ -5,6 +5,19 @@
 
 namespace eidolon {
 
+namespace {
+void writeCoord(BinaryWriter& w, int v) {
+  w.u32(static_cast<uint32_t>(static_cast<int32_t>(v)));
+}
+
+bool readCoord(BinaryReader& r, int& v) {
+  uint32_t raw = 0;
+  if (!r.u32(raw)) return false;
+  v = static_cast<int>(static_cast<int32_t>(raw));
+  return true;
+}
+} // namespace
+
 void Affordance::serialize(struct BinaryWriter& w) const {
   w.u32(id);
   w.u8(static_cast<uint8_t>(type));
@@ -45,16 +58,15 @@ void DiscoveryEvent::serialize(struct BinaryWriter& w) const {
   w.u8(static_cast<uint8_t>(material));
   w.str(context);
   w.f32(effectiveness);
-  w.u32(*reinterpret_cast<uint32_t*>(const_cast<int*>(&position.x)));
-  w.u32(*reinterpret_cast<uint32_t*>(const_cast<int*>(&position.y)));
+  writeCoord(w, position.x);
+  writeCoord(w, position.y);
 }
 
 bool DiscoveryEvent::deserialize(struct BinaryReader& r) {
   if (!r.u64(tick)) return false;
   uint8_t t, tl, ml;
   if (!r.u8(t) || !r.u8(tl) || !r.u8(ml) || !r.str(context) || !r.f32(effectiveness) ||
-      !r.u32(*reinterpret_cast<uint32_t*>(const_cast<int*>(&position.x))) ||
-      !r.u32(*reinterpret_cast<uint32_t*>(const_cast<int*>(&position.y))))
+      !readCoord(r, position.x) || !readCoord(r, position.y))
     return false;
   type = static_cast<AffordanceType>(t);
   tool = static_cast<ToolType>(tl);

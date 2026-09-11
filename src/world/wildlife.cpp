@@ -204,10 +204,10 @@ void Wildlife::spawn(const Grid& g, Rng& r, Vec2i spawn) {
       a.id = nextId++;
       a.species = s;
       a.pos = p;
+      a.rng = agentStream(wildlifeSeed_, a.id);
       a.energy = 60.0 + a.rng.unit() * 40.0;
       a.hunger = a.rng.unit() * 40.0;
       a.state = (s == Species::Wolf) ? AnimalState::Forage : AnimalState::Wander;
-      a.rng = agentStream(wildlifeSeed_, a.id);
       agents_.push_back(a);
     }
   };

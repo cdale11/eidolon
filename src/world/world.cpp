@@ -734,6 +734,10 @@ bool eidolon::World::deserialize(eidolon::BinaryReader& r) {
   int64_t x, y;
   uint8_t alive;
   if (!r.i64(x) || !r.i64(y) || !r.u8(alive)) return false;
+  if (!grid_.inBounds(static_cast<int>(x), static_cast<int>(y)) ||
+      !grid_.walkable(static_cast<int>(x), static_cast<int>(y))) {
+    return false;
+  }
   pos_ = {static_cast<int>(x), static_cast<int>(y)};
   alive_ = alive != 0;
   uint64_t n;

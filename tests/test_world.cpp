@@ -78,6 +78,26 @@ TEST(world_serialize_roundtrip) {
   }
 }
 
+TEST(world_deserialize_rejects_invalid_organism_position) {
+  World a;
+  Rng ra(42);
+  a.generate(32, 32, ra);
+  BinaryWriter w;
+  a.grid().serialize(w);
+  a.weather().serialize(w);
+  w.i64(-1);
+  w.i64(-1);
+  w.u8(1);
+  w.u64(0);
+  w.u64(0);
+  a.wildlife().serialize(w);
+  a.infectionCA().serialize(w);
+
+  BinaryReader r(w.data());
+  World restored;
+  CHECK(!restored.deserialize(r));
+}
+
 TEST(grid_serialize_roundtrip_full_fidelity) {
   // Regression: Grid::serialize/deserialize passed the ELEMENT count to
   // bytes() (which takes a BYTE count), so the last 3/4 of each float grid

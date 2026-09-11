@@ -8,6 +8,7 @@
 
 #include "body/crafting.hpp"
 #include "body/construction.hpp"
+#include "body/affordance.hpp"
 
 using namespace eidolon;
 
@@ -83,4 +84,36 @@ TEST(structure_manager_count_and_well_lookup_roundtrip) {
     CHECK(well->type == StructureType::Well);
     CHECK(well->position == (Vec2i{4, 5}));
   }
+}
+
+TEST(construction_signed_coordinates_roundtrip) {
+  Structure s;
+  s.id = 7;
+  s.type = StructureType::Shelter;
+  s.position = Vec2i{-3, 9};
+  s.occupiedTiles.push_back(Vec2i{-3, 9});
+  s.occupiedTiles.push_back(Vec2i{-2, 9});
+  BinaryWriter w;
+  s.serialize(w);
+  BinaryReader r(w.data());
+  Structure out;
+  CHECK(out.deserialize(r));
+  CHECK(out.position == (Vec2i{-3, 9}));
+  CHECK_EQ(out.occupiedTiles.size(), 2u);
+  CHECK(out.occupiedTiles[0] == (Vec2i{-3, 9}));
+  CHECK(out.occupiedTiles[1] == (Vec2i{-2, 9}));
+}
+
+TEST(affordance_discovery_signed_coordinates_roundtrip) {
+  DiscoveryEvent d;
+  d.tick = 99;
+  d.type = AffordanceType::Water;
+  d.context = "shore";
+  d.position = Vec2i{-8, 12};
+  BinaryWriter w;
+  d.serialize(w);
+  BinaryReader r(w.data());
+  DiscoveryEvent out;
+  CHECK(out.deserialize(r));
+  CHECK(out.position == (Vec2i{-8, 12}));
 }

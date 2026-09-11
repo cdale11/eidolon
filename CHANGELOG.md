@@ -16,6 +16,10 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   SQLite-backed archive timeline and summarize recorded events deterministically.
 - Snapshot v15 persists pending `EventQueue` entries, preventing raw `tick()` save/load
   cycles from dropping due timeline/archive events before `tickAndLog()` drains them.
+- Determinism/portability cleanup: invalid restored organism positions are rejected,
+  wildlife spawn initializes per-agent RNG before randomized attributes, body coordinate
+  serialization no longer aliases through `reinterpret_cast`, and `Sleep` policy mapping is
+  explicitly documented/tested as non-agentic.
 
 ### Audit findings
 - Recorded concrete follow-up implementation tasks for snapshot coverage, structure-store

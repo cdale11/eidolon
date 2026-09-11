@@ -447,10 +447,13 @@ and "client does the maximum work" invariants apply to all of them.
         now tracks whether the decision came directly from the learned policy and suppresses
         policy updates for hardwired overrides. Night sleep hysteresis was widened to avoid
         rapid sleep/wake flapping found during smoke-log inspection.
-  - [ ] Fix minor determinism/portability debts found in the audit: validate restored
+  - [x] Fix minor determinism/portability debts found in the audit: validate restored
         organism position, initialize wildlife per-agent RNG before randomized spawn
         attributes, avoid `reinterpret_cast` coordinate serialization in construction,
-        and clarify that policy/action mapping intentionally excludes `Sleep`.
+        and clarify that policy/action mapping intentionally excludes `Sleep`. Restore now
+        rejects invalid organism positions, wildlife spawn uses the per-agent RNG before
+        randomized attributes, body coordinate serialization avoids aliasing casts, and the
+        `Sleep` mapping is documented/tested as a non-agentic neutral label.
 - **Deeper world / playground**: hobbies with real procedural depth — gardening (plant,
   tend, harvest over days/weeks, seasonal yield, skill progression), reading books (world
   artifacts with retrievable content the organism actually learns from, not cosmetic

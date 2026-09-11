@@ -225,6 +225,7 @@ TEST(engine_policy_action_roundtrip_all12) {
   CHECK(Engine::policyToAction(PolicyAction::Build) == Action::Build);
   CHECK(Engine::policyToAction(PolicyAction::Preserve) == Action::Preserve);
   CHECK(Engine::actionToPolicy(Action::CollectWater) == PolicyAction::CollectWater);
+  CHECK(Engine::actionToPolicy(Action::Sleep) == PolicyAction::Observe);
 }
 
 TEST(engine_advanced_stats_survive_snapshot_roundtrip) {

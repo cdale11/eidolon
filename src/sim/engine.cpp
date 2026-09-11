@@ -522,6 +522,9 @@ Action Engine::policyToAction(PolicyAction a) noexcept {
 }
 
 PolicyAction Engine::actionToPolicy(Action a) noexcept {
+  // PolicyAction has 12 learned outputs. Action::Sleep is intentionally excluded: sleep is
+  // a hardwired circadian/body override, so it maps to Observe only as a neutral label for
+  // non-agentic logging/serialization paths and never trains policy weights as Sleep.
   switch (a) {
     case Action::Forage: return PolicyAction::Forage;
     case Action::Drink: return PolicyAction::Drink;

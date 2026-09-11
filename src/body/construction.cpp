@@ -4,11 +4,24 @@
 
 namespace eidolon {
 
+namespace {
+void writeCoord(BinaryWriter& w, int v) {
+  w.u32(static_cast<uint32_t>(static_cast<int32_t>(v)));
+}
+
+bool readCoord(BinaryReader& r, int& v) {
+  uint32_t raw = 0;
+  if (!r.u32(raw)) return false;
+  v = static_cast<int>(static_cast<int32_t>(raw));
+  return true;
+}
+} // namespace
+
 void Structure::serialize(struct BinaryWriter& w) const {
   w.u32(id);
   w.u8(static_cast<uint8_t>(type));
-  w.u32(*reinterpret_cast<uint32_t*>(const_cast<int*>(&position.x)));
-  w.u32(*reinterpret_cast<uint32_t*>(const_cast<int*>(&position.y)));
+  writeCoord(w, position.x);
+  writeCoord(w, position.y);
   w.u8(rotation);
   w.u8(static_cast<uint8_t>(state));
   w.u32(progress);
@@ -21,17 +34,15 @@ void Structure::serialize(struct BinaryWriter& w) const {
   for (uint32_t bid : builderIds) w.u32(bid);
   w.u32(static_cast<uint32_t>(occupiedTiles.size()));
   for (const auto& t : occupiedTiles) {
-    w.u32(*reinterpret_cast<uint32_t*>(const_cast<int*>(&t.x)));
-    w.u32(*reinterpret_cast<uint32_t*>(const_cast<int*>(&t.y)));
+    writeCoord(w, t.x);
+    writeCoord(w, t.y);
   }
 }
 
 bool Structure::deserialize(struct BinaryReader& r) {
   if (!r.u32(id)) return false;
   uint8_t t, rot, s;
-  if (!r.u8(t) ||
-      !r.u32(*reinterpret_cast<uint32_t*>(&position.x)) ||
-      !r.u32(*reinterpret_cast<uint32_t*>(&position.y)) ||
+  if (!r.u8(t) || !readCoord(r, position.x) || !readCoord(r, position.y) ||
       !r.u8(rot) || !r.u8(s) || !r.u32(progress) || !r.u32(maxProgress) ||
       !r.u32(health) || !r.u32(maxHealth) || !r.u64(createdAt) ||
       !r.u64(completedAt))
@@ -48,8 +59,7 @@ bool Structure::deserialize(struct BinaryReader& r) {
   if (!r.u32(n)) return false;
   occupiedTiles.resize(static_cast<size_t>(n));
   for (size_t i = 0; i < static_cast<size_t>(n); ++i) {
-    if (!r.u32(*reinterpret_cast<uint32_t*>(&occupiedTiles[i].x)) ||
-        !r.u32(*reinterpret_cast<uint32_t*>(&occupiedTiles[i].y))) return false;
+    if (!readCoord(r, occupiedTiles[i].x) || !readCoord(r, occupiedTiles[i].y)) return false;
   }
   return true;
 }
@@ -66,8 +76,8 @@ void StructureBlueprint::serialize(struct BinaryWriter& w) const {
   w.u32(maxHealth);
   w.u32(static_cast<uint32_t>(footprint.size()));
   for (const auto& f : footprint) {
-    w.u32(*reinterpret_cast<uint32_t*>(const_cast<int*>(&f.x)));
-    w.u32(*reinterpret_cast<uint32_t*>(const_cast<int*>(&f.y)));
+    writeCoord(w, f.x);
+    writeCoord(w, f.y);
   }
   w.u8(providesShelter ? 1 : 0);
   w.u8(providesStorage ? 1 : 0);
@@ -94,8 +104,7 @@ bool StructureBlueprint::deserialize(struct BinaryReader& r) {
   if (!r.u32(n)) return false;
   footprint.resize(static_cast<size_t>(n));
   for (size_t i = 0; i < static_cast<size_t>(n); ++i) {
-    if (!r.u32(*reinterpret_cast<uint32_t*>(&footprint[i].x)) ||
-        !r.u32(*reinterpret_cast<uint32_t*>(&footprint[i].y))) return false;
+    if (!readCoord(r, footprint[i].x) || !readCoord(r, footprint[i].y)) return false;
   }
   uint8_t ps, pst, pw, iw;
   if (!r.u8(ps) || !r.u8(pst) || !r.u8(pw) || !r.u32(storageCapacity) || !r.u8(iw))
@@ -378,17 +387,15 @@ bool StructureManager::deserialize(struct BinaryReader& r) {
 
 void ConstructionSite::serialize(struct BinaryWriter& w) const {
   w.u32(structureId);
-  w.u32(*reinterpret_cast<uint32_t*>(const_cast<int*>(&position.x)));
-  w.u32(*reinterpret_cast<uint32_t*>(const_cast<int*>(&position.y)));
+  writeCoord(w, position.x);
+  writeCoord(w, position.y);
   w.u64(startedAt);
   w.u32(static_cast<uint32_t>(workers.size()));
   for (uint32_t workerId : workers) w.u32(workerId);
 }
 
 bool ConstructionSite::deserialize(struct BinaryReader& r) {
-  if (!r.u32(structureId) ||
-      !r.u32(*reinterpret_cast<uint32_t*>(&position.x)) ||
-      !r.u32(*reinterpret_cast<uint32_t*>(&position.y)) ||
+  if (!r.u32(structureId) || !readCoord(r, position.x) || !readCoord(r, position.y) ||
       !r.u64(startedAt)) return false;
   uint32_t n;
   if (!r.u32(n)) return false;
