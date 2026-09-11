@@ -648,18 +648,30 @@ inheritance — falling back to the death site, then a random walkable tile.)
 #### E3 — Complete attributed inheritance and grounded knowledge
 Dependency: E2 identities; extend `heredity`, `genetic_memory`, `memory_system`, `user_model`,
 `self_model`, `concept_formation`, `grounded_language`, and SQLite archive rather than replace.
-- [ ] Complete archive extraction/application stubs with bounded inheritance of useful
+- [x] Complete archive extraction/application stubs with bounded inheritance of useful
       knowledge/skill priors. Retain predecessor identity, evidence, confidence, and source
       type (personal experience, inherited record, user claim, internet resource).
+      (Done, slice 1: `GeneticMemorySystem::extractFromEpisodes` builds a bounded,
+      importance-ordered bundle from the predecessor's ring; `applyToOrganism` injects
+      them as attributed episodes `sourceIndividualId=parentId`, never `Self`; fixed
+      `extractGenome` metadata — real generation/parent id and `lifespan=death-birth`
+      via new `Engine::birthTick_`; snapshot v17 persists attribution. New
+      `tests/test_heredity.cpp`, 5 tests.)
 - [ ] Expose predecessor stats and relationship/conversation histories through attributed
       retrieval; let new interactions revise inherited expectations independently of the
       predecessor's trust/attachment. Provide a documented adult-language/knowledge baseline
       without claiming practical mastery or seeding a textual personality.
-- [ ] Replace simplistic death-location lessons with evidence-based causal hypotheses;
+- [x] Replace simplistic death-location lessons with evidence-based causal hypotheses;
       support belief contradiction/revision and distinguish descriptions from practiced skills.
+      (Done, slice 1: `makeDeathMemory` is cause-specific — location counts as evidence
+      only for predator attacks; starvation/dehydration/etc. explicitly rule the place
+      out. Belief revision and the knowledge baseline remain open.)
       **Gate:** successor cites its predecessor accurately, revises inherited bad advice,
       retains useful knowledge across restart, and does not learn "all rivers are lethal"
       merely from a death near water. Working retrieval/model state stays bounded.
+      (Gate status: attribution + retention + no-location-blame verified by unit tests and
+      deterministic multi-generation CLI runs with heredity; chat citations and SQLite
+      timeline exposure are the open slice 2.)
 
 #### E4 — Deepen biological mechanisms, incrementally
 Dependency: E0 baseline; E2 needed for across-generation ecosystem gates.

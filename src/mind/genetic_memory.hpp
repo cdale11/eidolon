@@ -10,11 +10,11 @@
 
 #include "core/serialize.hpp"
 #include "mind/memory.hpp"
-#include "mind/memory.hpp"
 
 namespace eidolon {
 
 // Forward declarations
+class Engine;
 class MemorySystem;
 class LearnSystem;
 class Archive;
@@ -57,23 +57,48 @@ struct GeneticMemoryBundle {
 // GeneticMemorySystem: manages extraction, storage, and inheritance of genetic memories
 class GeneticMemorySystem {
 public:
-  // Extract important memories from an organism's archive for inheritance
-  static GeneticMemoryBundle extractFromArchive(
-      uint64_t parentSeed,
+  // Build an attributed inheritance bundle from the predecessor's hot-ring
+  // episodes: classifies inheritable experiences (resources, threats, safe
+  // spots), scores them by importance, and keeps the best `maxMemories`
+  // (bounded, deterministic order). parentId = predecessor individual id.
+  static GeneticMemoryBundle extractFromEpisodes(
+      const std::vector<Episode>& episodes,
+      uint64_t parentId,
       int generation,
       int maxMemories = 32);
-  
-  // Apply genetic memories to a new organism (inject into its memory ring)
+
+  // Inject bundle memories as attributed episodes into the successor's memory
+  // ring (sourceIndividualId = parentId, never autobiography). Returns the
+  // number injected. Memories below the retention threshold are dropped, so a
+  // successor is informed, not flooded, by its predecessor.
   static size_t applyToOrganism(
+      class Engine& engine,
+      const std::vector<GeneticMemory>& memories,
+      uint64_t parentId,
       float inheritanceWeight = 0.5f);
-  
+
+  // Evidence-based death lesson: cause-specific, citing measured drives.
+  // Location is treated as evidence ONLY for predator attacks; every other
+  // cause explicitly rules the place out (a death near water does not make
+  // water lethal). Testable directly (see tests/test_heredity.cpp).
+  static GeneticMemory makeDeathMemory(
+      const std::string& cause,
+      int generation,
+      int16_t x,
+      int16_t y,
+      int64_t tick,
+      double hunger,
+      double thirst);
+
   // Get death-related memories (for avoiding previous death causes)
   static std::vector<const GeneticMemory*> getDeathMemories(
       const GeneticMemoryBundle& bundle);
 
 private:
+  // Classify an episode as inheritable knowledge; returns false to skip
+  // (births, weather and other non-transferable episodes stay personal).
+  static bool classifyMemory(const Episode& e, GeneticMemoryType& out);
   static float computeMemoryImportance(const Episode& e);
-  static GeneticMemoryType classifyMemory(const Episode& e);
 };
 
 } // namespace eidolon

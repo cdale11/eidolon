@@ -168,26 +168,34 @@ HeredityGenome HeredityManager::extractGenome(
   genome.lifeStats.successRate = ls.successRate;
   genome.lifeStats.avgPain = ls.avgPain;
   
-  // Extract genetic memories from engine's memory system
-  // Note: In a full implementation, we'd extract from the Archive
-  // For now, create a death-cause memory
-  GeneticMemory deathMem;
-  deathMem.type = GeneticMemoryType::DeathCause;
-  deathMem.importance = 0.9f;
-  deathMem.tick = deathTick;
-  deathMem.x = static_cast<int16_t>(engine.world().organismPos().x);
-  deathMem.y = static_cast<int16_t>(engine.world().organismPos().y);
-  deathMem.summary = "Died from " + causeOfDeath;
-  deathMem.lesson = "Avoid this location/situation - " + causeOfDeath;
-  deathMem.emotionalValence = -0.8f;
-  deathMem.rehearsalCount = 0;
+  // Extract genetic memories from the predecessor's lived experience (E3):
+  // an evidence-based death memory first, then the best attributed episodes.
+  const Vec2i deathPos = engine.world().organismPos();
+  GeneticMemory deathMem = GeneticMemorySystem::makeDeathMemory(
+      causeOfDeath, static_cast<int>(engine.generation()),
+      static_cast<int16_t>(deathPos.x), static_cast<int16_t>(deathPos.y), deathTick,
+      engine.body().hunger(), engine.body().thirst());
   genome.geneticMemories.push_back(deathMem);
-  
+  GeneticMemoryBundle bundle = GeneticMemorySystem::extractFromEpisodes(
+      engine.memory().episodes(), engine.individualId(),
+      static_cast<int>(engine.generation()), 31);
+  for (const GeneticMemory& m : bundle.memories) {
+    if (genome.geneticMemories.size() >= 32) break;
+    genome.geneticMemories.push_back(m);
+  }
+
   genome.deathTick = deathTick;
-  genome.lifespanTicks = deathTick;
+  // Honest lifespan: death minus this individual's own birth (E3 birthTick_).
+  // The old code stored deathTick as the lifespan — always wrong past tick 0.
+  const int64_t birth = engine.birthTick();
+  genome.lifespanTicks =
+      (deathTick >= static_cast<uint64_t>(birth)) ? deathTick - static_cast<uint64_t>(birth) : 0;
   genome.causeOfDeath = causeOfDeath;
-  genome.generation = 0;
-  
+  // Identity: the parent is this individual (was: always 0) and the generation
+  // is this individual's own (was: always 0).
+  genome.parentSeed = engine.individualId();
+  genome.generation = static_cast<int>(engine.generation());
+
   return genome;
 }
 
@@ -222,14 +230,11 @@ void HeredityManager::applyHeredity(
   }
   learn.rederiveDrives();
   
-  // Apply genetic memories - inject death memories into threat system
-  for (const auto& mem : genome.geneticMemories) {
-    if (mem.type == GeneticMemoryType::DeathCause && mem.importance * inheritanceWeight > 0.5f) {
-      // Inject as a strong threat memory at the death location
-      // This will make the organism avoid the death location
-      // In a full implementation, this would inject into the memory ring
-    }
-  }
+  // Apply genetic memories (E3): inject the predecessor's attributed episodes
+  // into the successor's memory ring. They arrive marked with the parent's id
+  // (never autobiography) and below-threshold memories are dropped.
+  GeneticMemorySystem::applyToOrganism(engine, genome.geneticMemories, genome.parentSeed,
+                                       inheritanceWeight);
 }
 
 std::string HeredityManager::defaultHeredityPath(const std::string& dataDir, int generation) {

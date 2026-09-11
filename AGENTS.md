@@ -143,9 +143,11 @@ previous commit's log where determinism is expected.
   Keep behavior-preserving structural changes separate from new features and behavioral fixes.
   Measure before/after hot-path changes and preserve replay/native-WASM contracts.
 - **Known traps:** current server auto-rebirth calls Engine::init and resets the world;
-  genetic-memory archive extraction/application are stubs; archived internet text is not yet
-  a learned skill. Existing learning, planning, heredity, crafting and wildlife must be extended,
+  archived internet text is not yet a learned skill. Existing learning, planning, heredity, crafting and wildlife must be extended,
   not replaced just because a broader capability has a new roadmap heading.
+  (Update: E2 replaced reset-on-death with `respawnSuccessor`; E3 slice 1 implemented
+  the genetic-memory extract/apply path with `sourceIndividualId` attribution. SQLite
+  timeline exposure of inherited episodes and chat citations remain open.)
 - **Identity/world boundary:** one living humanoid, permanently mortal; world time/ecology/
   structures outlive it. Successors may retrieve predecessors' stats, knowledge and relationship
   histories, but must attribute them and develop their own autobiography/trust/attachment.

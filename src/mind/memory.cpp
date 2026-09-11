@@ -40,6 +40,7 @@ void MemoryRing::serialize(BinaryWriter& w) const {
     w.u8(e.detail);
     w.u32(e.rehearsalCount);
     w.u8(e.consolidated ? 1 : 0);
+    w.u64(e.sourceIndividualId); // v17: E3 inheritance attribution
   }
 }
 
@@ -57,7 +58,8 @@ bool MemoryRing::deserialize(BinaryReader& r) {
         !r.u8(participants) || !r.u8(outcome) || !r.f32(e.prediction) ||
         !r.f32(e.predictionError) || !r.f32(e.emotionalValence) ||
         !r.f32(e.socialRelevance) || !r.u8(relevance) || !r.f64(e.importance) ||
-        !r.u8(detail) || !r.u32(e.rehearsalCount) || !r.u8(consolidated)) {
+        !r.u8(detail) || !r.u32(e.rehearsalCount) || !r.u8(consolidated) ||
+        !r.u64(e.sourceIndividualId)) {
       return false;
     }
     e.x = static_cast<int16_t>(x);

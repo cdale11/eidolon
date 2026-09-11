@@ -1,6 +1,9 @@
 #include "mind/genetic_memory.hpp"
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+
+#include "sim/engine.hpp"
 
 namespace eidolon {
 
@@ -57,23 +60,254 @@ bool GeneticMemoryBundle::deserialize(BinaryReader& r) {
   return true;
 }
 
-GeneticMemoryBundle GeneticMemorySystem::extractFromArchive(
-    uint64_t parentSeed,
+namespace {
+// Retention threshold: inherited memories below importance*weight are dropped.
+constexpr float kRetainThreshold = 0.35f;
+constexpr size_t kMaxInjected = 32;
+
+EventKind kindForType(GeneticMemoryType t) {
+  switch (t) {
+    case GeneticMemoryType::DeathCause: return EventKind::Death;
+    case GeneticMemoryType::ResourceLocation: return EventKind::Forage;
+    case GeneticMemoryType::ThreatLocation:
+    case GeneticMemoryType::ThreatPattern: return EventKind::Attack;
+    case GeneticMemoryType::SafeLocation: return EventKind::Sleep;
+    case GeneticMemoryType::Skill: return EventKind::Forage;
+  }
+  return EventKind::Forage;
+}
+
+const char* typeName(GeneticMemoryType t) {
+  switch (t) {
+    case GeneticMemoryType::DeathCause: return "death";
+    case GeneticMemoryType::ResourceLocation: return "resource";
+    case GeneticMemoryType::ThreatLocation: return "threat";
+    case GeneticMemoryType::SafeLocation: return "safe spot";
+    case GeneticMemoryType::Skill: return "skill";
+    case GeneticMemoryType::ThreatPattern: return "threat pattern";
+  }
+  return "memory";
+}
+} // namespace
+
+bool GeneticMemorySystem::classifyMemory(const Episode& e, GeneticMemoryType& out) {
+  switch (e.kind) {
+    case EventKind::Death:
+      out = GeneticMemoryType::DeathCause;
+      return true;
+    case EventKind::Attack:
+    case EventKind::NearDeath:
+    case EventKind::Illness:
+      out = GeneticMemoryType::ThreatLocation;
+      return true;
+    case EventKind::Forage:
+    case EventKind::Drink:
+      if (e.outcome != Outcome::Success) return false;
+      out = GeneticMemoryType::ResourceLocation;
+      return true;
+    case EventKind::Tamed:
+      out = GeneticMemoryType::SafeLocation;
+      return true;
+    case EventKind::Sleep:
+      if (e.outcome != Outcome::Success) return false;
+      out = GeneticMemoryType::SafeLocation;
+      return true;
+    default:
+      return false; // births, weather, wake, recovery: personal, not inheritable
+  }
+}
+
+float GeneticMemorySystem::computeMemoryImportance(const Episode& e) {
+  float imp = static_cast<float>(e.importance);
+  const uint8_t rel = static_cast<uint8_t>(e.relevance);
+  const uint8_t aversive =
+      static_cast<uint8_t>(Relevance::Aversive) | static_cast<uint8_t>(Relevance::Threatening);
+  if ((rel & aversive) != 0) imp += 0.2f;
+  if (e.outcome == Outcome::Failure) imp += 0.1f;
+  imp += std::min(static_cast<float>(e.rehearsalCount) * 0.05f, 0.2f);
+  if (imp < 0.0f) imp = 0.0f;
+  if (imp > 1.0f) imp = 1.0f;
+  return imp;
+}
+
+GeneticMemoryBundle GeneticMemorySystem::extractFromEpisodes(
+    const std::vector<Episode>& episodes,
+    uint64_t parentId,
     int generation,
     int maxMemories) {
-  
-  (void)maxMemories; // stub: archive integration pending
   GeneticMemoryBundle bundle;
-  bundle.parentSeed = parentSeed;
+  bundle.parentSeed = parentId;
   bundle.generation = generation;
-  bundle.createdAt = 0;
+  bundle.createdAt = episodes.empty() ? 0 : static_cast<uint64_t>(episodes.back().t);
+  if (maxMemories <= 0) return bundle;
+
+  struct Candidate {
+    GeneticMemory mem;
+  };
+  std::vector<Candidate> kept;
+  for (const Episode& e : episodes) {
+    GeneticMemoryType type = GeneticMemoryType::DeathCause;
+    if (!classifyMemory(e, type)) continue;
+    const float imp = computeMemoryImportance(e);
+    if (imp < kRetainThreshold) continue;
+    GeneticMemory m;
+    m.type = type;
+    m.importance = imp;
+    m.tick = e.t;
+    m.x = e.x;
+    m.y = e.y;
+    char buf[192];
+    std::snprintf(buf, sizeof(buf), "Predecessor (gen %d) met %s at (%d,%d), tick %lld.",
+                  generation, typeName(type), static_cast<int>(e.x),
+                  static_cast<int>(e.y), static_cast<long long>(e.t));
+    m.summary = buf;
+    switch (type) {
+      case GeneticMemoryType::ResourceLocation:
+        m.lesson = "Food or water was found here; the world persists, so it may be found again.";
+        break;
+      case GeneticMemoryType::ThreatLocation:
+        m.lesson = "Danger was met here; approach with caution.";
+        break;
+      case GeneticMemoryType::SafeLocation:
+        m.lesson = "Rest here proved safe before.";
+        break;
+      default:
+        m.lesson = "Remember this experience of my predecessor.";
+        break;
+    }
+    m.emotionalValence = e.emotionalValence;
+    m.rehearsalCount = e.rehearsalCount;
+    kept.push_back({m});
+  }
+  // Deterministic order: importance desc, then recent first, then position.
+  std::sort(kept.begin(), kept.end(), [](const Candidate& a, const Candidate& b) {
+    if (a.mem.importance != b.mem.importance) return a.mem.importance > b.mem.importance;
+    if (a.mem.tick != b.mem.tick) return a.mem.tick > b.mem.tick;
+    if (a.mem.x != b.mem.x) return a.mem.x < b.mem.x;
+    return a.mem.y < b.mem.y;
+  });
+  const size_t n = std::min(kept.size(), static_cast<size_t>(maxMemories));
+  for (size_t i = 0; i < n; ++i) bundle.memories.push_back(kept[i].mem);
   return bundle;
 }
 
+GeneticMemory GeneticMemorySystem::makeDeathMemory(
+    const std::string& cause,
+    int generation,
+    int16_t x,
+    int16_t y,
+    int64_t tick,
+    double hunger,
+    double thirst) {
+  GeneticMemory m;
+  m.type = GeneticMemoryType::DeathCause;
+  m.importance = 0.9f;
+  m.tick = tick;
+  m.x = x;
+  m.y = y;
+  m.emotionalValence = -0.8f;
+  m.rehearsalCount = 0;
+  char buf[256];
+  if (cause == "starvation") {
+    std::snprintf(buf, sizeof(buf),
+                  "Predecessor (gen %d) starved at tick %lld with hunger %.0f.",
+                  generation, static_cast<long long>(tick), hunger);
+    m.summary = buf;
+    m.lesson =
+        "It died hungry, not somewhere lethal: keep food stores and eat before hunger "
+        "passes 70. The place it died tells nothing by itself.";
+  } else if (cause == "dehydration") {
+    std::snprintf(buf, sizeof(buf),
+                  "Predecessor (gen %d) died of thirst at tick %lld with thirst %.0f.",
+                  generation, static_cast<long long>(tick), thirst);
+    m.summary = buf;
+    m.lesson =
+        "It died thirsty, not somewhere lethal: drink before thirst passes 55 and keep "
+        "water carried. Dying near water does not make water dangerous.";
+  } else if (cause == "predator_attack") {
+    std::snprintf(buf, sizeof(buf),
+                  "Predecessor (gen %d) was killed by a predator near (%d,%d) at tick %lld.",
+                  generation, static_cast<int>(x), static_cast<int>(y),
+                  static_cast<long long>(tick));
+    m.summary = buf;
+    m.lesson =
+        "A predator hunts around these coordinates; only here is the location genuine "
+        "evidence. Flee early and keep distance from predators.";
+  } else if (cause == "energy_depletion") {
+    std::snprintf(buf, sizeof(buf),
+                  "Predecessor (gen %d) ran out of energy at tick %lld.", generation,
+                  static_cast<long long>(tick));
+    m.summary = buf;
+    m.lesson =
+        "It exhausted itself: rest before energy collapses and eat to recover. The place "
+        "it fell tells nothing by itself.";
+  } else if (cause == "temperature_extreme") {
+    std::snprintf(buf, sizeof(buf),
+                  "Predecessor (gen %d) died of cold/heat at tick %lld.", generation,
+                  static_cast<long long>(tick));
+    m.summary = buf;
+    m.lesson =
+        "It died of exposure: seek shelter, fire and warmth in storms and winter. The "
+        "place it died tells nothing by itself.";
+  } else if (cause == "disease") {
+    std::snprintf(buf, sizeof(buf), "Predecessor (gen %d) died sick at tick %lld.",
+                  generation, static_cast<long long>(tick));
+    m.summary = buf;
+    m.lesson =
+        "It died of illness: avoid swamp water, treat wounds, rest while sick. The place "
+        "it died tells nothing by itself.";
+  } else {
+    std::snprintf(buf, sizeof(buf),
+                  "Predecessor (gen %d) died of unknown causes at tick %lld.", generation,
+                  static_cast<long long>(tick));
+    m.summary = buf;
+    m.lesson = "No lesson is certain; stay fed, watered, rested and warm.";
+  }
+  return m;
+}
+
 size_t GeneticMemorySystem::applyToOrganism(
+    Engine& engine,
+    const std::vector<GeneticMemory>& memories,
+    uint64_t parentId,
     float inheritanceWeight) {
-  (void)inheritanceWeight; // stub: archive integration pending
-  return 0;
+  if (inheritanceWeight <= 0.0f || parentId == 0) return 0;
+  if (inheritanceWeight > 1.0f) inheritanceWeight = 1.0f;
+  size_t n = 0;
+  for (const GeneticMemory& m : memories) {
+    if (n >= kMaxInjected) break;
+    const float imp = m.importance * inheritanceWeight;
+    if (imp < kRetainThreshold) continue;
+    Episode e;
+    e.t = engine.clock().now();
+    e.x = m.x;
+    e.y = m.y;
+    e.kind = kindForType(m.type);
+    e.action = 255;
+    // NOT Participant::Self: this was lived by the predecessor, not by me.
+    e.participants = Participant::None;
+    e.outcome = (m.type == GeneticMemoryType::DeathCause ||
+                 m.type == GeneticMemoryType::ThreatLocation ||
+                 m.type == GeneticMemoryType::ThreatPattern)
+                    ? Outcome::Failure
+                    : Outcome::Success;
+    e.prediction = 0.0f;
+    e.predictionError = 0.0f;
+    e.emotionalValence = m.emotionalValence;
+    e.socialRelevance = 0.0f;
+    e.relevance = (m.type == GeneticMemoryType::DeathCause ||
+                   m.type == GeneticMemoryType::ThreatLocation)
+                      ? (Relevance::Aversive | Relevance::Threatening)
+                      : Relevance::None;
+    e.importance = imp;
+    e.detail = 0;
+    e.rehearsalCount = m.rehearsalCount;
+    e.consolidated = false;
+    e.sourceIndividualId = parentId;
+    engine.memorySys().ring().add(e);
+    ++n;
+  }
+  return n;
 }
 
 std::vector<const GeneticMemory*> GeneticMemorySystem::getDeathMemories(

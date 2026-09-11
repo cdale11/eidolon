@@ -22,6 +22,19 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   save/load and a crash can never fork a second lineage. Death/birth log lines now
   carry generation, cause and spawn details.
 
+### Attributed inheritance (E3, slice 1)
+- Successors now inherit what their predecessors actually learned: a bounded,
+  importance-ordered bundle of the predecessor's experiences (resources, threats,
+  safe spots) plus an evidence-based death lesson, delivered through the heredity
+  file and injected as attributed memories — marked with the parent's id, never
+  confused with the successor's own life.
+- Death lessons are cause-specific: location counts as evidence only for predator
+  attacks; starvation, thirst and other causes explicitly rule the place out, so a
+  successor never learns "water is lethal" from a death near water.
+- Fixed heredity metadata (real generation/parent id, honest `lifespan=death-birth`
+  instead of always `deathTick`), and snapshot v17 persists attribution plus birth
+  tick across save/load.
+
 ### Internet learning substrate
 - Internet access remains opt-in via `--internet-enabled`, but approved pages can now become
   durable learning material: `POST /api/browse/fetch` supports `learn:true`,

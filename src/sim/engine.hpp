@@ -218,6 +218,10 @@ bool loadPolicyPrior(const std::string& path);
   uint64_t worldId() const { return worldId_; }
   uint64_t individualId() const { return individualId_; }
   uint32_t generation() const { return generation_; }
+  // Sim tick at which the current individual was born (initIndividual time).
+  // Used for honest lifespan accounting in heredity (E3); monotonic world time
+  // makes this exact across successions.
+  int64_t birthTick() const { return birthTick_; }
 
   // Create exactly one successor after death WITHOUT resetting the world:
   // world time, ecology, structures and RNG streams continue; only per-life
@@ -389,6 +393,8 @@ private:
   uint64_t worldId_ = 0;
   uint64_t individualId_ = 0;
   uint32_t generation_ = 0;
+  // E3: birth tick of the current individual (snapshot v17).
+  int64_t birthTick_ = 0;
 
   // Crafting system for tools, structures, food processing
   CraftingSystem crafting_;

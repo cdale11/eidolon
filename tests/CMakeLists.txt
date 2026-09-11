@@ -15,7 +15,8 @@ add_executable(eidolon_tests
   test_planning.cpp
   test_goals.cpp
   test_scheduler.cpp
-  test_crafting.cpp)
+  test_crafting.cpp
+  test_heredity.cpp)
 if(NOT EIDOLON_WASM_BUILD)
   target_sources(eidolon_tests PRIVATE test_archive.cpp test_bridge.cpp)
   target_link_libraries(eidolon_tests PRIVATE eidolon_core eidolon_store eidolon_llm)

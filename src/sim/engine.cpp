@@ -130,6 +130,7 @@ void Engine::initIndividual() {
   materials_.add(MaterialType::Vine, 2);
   lastSlowMindAt_ = 0;
   selfModel_.autobiography.birth_tick = 0;
+  birthTick_ = clock_.now(); // E3: birth time of this individual (lifespan accounting)
 
   body_.reset();
   body_.setWaterCapacity(Physiology::kInnateWaterskinCapacity);
@@ -1377,6 +1378,9 @@ void Engine::serializeState(BinaryWriter& w) const {
   w.u64(individualId_);
   w.u32(generation_);
   w.u32(rebirthCount_);
+  // v17: E3 birth tick (honest lifespan accounting) — Episode attribution rides
+  // inside the memory-ring serialization above (sourceIndividualId per episode).
+  w.i64(birthTick_);
 }
 
 bool Engine::deserializeState(BinaryReader& r, std::string& err) {
@@ -1486,6 +1490,11 @@ bool Engine::deserializeState(BinaryReader& r, std::string& err) {
   }
   generation_ = gen;
   rebirthCount_ = rebirths;
+  // v17: E3 birth tick.
+  if (!r.i64(birthTick_)) {
+    err = "snapshot birth-tick corrupt";
+    return false;
+  }
   return r.done();
 }
 

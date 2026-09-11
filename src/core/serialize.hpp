@@ -35,7 +35,9 @@ constexpr uint32_t kSnapshotMagic = 0x4549444C; // "EIDL"
 //      tickAndLog() cannot silently drop due timeline/archive events.
 // v16: E2 succession identity (worldId/individualId/generation) so a lineage continues
 //      exactly one successor across save/load without resetting the world.
-constexpr uint32_t kSnapshotVersion = 16;
+// v17: E3 inheritance attribution — per-episode sourceIndividualId in the memory ring
+//      plus Engine::birthTick_ for honest lifespan accounting in heredity.
+constexpr uint32_t kSnapshotVersion = 17;
 
 struct BinaryWriter {
 public:

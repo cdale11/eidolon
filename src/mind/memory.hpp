@@ -75,6 +75,9 @@ struct Episode {
   // Derived/consolidation fields (not in hot ring, filled during sleep).
   uint32_t rehearsalCount = 0;      // times replayed during sleep
   bool consolidated = false;        // moved to long-term archive
+  // E3 attribution: 0 = own lived experience; otherwise the predecessor
+  // individual id this episode was inherited from (never autobiography).
+  uint64_t sourceIndividualId = 0;
 };
 
 inline Participant operator|(Participant a, Participant b) {
