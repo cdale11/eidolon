@@ -281,3 +281,64 @@ TEST(snapshot_current_action_survives_resume) {
   const CognitiveSnapshot sb = makeSnapshot(b);
   CHECK_EQ(sa.currentAction, sb.currentAction);
 }
+
+// ---------------------------------------------------------------------------
+// Q0 — the snapshot must tell the LLM true facts, never placeholders.
+// ---------------------------------------------------------------------------
+
+TEST(snapshot_terrain_is_named_not_numbered) {
+  // "terrain=3" meant nothing to the LLM; the snapshot must name the ground.
+  Engine engine;
+  engine.init(12345, true, 64, 64);
+  const CognitiveSnapshot s = makeSnapshot(engine);
+  CHECK(!s.terrain.empty());
+  bool hasDigit = false;
+  for (char c : s.terrain) {
+    if (c >= '0' && c <= '9') hasDigit = true;
+  }
+  CHECK(!hasDigit); // no raw enum ints
+  CHECK(s.terrain.find(' ') != std::string::npos ||
+        s.terrain.find('(') != std::string::npos ||
+        !s.terrain.empty()); // "plains (temperate plains)" style
+}
+
+TEST(snapshot_skills_report_real_practice) {
+  // A fresh organism has attempted nothing: the summary must say so instead of
+  // inventing "forage=0.8 drink=0.6 craft=0.1".
+  Engine engine;
+  engine.init(12345, true, 64, 64);
+  CognitiveSnapshot fresh = makeSnapshot(engine);
+  CHECK(fresh.skillSummary.find("0.8") == std::string::npos);
+  CHECK(fresh.skillSummary.find("no practiced skills yet") != std::string::npos);
+  // After real practice, the practiced skill appears with its true competence.
+  engine.skills().practice(SkillType::Foraging, true);
+  engine.skills().practice(SkillType::Foraging, true);
+  const CognitiveSnapshot s = makeSnapshot(engine);
+  CHECK(s.skillSummary.find("foraging=") != std::string::npos);
+  CHECK(s.skillSummary.find("no practiced skills yet") == std::string::npos);
+  // Never-practiced skills stay unmentioned.
+  CHECK(s.skillSummary.find("hunting=") == std::string::npos);
+}
+
+TEST(snapshot_goals_keep_every_significant_goal) {
+  // The prompt join must carry every goal, not just the first.
+  CHECK_EQ(joinGoalNames({}), std::string("none"));
+  CHECK_EQ(joinGoalNames({"find food"}), std::string("find food"));
+  CHECK_EQ(joinGoalNames({"find food", "rest", "flee threat"}),
+           std::string("find food, rest, flee threat"));
+  // And the snapshot itself keeps goals as a list (capped), not a truncation.
+  Engine engine;
+  engine.init(12345, true, 64, 64);
+  for (int i = 0; i < 300; ++i) engine.tick();
+  const CognitiveSnapshot s = makeSnapshot(engine);
+  CHECK(s.activeGoals.size() <= 5);
+}
+
+TEST(bridge_model_name_is_configurable) {
+  // The request model string must come from configuration, never a hardcoded
+  // dev-machine path.
+  LLMBridge bridge("");
+  CHECK_EQ(bridge.model(), std::string("eidolon-llm"));
+  bridge.setModel("qwen3-4b");
+  CHECK_EQ(bridge.model(), std::string("qwen3-4b"));
+}

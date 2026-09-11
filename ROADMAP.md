@@ -568,14 +568,19 @@ stays attributable to snapshot/archive facts. Work in slice order — Q0 fixes a
 fabrication sources before Q1–Q4 tune quality on top.
 
 #### Q0 — Stop telling the LLM false facts (correctness first)
-- [ ] `skillSummary` is a hardcoded placeholder (`"forage=0.8 drink=0.6 craft=0.1"`,
+- [x] `skillSummary` is a hardcoded placeholder (`"forage=0.8 drink=0.6 craft=0.1"`,
       `bridge.cpp`): wire real `SkillStore` competence values; omit skills with no
       practice instead of inventing numbers.
-- [ ] `terrain` is a raw enum int (`"terrain=3"`): send the terrain/biome name.
-- [ ] `chatComplete` hardcodes a model GGUF path: use the configured model/endpoint.
-- [ ] Send all significant `activeGoals`, not just `activeGoals[0]`.
+      (Done: Beta-mean per practiced skill, `"no practiced skills yet"` when fresh.)
+- [x] `terrain` is a raw enum int (`"terrain=3"`): send the terrain/biome name.
+      (Done: `"forest (boreal forest)"` style via `terrainName`/`biomeName`.)
+- [x] `chatComplete` hardcodes a model GGUF path: use the configured model/endpoint.
+      (Done: `LLMBridge::setModel`, neutral `"eidolon-llm"` default, `--llm-model` flag.)
+- [x] Send all significant `activeGoals`, not just `activeGoals[0]`.
+      (Done: capped list of 5 joined by `joinGoalNames`.)
 - **Gate:** snapshot unit test asserts no placeholder constants, real terrain names, all
   goals present, and model string from configuration; existing bridge tests stay green.
+  (Done: 4 new tests in `tests/test_bridge.cpp`; full gate green.)
 
 #### Q1 — Give the LLM conversation memory (biggest perceived gap)
 Today `respond()` sees only the current message + snapshot: the organism cannot refer

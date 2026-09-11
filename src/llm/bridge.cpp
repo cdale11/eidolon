@@ -134,6 +134,62 @@ const char* plantTypeName(PlantType t) {
   }
 }
 
+// Q0: the snapshot must name the ground, not emit a raw enum int ("terrain=3"
+// meant nothing to the LLM). Names mirror world.hpp Terrain/Biome enums.
+const char* terrainName(Terrain t) {
+  switch (t) {
+    case Terrain::Plains: return "plains";
+    case Terrain::Forest: return "forest";
+    case Terrain::Water: return "water";
+    case Terrain::Hills: return "hills";
+    case Terrain::Desert: return "desert";
+    case Terrain::Mountain: return "mountain";
+    case Terrain::Swamp: return "swamp";
+    case Terrain::Tundra: return "tundra";
+    case Terrain::River: return "river";
+    default: return "unknown";
+  }
+}
+
+const char* biomeName(Biome b) {
+  switch (b) {
+    case Biome::TemperatePlains: return "temperate plains";
+    case Biome::TemperateForest: return "temperate forest";
+    case Biome::BorealForest: return "boreal forest";
+    case Biome::Tundra: return "tundra";
+    case Biome::Desert: return "desert";
+    case Biome::Savannah: return "savannah";
+    case Biome::Mountain: return "mountain";
+    case Biome::Swamp: return "swamp";
+    case Biome::WaterBody: return "open water";
+    case Biome::River: return "river";
+    default: return "unknown";
+  }
+}
+
+// Q0: skill names mirror body/skill.hpp SkillType so the summary reports real
+// practiced competence instead of the old hardcoded placeholder.
+const char* skillTypeName(SkillType t) {
+  switch (t) {
+    case SkillType::FireMaking: return "firemaking";
+    case SkillType::Knapping: return "knapping";
+    case SkillType::Woodworking: return "woodworking";
+    case SkillType::Foraging: return "foraging";
+    case SkillType::Hunting: return "hunting";
+    case SkillType::ShelterBuilding: return "shelter-building";
+    case SkillType::Cooking: return "cooking";
+    case SkillType::ToolUse: return "tool-use";
+    case SkillType::Tracking: return "tracking";
+    case SkillType::Navigation: return "navigation";
+    case SkillType::WallBuilding: return "wall-building";
+    case SkillType::Farming: return "farming";
+    case SkillType::Storage: return "storage";
+    case SkillType::ToolInvention: return "tool-invention";
+    case SkillType::RecipeDiscovery: return "recipe-discovery";
+    default: return nullptr; // None/Count: never reported
+  }
+}
+
 // Time-of-day greeting slot for the fallback reply. The LLM is free to vary the wording;
 // this is only used when the LLM is unavailable, so it must stay grounded and short.
 const char* hSlot(double hour) {
@@ -145,6 +201,17 @@ const char* hSlot(double hour) {
 }
 
 } // namespace
+
+// Q0: joins every significant goal for the respond prompt ("find food, rest").
+// Was: only activeGoals[0] reached the LLM, hiding competing drives.
+std::string joinGoalNames(const std::vector<std::string>& goals) {
+  std::string out;
+  for (size_t i = 0; i < goals.size(); ++i) {
+    if (i > 0) out += ", ";
+    out += goals[i];
+  }
+  return out.empty() ? "none" : out;
+}
 
 CognitiveSnapshot makeSnapshot(const Engine& engine) {
   CognitiveSnapshot s;
@@ -171,10 +238,15 @@ CognitiveSnapshot makeSnapshot(const Engine& engine) {
   s.health = b.health();
   s.pain = b.pain();
 
-  // Position & environment
+  // Position & environment (Q0: names, never raw enum ints).
   s.posX = pos.x;
   s.posY = pos.y;
-  s.terrain = std::to_string(static_cast<int>(grid.at(pos.x, pos.y)));
+  {
+    char terrBuf[96];
+    std::snprintf(terrBuf, sizeof(terrBuf), "%s (%s)", terrainName(grid.at(pos.x, pos.y)),
+                  biomeName(grid.biome(pos.x, pos.y)));
+    s.terrain = terrBuf;
+  }
   s.weather = w.describe();
   s.ambientTempC = w.ambientTempC(engine.clock());
 
@@ -204,11 +276,14 @@ CognitiveSnapshot makeSnapshot(const Engine& engine) {
   // Threat level
   s.threatLevel = engine.learn().threatEstimate();
 
-  // Active goals (from GoalEmergence)
-  const auto& goals = engine.goalEmergence().active_goals();
-  for (const auto& goal : goals) {
-    if (goal.priority > 0.1f) { // Only significant goals
-      s.activeGoals.push_back(goalName(goal.type));
+  // Active goals (from GoalEmergence). Q0: keep every significant goal (capped)
+  // instead of only the first — the LLM never knew about competing drives.
+  {
+    const auto& goals = engine.goalEmergence().active_goals();
+    for (const auto& goal : goals) {
+      if (goal.priority > 0.1f && s.activeGoals.size() < 5) { // Only significant goals
+        s.activeGoals.push_back(goalName(goal.type));
+      }
     }
   }
 
@@ -298,9 +373,25 @@ CognitiveSnapshot makeSnapshot(const Engine& engine) {
   }
   s.recentMemorySummary = summary;
 
-  // Skills/competence
-  // TODO: Add skill summary when skill system exposes it
-  s.skillSummary = "forage=0.8 drink=0.6 craft=0.1"; // placeholder
+  // Skills/competence (Q0: real Beta-mean competence from the SkillStore for
+  // practiced skills only — the old hardcoded "forage=0.8 drink=0.6 craft=0.1"
+  // told the LLM false facts about skills never attempted).
+  {
+    std::string joined;
+    for (uint8_t i = 1; i < static_cast<uint8_t>(SkillType::Count); ++i) {
+      const SkillType t = static_cast<SkillType>(i);
+      const char* name = skillTypeName(t);
+      if (!name) continue;
+      const SkillCompetence& c = engine.skills().skill(t);
+      const uint32_t trials = c.alpha + c.beta - 2; // alpha=successes+1, beta=failures+1
+      if (trials == 0) continue; // never attempted: omit, never invent
+      char entry[64];
+      std::snprintf(entry, sizeof(entry), "%s=%.2f", name, c.mean());
+      if (!joined.empty()) joined += " ";
+      joined += entry;
+    }
+    s.skillSummary = joined.empty() ? "no practiced skills yet" : joined;
+  }
 
   // --- Circadian & physiological tone (DESIGN future direction: time-of-day awareness) ---
   // All deterministic, derived from the snapshot fields above. No new state, no extra LLM.
@@ -515,8 +606,8 @@ bool LLMBridge::post(const std::string& body, std::string& response) {
 bool LLMBridge::chatComplete(const JsonValue& messages, int maxTokens, JsonValue& out) {
   ++calls_;
   JsonValue req = JsonValue::makeObject();
-  // Use actual model name for Nemotron 3 Nano (llama.cpp server returns full path as model ID)
-  req.setString("model", "/home/umang/llama.cpp/NVIDIA-Nemotron3-Nano-4B-Q4_K_M.gguf");
+  // Q0: model name from configuration (was a hardcoded dev-machine GGUF path).
+  req.setString("model", model_);
   req.set("messages", messages);
   req.setNumber("max_tokens", maxTokens);
   req.setNumber("temperature", 0.7);
@@ -632,7 +723,10 @@ bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
   JsonValue user = JsonValue::makeObject();
   user.setString("role", "user");
   JsonValue payload = JsonValue::makeObject();
-  
+
+  // Q0: every significant goal reaches the prompt (was: first goal only).
+  const std::string goalsJoined = joinGoalNames(s.activeGoals);
+
   // Build comprehensive state string
   char stateBuf[4096];
   std::snprintf(stateBuf, sizeof(stateBuf),
@@ -662,7 +756,7 @@ bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
     s.predatorsNear, s.predatorDist, s.preyNear,
     s.waterDist, s.plantDist, s.plantType.c_str(),
     s.currentAction.c_str(),
-    s.activeGoals.empty() ? "none" : s.activeGoals[0].c_str(), // first goal
+    goalsJoined.c_str(),
     s.personalitySummary.c_str(),
     s.driveSummary.c_str(),
     s.userTrust, s.userFamiliarity, s.userAffection, s.userExpectsReturn ? "yes" : "no",

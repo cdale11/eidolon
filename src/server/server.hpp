@@ -37,6 +37,7 @@ public:
     std::string dumpExperiencesPath; // optional path to dump teacher-training records (JSONL)
     std::string llmEndpoint; // empty = offline
     int llmTimeoutMs = 10000;
+    std::string llmModel = "eidolon-llm"; // model name sent in chat requests
     // Adaptive fidelity (Phase 11): 0 = auto (from compute profile), else explicit level
     // 1..3 for Low/Medium/High. Only affects pacing/model budget/world detail, never the
     // deterministic tick semantics.

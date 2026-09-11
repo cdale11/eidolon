@@ -797,6 +797,7 @@ Server::Server(Options opts) : opts_(std::move(opts)) {
     std::fprintf(stderr, "warning: archive unavailable: %s\n", err.c_str());
   }
   llm_ = std::make_unique<LLMBridge>(opts_.llmEndpoint, opts_.llmTimeoutMs);
+  llm_->setModel(opts_.llmModel);
   // Internet access (Future Directions): configurable, user-gated browsing
   if (opts_.internetEnabled) {
     BrowserConfig bcfg;

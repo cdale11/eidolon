@@ -118,6 +118,10 @@ struct CognitiveSnapshot {
 // Builds the comprehensive cognitive snapshot from engine state (~2-4 k tokens target).
 CognitiveSnapshot makeSnapshot(const Engine& engine);
 
+// Q0: joins every significant goal for the respond prompt ("find food, rest").
+// Was: only activeGoals[0] reached the LLM, hiding competing drives.
+std::string joinGoalNames(const std::vector<std::string>& goals);
+
 // Deterministic fallback reply generated purely from state (LLM down/garbage).
 // `userHour` (optional, <0 = use sim hour) is the user's local-hour for the greeting
 // slot only — a "good morning" respects the user's timezone, while the organism's
@@ -130,6 +134,13 @@ public:
   // `endpoint` like "http://127.0.0.1:8080/v1". Empty endpoint disables calls (offline).
   explicit LLMBridge(std::string endpoint, int timeoutMs = 10000)
       : endpoint_(std::move(endpoint)), timeoutMs_(timeoutMs) {}
+
+  // Model name sent in chat-completion requests. Q0: was a hardcoded absolute
+  // GGUF path from one dev machine. llama.cpp ignores the name (it serves the
+  // loaded model); OpenAI-compatible endpoints use it for routing. The server
+  // sets it from --llm-model; the default is intentionally neutral.
+  void setModel(const std::string& m) { model_ = m; }
+  const std::string& model() const { return model_; }
 
   // Whether calls will actually hit the network.
   bool enabled() const { return !endpoint_.empty(); }
@@ -153,6 +164,7 @@ private:
 
   std::string endpoint_;
   int timeoutMs_;
+  std::string model_ = "eidolon-llm";
   int64_t calls_ = 0;
   int64_t failures_ = 0;
 };

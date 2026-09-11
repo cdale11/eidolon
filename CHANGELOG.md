@@ -5,6 +5,13 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 
 ## [Unreleased]
 
+### Reply grounding fixes (Q0)
+- The chat snapshot no longer tells the language model false facts: skill levels
+  now report real practiced competence (or "no practiced skills yet"), terrain is
+  named instead of numbered, all significant goals are sent instead of just the
+  first, and the request model name comes from `--llm-model` instead of a
+  hardcoded dev-machine path.
+
 ### Single-command build-and-run
 - `run_eidolon.sh` now configures and incrementally builds the native game targets
   before startup (toolchain/dependency checks with actionable errors), ensures the
