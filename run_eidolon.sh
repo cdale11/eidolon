@@ -23,6 +23,8 @@
 #   EIDOLON_BUILD_LLAMA=0               don't auto-build llama-server; just explain
 #   LLAMA_MODEL   GGUF path        (default ~/llama.cpp/Qwen3-4B-Instruct-Q4_K_M.gguf)
 #   LLAMA_BIN     llama-server binary (default ~/llama.cpp/build-vulkan/bin/llama-server)
+#   LLAMA_FLASH_ATTN=off            disable Flash Attention (default on; verified on Vulkan)
+#   LLAMA_EXTRA_ARGS="..."           extra flags appended to the llama-server command
 #   LLAMA_PORT    LLM port          (default 8080)
 #   EIDOLON_PORT  eidolon-server port (default 8081)
 #   EIDOLON_DATA  run directory     (default data/runs/server)
@@ -40,6 +42,8 @@ LLAMA_SRC="${LLAMA_SRC:-$HOME/llama.cpp}"
 EIDOLON_BUILD_LLAMA="${EIDOLON_BUILD_LLAMA:-1}"
 LLAMA_MODEL="${LLAMA_MODEL:-$HOME/llama.cpp/Qwen3-4B-Instruct-Q4_K_M.gguf}"
 LLAMA_BIN="${LLAMA_BIN:-$HOME/llama.cpp/build-vulkan/bin/llama-server}"
+LLAMA_FLASH_ATTN="${LLAMA_FLASH_ATTN:-on}"
+LLAMA_EXTRA_ARGS="${LLAMA_EXTRA_ARGS:-}"
 LLAMA_PORT="${LLAMA_PORT:-8080}"
 EIDOLON_PORT="${EIDOLON_PORT:-8081}"
 EIDOLON_DATA="${EIDOLON_DATA:-data/runs/server}"
@@ -192,11 +196,24 @@ else
     echo "error: model not found at $LLAMA_MODEL" >&2
     exit 1
   fi
-  echo "[1/3] starting llama-server (Vulkan0, log: $LLAMA_LOG)..."
+  echo "[1/3] starting llama-server (Vulkan0, low-RAM flags, log: $LLAMA_LOG)..."
+  # Low-RAM layout for ~6 GB shared memory + 0.5 GB VRAM iGPU:
+  #   --n-gpu-layers 14 + --device Vulkan0 : model layers offloaded to the iGPU
+  #     (capped: `auto` offloads too much and starves the sim).
+  #   --flash-attn on                       : Flash Attention, lower peak memory.
+  #   --no-kv-offload + --cache-type-k/v q8_0: KV cache stays in CPU RAM, quantized
+  #     to 8-bit. Deliberate: the 740M's VRAM cannot hold the full KV cache, and on
+  #     this APU "VRAM" is carved from the same RAM anyway — moving KV to the GPU
+  #     would only risk iGPU OOM without saving system memory.
+  #   --cache-ram 0                         : no extra RAM prompt cache.
+  #   --no-mmproj                           : no multimodal projector in RAM.
+  #   (mmap load is the default: the 2.5 GB model is demand-paged, not copied.)
+  # shellcheck disable=SC2086
   "$LLAMA_BIN" -m "$LLAMA_MODEL" --device Vulkan0 --threads 8 \
     --ctx-size 2048 --port "$LLAMA_PORT" --host 127.0.0.1 \
     --n-gpu-layers 14 --no-kv-offload --cache-ram 0 \
     --cache-type-k q8_0 --cache-type-v q8_0 --no-mmproj \
+    --flash-attn "$LLAMA_FLASH_ATTN" $LLAMA_EXTRA_ARGS \
     >>"$LLAMA_LOG" 2>&1 &
   LLAMA_PID=$!
 

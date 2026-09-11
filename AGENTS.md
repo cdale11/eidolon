@@ -61,7 +61,8 @@ Rules for any agent (AI or human) working in this repo. Read before touching any
     RAM and the 740M's tiny VRAM (cap ~1 GB via exact layer count; `auto` offloads too much):
     `~/llama.cpp/build-vulkan/bin/llama-server -m ~/llama.cpp/Qwen3-4B-Instruct-Q4_K_M.gguf
     --device Vulkan0 --threads 8 --ctx-size 2048 --port 8080 --n-gpu-layers 14
-    --no-kv-offload --cache-ram 0 --cache-type-k q8_0 --cache-type-v q8_0 --no-mmproj`
+    --no-kv-offload --cache-ram 0 --cache-type-k q8_0 --cache-type-v q8_0 --no-mmproj
+    --flash-attn on`
     (~1.05 GiB GTT on the iGPU, KV cache quantized in CPU RAM, no prompt-cache RAM).
     Note the model path lives in `~/llama.cpp/` root, not `models/`.
   - **eidolon-server on the LAN**: just run `./run_eidolon.sh` — it starts llama-server
