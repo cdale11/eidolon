@@ -466,7 +466,7 @@ and "client does the maximum work" invariants apply to all of them.
   - [x] Configurable `--internet-enabled` flag, search endpoint/key, timeouts, limits.
   - [x] Search endpoint: `POST /api/browse/search` (query → ranked results + snippets).
   - [x] Fetch endpoint: `POST /api/browse/fetch` (URL → extracted text content).
-  - [x] Results flow through normal memory/learning pipeline as "read content": approved
+  - [x] Durable reading corpus (not yet end-to-end skill learning): approved
         fetches/manual resources are stored in SQLite `internet_resources`, logged as
         `read` timeline events, surfaced in metrics, and exported for offline retraining via
         `python -m teacher.internet_corpus`.
@@ -498,7 +498,9 @@ and "client does the maximum work" invariants apply to all of them.
   better pathfinding to water would save energy"; and from an emergence/consciousness
   perspective: "I avoid the cold meadow, so I never see the berries there"). Suggestions
   come from its own planner/metacognition inspecting its metrics and are offered in
-  conversation as *proposals* the user may adopt, not as code changes.
+   conversation as *proposals* the user may adopt. The expansion plan E7 below extends this
+   toward evaluated retraining and isolated code experiments; deployment autonomy remains
+   provisional.
 - **Time-of-day awareness** *(slices 1–2 implemented)*: the organism's replies
   reflect its circadian state — whether it is awake/asleep, drowsy, tired, hungry or
   thirsty at the moment of speaking — and it lives on a real day/night rhythm. Grounded
@@ -554,6 +556,139 @@ and "client does the maximum work" invariants apply to all of them.
   alert/calm/distress) is now live; the richer visual avatar/mood rendering remains.
 
 ---
+
+### Expansion plan — implementation gaps only (E0–E7)
+
+Authority: DESIGN's "Expansion agreement — persistent world, mortal individuals".
+These unchecked items extend existing work; do not rebuild completed features. Before each
+slice, inspect its entry points and tests, narrow the delta, and record evidence on completion.
+Names/declarations alone do not establish a working integration. No new implementation was
+performed when this plan was added.
+
+**Verified baseline:** the engine already has learning, memory, concepts, metacognition,
+goals, crafting/construction, instruction/trust learning, wildlife, and heredity foundations.
+Web search/fetch, consent, SQLite reading corpus, JSONL export, native/WASM offload, and
+Vulkan llama.cpp launch already exist. In particular:
+- `Server::simLoop` auto-rebirth calls `Engine::init`, which resets the clock, structures,
+  and world: automatic birth exists, persistent-world succession does not.
+- `GeneticMemorySystem::extractFromArchive/applyToOrganism` are stubs; heredity files and
+  death-memory construction already exist in `src/mind/heredity.cpp`.
+- `run_eidolon.sh` starts/reuses llama-server and starts Eidolon, but fails if game binaries
+  have not already been built. Extend this script rather than add another launcher.
+
+#### E0 — Separate maintenance/refactoring step
+- [ ] Map ownership and runtime wiring in `src/sim/engine.*`, `src/server/server.*`,
+      `src/store/`, and `src/mind/`; identify duplication, stubs, and large responsibilities.
+      Reconcile only demonstrably stale completion claims with code/test evidence.
+- [ ] Perform focused, behavior-preserving refactoring in separate steps from feature work:
+      clearer world/individual ownership seams, smaller server/lifecycle responsibilities,
+      explicit persistence/error contracts, and removal of verified duplication. Purpose:
+      easier maintenance, root-cause bug resolution, and performance analysis/improvement.
+      Avoid a wholesale rewrite; fix discovered behavior bugs in separately scoped steps.
+      **Gate:** warning-enabled build, full project gate, unchanged seeded logs and
+      save/load/native-WASM behavior; before/after time and RSS for touched hot paths.
+
+#### E1 — Finish the single-command build-and-run experience
+Dependency: independent of cognitive/ecological expansion; keep separate from E0 refactoring.
+- [ ] Extend executable `run_eidolon.sh` to configure and incrementally build native game
+      targets before startup, and build required browser worker assets when offload is
+      enabled. Detect toolchains/dependencies with actionable errors. Reuse existing local
+      llama.cpp/model configuration and healthy-server detection; build its local Vulkan
+      target when needed from available sources, or explain missing prerequisites.
+- [ ] Preserve offline mode, persistent data, configurable paths, readiness checks and
+      owned-process cleanup; propagate build/startup failures with nonzero exit status.
+      Update quickstart to the one command, with initial dependencies/model setup documented.
+      **Gate:** from another working directory, one invocation handles absent/stale game
+      builds, launches chat + local LLM, reuses a healthy LLM, supports offline mode, preserves
+      data on rerun, and cleans up owned children on failure/Ctrl+C. No second user launcher.
+
+#### E2 — Correct succession without resetting the world
+Dependency: E0 ownership seams; decide successor arrival/body/spawn conditions first.
+- [ ] Split world initialization from new-individual initialization; continue ecology and
+      world time without a living humanoid. Replace server reset-on-death and align CLI/WASM
+      lifecycle handling with the portable core; preserve structures even where currently
+      stored outside `World`.
+- [ ] Persist distinct world/individual/generation IDs, birth/death times, predecessor links,
+      life statistics, and attributable history. Make death recording and successor creation
+      restart-safe with versioned migrations and deterministic successor RNG derivation.
+      **Gate:** death → save/reload → exactly one successor; unchanged world identity,
+      monotonic time, retained ecology/buildings, archived predecessor stats, and no copied
+      autobiography. Seeded multi-generation runs and client handoff retain parity.
+
+#### E3 — Complete attributed inheritance and grounded knowledge
+Dependency: E2 identities; extend `heredity`, `genetic_memory`, `memory_system`, `user_model`,
+`self_model`, `concept_formation`, `grounded_language`, and SQLite archive rather than replace.
+- [ ] Complete archive extraction/application stubs with bounded inheritance of useful
+      knowledge/skill priors. Retain predecessor identity, evidence, confidence, and source
+      type (personal experience, inherited record, user claim, internet resource).
+- [ ] Expose predecessor stats and relationship/conversation histories through attributed
+      retrieval; let new interactions revise inherited expectations independently of the
+      predecessor's trust/attachment. Provide a documented adult-language/knowledge baseline
+      without claiming practical mastery or seeding a textual personality.
+- [ ] Replace simplistic death-location lessons with evidence-based causal hypotheses;
+      support belief contradiction/revision and distinguish descriptions from practiced skills.
+      **Gate:** successor cites its predecessor accurately, revises inherited bad advice,
+      retains useful knowledge across restart, and does not learn "all rivers are lethal"
+      merely from a death near water. Working retrieval/model state stays bounded.
+
+#### E4 — Deepen biological mechanisms, incrementally
+Dependency: E0 baseline; E2 needed for across-generation ecosystem gates.
+Entry points: `src/world/world.*`, `wildlife.*`, existing ecology/procedural modules.
+- [ ] Extend existing plant regrowth/environmental fields with functional water/nutrient/light
+      budgets, root uptake, life stages, seasonal reproduction/pollination, seed dispersal,
+      inherited traits, injury/disease and decomposition/soil nutrient feedback. Audit existing
+      L-system/reaction-diffusion support before adding mechanisms; geometry alone is not biology.
+- [ ] Extend existing rabbit/wolf sensing, feeding, hunting, fleeing and taming with development,
+      reproduction, inherited variation, aging, injury/immunity/disease, and learned/species-
+      appropriate social/territorial behavior. Add species only after supporting mechanisms.
+- [ ] Couple bounded populations, nutrient/water cycles and food-web feedback to Eidolon's
+      perception, resource use, experiments and disease exposure. Use deterministic multirate
+      updates with explicit budgets; avoid making the ecosystem depend on organism presence.
+      **Gate per slice:** causal intervention scenario, persistence/replay, population/resource
+      accounting, and before/after runtime/RSS. Combined gate: drought changes vegetation,
+      prey and predator pressure; harvesting/planting changes later ecology across succession.
+
+#### E5 — Extend existing agency into durable projects
+Dependency: E3; consume E4 mechanisms as they become available.
+Entry points: goal emergence, instruction learning, planner, skills, crafting/construction.
+- [ ] Add missing end-to-end project persistence: prerequisites, interruption/resumption,
+      outcome evaluation, skill reuse, and evidence-based explanation/refusal of advice.
+      Preserve existing intent parsing, instruction execution and trust updates.
+- [ ] Extend material acquisition/properties and composable crafting processes beyond the
+      starter stash/catalogue, reusing existing affordance/discovery/evolved-recipe support.
+      **Gate:** chat teaching → grounded plan → resource gathering → construction/experiment
+      → measured outcome → remembered skill; survives interruption/restart and can produce
+      a validated process not restricted to a fixed recipe lookup.
+
+#### E6 — Turn archived research into tested knowledge
+Dependency: E3 provenance and E5 execution. This implements the existing pending internet
+decision-loop and rate-limit/cache items above, not a second browsing subsystem.
+- [ ] Wire bounded research requests into slow cognition with user-configured internet
+      consent/budgets, rate limiting, caching and source/freshness metadata.
+- [ ] Convert retrieved material into attributed claims and testable hypotheses; route through
+      normal planning/experiments and offline training datasets. Record external results for
+      replay; deterministic replay must not depend on fresh network or LLM calls.
+      **Gate:** research a practical problem, test a proposed solution, reject an unsupported
+      claim, retain a reproducible skill, and continue functioning offline within budgets.
+
+#### E7 — Evaluated self-improvement (provisional autonomy)
+Dependency: E3/E5/E6 evidence and datasets; reuse `python/teacher/` training/evolution/prior
+tooling and existing metacognition rather than duplicate training infrastructure.
+- [ ] Add bounded candidate training triggered by measured skill deficits, versioned data/model
+      lineage, held-out multi-seed evaluation, regression/resource checks, compatible promotion,
+      monitoring, and technical rollback. Prove evaluation reliability before auto-promotion.
+- [ ] Add isolated code/model-architecture experiments and inspectable proposals. Runtime code
+      deployment initially requires user approval; permission/evaluation-rule changes require
+      an explicit decision. No runtime Python or direct LLM world mutation.
+      **Gate:** improve held-out capability within the shared ~6 GB budget, reject a regressing
+      candidate, preserve identity/save compatibility, and recover from a bad technical upgrade
+      without resurrecting an organism that legitimately died.
+
+**Execution order:** E0 first; E1 as its own usability step; E2 → E3 → E5 → E6 → E7.
+Develop E4 in small causal slices alongside later cognitive milestones, not as an unrelated
+biology rewrite. Benchmark iGPU candidates against CPU, accounting for shared memory;
+existing Vulkan LLM inference is baseline, not a new task. Adult newcomer embodiment/arrival
+and any expansion of deployment autonomy remain explicit decisions, not agent assumptions.
 
 ### Cross-cutting rules for every phase
 - No LLM in the hot path. Ever.

@@ -893,8 +893,8 @@ invariant.
 
 ## 21. Development Process
 
-1. Inspect existing repo first; never blindly rewrite (repo is currently empty; this doc
-   fixes the baseline).
+1. Inspect existing implementation and tests first; never blindly rewrite or treat design
+   descriptions as proof that a capability is implemented end to end.
 2. Build minimal end-to-end organism first (§2–§16 slice), then add systems incrementally per
    `ROADMAP.md`.
 3. Isolate the C++ core from server/UI from the start (no browser APIs in `ReplicaCore`),
@@ -905,3 +905,52 @@ invariant.
    inspect anomalies, fix root causes.
 5. Follow `AGENTS.md` SOP: commit at every step, conda env `eidolon` for all Python, ask the
    user when in doubt, install missing tools (or ask the user to install).
+
+## Expansion agreement — persistent world, mortal individuals
+
+This section records the agreed expansion direction; it is not a claim of completed
+implementation. `ROADMAP.md` E0–E7 tracks only gaps/extensions to existing systems.
+
+- **World continuity:** the world exists irrespective of its current humanoid inhabitant.
+  Death permanently ends that individual; automatic succession must preserve world time,
+  ecology, structures, resources, and history. At most one living humanoid exists at once.
+  Text conversation with the current Eidolon is the player's interaction with the world;
+  developer diagnostics are not an alternative gameplay control surface.
+- **Starting competence:** adult-like language and foundational knowledge, with conceptual
+  knowledge distinct from practiced embodied skill. A new individual's arrival mechanism
+  and physical starting conditions remain to be decided before lifecycle implementation;
+  adult-bodied spawning has been suggested, not approved.
+- **Inheritance:** successors can consult predecessors' statistics, discoveries, failures,
+  conversations, and relationship histories. Bounded inherited knowledge/skill priors inform
+  a new mind; predecessor episodes are attributed records, not its autobiography. Past trust
+  and attachment inform expectations without fixing the successor's eventual relationship.
+  Death lessons retain evidence and uncertainty rather than equating death location with cause.
+- **Agency:** Eidolon can refuse advice, pursue its own goals, and make lasting mistakes.
+  Learned adaptation and persistent state, rather than a scripted persona, explain behavior.
+  Human-like sentience is an aspiration; gates measure cognition and behavior, not a claim
+  that subjective experience has been established.
+- **Biological depth:** prioritize mechanistic plant/tree and wildlife biology: metabolism,
+  development, reproduction, inheritance, disease, injury, aging, and ecological feedback.
+  Plants additionally need water/nutrient/light limitations, roots, pollination, dispersal,
+  and decomposition. Couple these processes to soil, food webs, perception, and action.
+  Use bounded populations and appropriate update timescales; detail must produce causal
+  consequences rather than unbounded cellular simulation.
+- **Knowledge into action:** extend existing memory, concepts, instruction learning,
+  planning, crafting, and web archives into source-attributed beliefs, testable hypotheses,
+  practiced skills, and reusable projects. Archiving/exporting web text alone is not learning
+  an executable skill. Internet availability is not omniscient access to all human knowledge.
+- **LLM role:** language, occasional research synthesis, hypothesis generation, and candidate
+  planning/code assistance are allowed outside the hot path. Persistent state and validated
+  outcomes remain authoritative; runtime life continues without the LLM.
+- **Self-improvement (provisional):** ordinary online learning remains autonomous. Extend
+  offline tooling toward bounded candidate retraining and isolated code experiments, with
+  held-out evaluation, versioned artifacts, promotion checks, and technical rollback.
+  Initially require user approval for runtime code deployment; automatic model promotion
+  requires demonstrated evaluation reliability. Permission/evaluation-rule changes require
+  an explicit decision. Technical recovery must not reverse a legitimate in-world death.
+- **Resources and usability:** the current ~6 GB shared-memory machine is the deployment
+  target. Keep simulation/small learners CPU-first and exploit the Radeon 740M only where
+  measured support and performance justify it (Vulkan LLM inference already exists).
+  Mind, ecology/invention, and research matter equally; order work by dependencies and
+  demonstrate end-to-end behaviors. One executable user-facing script, `run_eidolon.sh`,
+  must incrementally build the game and launch/manage the game plus local llama.cpp server.

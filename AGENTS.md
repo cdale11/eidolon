@@ -128,3 +128,37 @@ previous commit's log where determinism is expected.
 - `ROADMAP.md` — phases & gates. `MISTAKES.md` — running log of mistakes/lessons (append
   when a mistake costs real time). `CHANGELOG.md` — user-visible changes per phase.
 - Update the relevant doc in the same commit as the code change.
+
+## 7. Expansion handoff (read before implementing E0–E7)
+
+- **Authority:** DESIGN.md "Expansion agreement — persistent world, mortal individuals"
+  defines agreed intent; ROADMAP.md "Expansion plan — implementation gaps only" defines
+  dependencies, code entry points and acceptance gates. These are plans, not completed work.
+- **Small-agent workflow:** select one unblocked unchecked slice; inspect its named code and
+  tests before editing. State the existing baseline and exact missing delta. If functionality
+  already exists, verify it rather than implement it again. Mark completion only with actual
+  integration/persistence/test evidence; note remaining gaps and the next task in the roadmap.
+  Keep investigation targeted and handoffs concise; no whole-repo reread for every slice.
+- **Separate refactoring:** E0 is dedicated maintenance/bug-resolution/performance groundwork.
+  Keep behavior-preserving structural changes separate from new features and behavioral fixes.
+  Measure before/after hot-path changes and preserve replay/native-WASM contracts.
+- **Known traps:** current server auto-rebirth calls Engine::init and resets the world;
+  genetic-memory archive extraction/application are stubs; archived internet text is not yet
+  a learned skill. Existing learning, planning, heredity, crafting and wildlife must be extended,
+  not replaced just because a broader capability has a new roadmap heading.
+- **Identity/world boundary:** one living humanoid, permanently mortal; world time/ecology/
+  structures outlive it. Successors may retrieve predecessors' stats, knowledge and relationship
+  histories, but must attribute them and develop their own autobiography/trust/attachment.
+  Keep loaded inheritance/retrieval bounded. Do not equate death location with cause.
+- **User interface:** text chat with Eidolon is the gameplay window to the world. Extend
+  `run_eidolon.sh` as the sole user-facing executable launcher to build game artifacts and
+  manage Eidolon plus local llama.cpp. It already launches both; automatic build is missing.
+  Do not add a competing launcher or require separate manual game-build commands in the final
+  normal startup flow. Preserve configured models/data, offline operation and process ownership.
+- **Resource target:** ~6 GB total shared memory, CPU-first small models, Radeon 740M Vulkan
+  LLM support already present. Deeper biology uses bounded, causally coupled multirate updates.
+  Adopt additional iGPU work only with measured support, speed and memory benefit.
+- **Open decisions:** ask before choosing successor physical arrival/start conditions.
+  Graduated self-modification remains provisional: code deployment initially needs user
+  approval; do not infer permission for autonomous deployment or changed evaluation rules.
+  Technical rollback is not permission to reverse in-world death.
