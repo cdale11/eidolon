@@ -1572,8 +1572,13 @@ bool Engine::processUserInstruction(const std::string& text, uint64_t tick) {
   bool valid = instructionLearning_.process_instruction(text, ctx, tick, userModel_, instr);
   
   // If instruction is valid and maps to a goal-directed action, inject into goal system
+  // (Q3 question intents are excluded like greetings: asking is not commanding).
   if (valid && instr.intent != UserIntentType::None && instr.intent != UserIntentType::Greet &&
-      instr.intent != UserIntentType::Thank && instr.intent != UserIntentType::Cancel) {
+      instr.intent != UserIntentType::Thank && instr.intent != UserIntentType::Cancel &&
+      instr.intent != UserIntentType::QuestionGoals &&
+      instr.intent != UserIntentType::QuestionSkills &&
+      instr.intent != UserIntentType::QuestionRelationships &&
+      instr.intent != UserIntentType::QuestionHelp) {
     // Map user intent to goal type
     GoalType goalType = GoalType::None;
     switch (instr.intent) {

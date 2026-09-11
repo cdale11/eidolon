@@ -6,6 +6,7 @@
 
 #include "httplib.h"
 #include "sim/engine.hpp"
+#include "llm/intent_parser.hpp"
 #include "mind/goal_emergence.hpp"
 #include "mind/user_model.hpp"
 #include "mind/wildlife_social.hpp"
@@ -594,6 +595,118 @@ std::string fallbackReply(const CognitiveSnapshot& s, const std::string& userTex
   // Greeting slot uses the user's local hour when provided (timezone-aware), else the
   // organism's own sim hour; the organism's circadian content stays sim-grounded.
   const double greetHour = (userHour >= 0.0 && userHour < 24.0) ? userHour : s.hour;
+
+  // Q3: answer the question asked. Routes through the deterministic IntentParser
+  // shared with instruction handling (never a second keyword spotter). Every
+  // template below is a pure function of the snapshot — same snapshot, same
+  // reply — and states checkable facts only: commands are never promised, since
+  // the reply path cannot actuate. Unknown input falls to the status dump.
+  const ParsedInstruction pi = IntentParser().parse(userText);
+  char big[1024];
+  switch (pi.intent) {
+    case UserIntentType::Greet:
+      std::snprintf(big, sizeof(big),
+                    "Good %s. It is %s in %s. I am %s at (%d,%d) — energy %.0f, health %.0f.",
+                    hSlot(greetHour), s.timeOfDayPhrase.c_str(), s.seasonName.c_str(),
+                    opening, s.posX, s.posY, s.energy, s.health);
+      return big;
+    case UserIntentType::Thank:
+      std::snprintf(big, sizeof(big),
+                    "You are welcome. I am %s this %s (energy %.0f, health %.0f).",
+                    opening, s.timeOfDayPhrase.c_str(), s.energy, s.health);
+      return big;
+    case UserIntentType::Status: {
+      const char* need = "No pressing need right now.";
+      if (s.primaryNeed == "thirsty") need = "My most pressing need is water.";
+      else if (s.primaryNeed == "hungry") need = "My most pressing need is food.";
+      else if (s.primaryNeed == "tired") need = "My most pressing need is rest.";
+      std::snprintf(big, sizeof(big),
+                    "Status this %s: energy %.0f, health %.0f, hunger %.0f, thirst %.0f, "
+                    "fatigue %.0f, sleep pressure %.0f. %s",
+                    s.timeOfDayPhrase.c_str(), s.energy, s.health, s.hunger, s.thirst,
+                    s.fatigue, s.sleepPressure, need);
+      return big;
+    }
+    case UserIntentType::Observe: {
+      std::string threat = s.predatorDist >= 0
+                               ? "Nearest predator " + std::to_string(s.predatorDist) +
+                                     " tiles away."
+                               : "No predators in sight.";
+      std::string water = s.waterDist >= 0
+                              ? "Nearest water " + std::to_string(s.waterDist) + " tiles away."
+                              : "I see no water nearby.";
+      std::string plants = s.plantDist >= 0
+                               ? "Nearest " + s.plantType + " plants " +
+                                     std::to_string(s.plantDist) + " tiles away."
+                               : "No edible plants in sight.";
+      std::snprintf(big, sizeof(big),
+                    "I am at (%d,%d) on %s. Weather: %s (%.1f C). %s %s %s "
+                    "Carrying water %d/%d. I am currently %s.",
+                    s.posX, s.posY, s.terrain.c_str(), s.weather.c_str(), s.ambientTempC,
+                    threat.c_str(), water.c_str(), plants.c_str(),
+                    s.waterCarried, s.waterCapacity, s.currentAction.c_str());
+      return big;
+    }
+    case UserIntentType::QuestionGoals:
+      std::snprintf(big, sizeof(big), "My goals right now: %s. I am currently %s.",
+                    joinGoalNames(s.activeGoals).c_str(), s.currentAction.c_str());
+      return big;
+    case UserIntentType::QuestionSkills:
+      std::snprintf(big, sizeof(big), "My practiced skills: %s.", s.skillSummary.c_str());
+      return big;
+    case UserIntentType::QuestionRelationships:
+      std::snprintf(big, sizeof(big),
+                    "You and I — trust %.2f, familiarity %.2f, affection %.2f. Wildlife: %s.",
+                    s.userTrust, s.userFamiliarity, s.userAffection,
+                    s.wildlifeSummary.c_str());
+      return big;
+    case UserIntentType::QuestionHelp:
+      return "You can ask me about my health ('how are you'), my surroundings "
+             "('where are you'), my goals, my skills, what I remember ('what did you "
+             "do today'), or how I feel about you. You can also tell me to forage, "
+             "drink, rest, explore, build or craft.";
+    case UserIntentType::Forage: {
+      const char* word = s.hunger < 10.0 ? "I am not hungry" : "I am getting hungry";
+      std::string plants = s.plantDist >= 0
+                               ? "Nearest " + s.plantType + " plants " +
+                                     std::to_string(s.plantDist) + " tiles away."
+                               : "I see no plants nearby.";
+      std::snprintf(big, sizeof(big), "%s (hunger %.0f). %s", word, s.hunger,
+                    plants.c_str());
+      return big;
+    }
+    case UserIntentType::Drink: {
+      const char* word = s.thirst < 10.0 ? "I am not thirsty" : "I am getting thirsty";
+      std::string water = s.waterDist >= 0
+                              ? "Nearest water " + std::to_string(s.waterDist) + " tiles away."
+                              : "I see no water nearby.";
+      std::snprintf(big, sizeof(big), "%s (thirst %.0f). %s Carrying %d/%d.", word,
+                    s.thirst, water.c_str(), s.waterCarried, s.waterCapacity);
+      return big;
+    }
+    case UserIntentType::Rest:
+    case UserIntentType::Sleep:
+      std::snprintf(big, sizeof(big), "I feel %s (fatigue %.0f, sleep pressure %.0f).",
+                    s.physiologicalState.c_str(), s.fatigue, s.sleepPressure);
+      return big;
+    case UserIntentType::Flee:
+    case UserIntentType::Avoid:
+      if (s.predatorDist >= 0) {
+        std::snprintf(big, sizeof(big), "Nearest predator %d tiles away (threat %.2f).",
+                      s.predatorDist, s.threatLevel);
+      } else {
+        std::snprintf(big, sizeof(big), "I see no predators right now (threat %.2f).",
+                      s.threatLevel);
+      }
+      return big;
+    case UserIntentType::Build:
+    case UserIntentType::Craft:
+      std::snprintf(big, sizeof(big), "My energy is %.0f. My practiced skills: %s.",
+                    s.energy, s.skillSummary.c_str());
+      return big;
+    default:
+      break; // GoToLocation/FollowMe/Explore/Stop/Wait/Cancel/None: status dump below
+  }
 std::snprintf(buf, sizeof(buf),
                  "Good %s. It is %s in %s, weather %s (%.1f C). I am %s at (%d,%d). "
                  "Energy %.0f, health %.0f, hunger %.0f, thirst %.0f, water %d/%d.",

@@ -39,6 +39,13 @@ enum class UserIntentType : uint8_t {
   Stop = 16,             // "stop", "halt"
   Wait = 17,             // "wait", "stay"
   Cancel = 18,           // "cancel", "never mind"
+  // Q3 questions (chat reply routing only — never goal-injected, see
+  // Engine::processUserInstruction): the user asks ABOUT the organism rather
+  // than telling it what to do. Appended so existing values stay stable.
+  QuestionGoals = 19,         // "what are your goals", "what are you doing"
+  QuestionSkills = 20,        // "skills", "what are you good at"
+  QuestionRelationships = 21, // "do you trust me", "how do you feel about me"
+  QuestionHelp = 22,          // "help", "what can you do", "commands"
 };
 
 // Parsed user instruction with validation metadata

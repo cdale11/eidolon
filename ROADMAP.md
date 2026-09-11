@@ -622,13 +622,21 @@ up, past-tense accuracy rests on 6 terse episode stubs (`"foraged (t=...)"`).
 #### Q3 — Make the offline voice answer the question
 `fallbackReply` ignores the user text except for 3 hardcoded patterns; everything else
 gets a status dump regardless of what was asked.
-- [ ] Intent-keyed offline templates: greeting, status/health, location/weather,
+- [x] Intent-keyed offline templates: greeting, status/health, location/weather,
       goals/plans, skills, relationships, help/capabilities — each grounded in snapshot
       fields, with the status dump as the last resort instead of the default.
-- [ ] Reuse the `parse` result intent routing already present (`IntentParser`) rather
+      (Done: `fallbackReply` routes through `IntentParser`, including 4 new
+      `Question*` intents; urgent state overrides — dead/asleep/critical/predator/
+      drives — still speak first; command intents state relevant facts without
+      promising action.)
+- [x] Reuse the `parse` result intent routing already present (`IntentParser`) rather
       than keyword-spotting twice.
+      (Done: shared parser extended with question intents + "where are you";
+      question intents excluded from goal injection like greetings.)
 - **Gate:** a fixed questionnaire (greet/status/where/goals/skills/help) gets topical
   grounded answers fully offline; replies stay deterministic per snapshot.
+  (Done: 10 unit tests + live offline questionnaire integration test; templates
+  are pure functions of the snapshot.)
 
 #### Q4 — Voice consistency and evaluation
 - [ ] Derive personality trait words from the latent vector thresholds

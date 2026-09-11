@@ -226,6 +226,31 @@ def test_send_reports_llm_provenance(work):
         srv.shutdown()
 
 
+def test_offline_questionnaire_gets_topical_answers(work):
+    """Q3: a fixed questionnaire answered fully offline must be topical — each
+    reply grounded in the relevant snapshot fields, not the status dump."""
+    port = PORT_BASE + 14
+    proc = start_server(work, port)  # no --llm: offline
+    try:
+        cases = [
+            ("hello", "Good "),
+            ("how are you?", "Status this"),
+            ("where are you?", "I am at ("),
+            ("what are your goals?", "goals right now"),
+            ("what are your skills?", "practiced skills"),
+            ("do you trust me?", "trust"),
+            ("help", "You can ask me"),
+        ]
+        for msg, marker in cases:
+            r = http(port, "/api/send", {"message": msg})
+            assert r["reply"].strip(), msg
+            assert r["source"] == "fallback", (msg, r)
+            assert marker in r["reply"], (msg, r["reply"])
+    finally:
+        proc.kill()
+        proc.wait()
+
+
 def test_archive_written_by_server(work):
     port = PORT_BASE + 5
     proc = start_server(work, port)

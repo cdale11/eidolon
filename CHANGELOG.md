@@ -35,6 +35,14 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   `source`, `reason`, `model`, `latency_ms`, `completion_tokens` and
   `toks_per_sec` fields.
 
+### Topical offline replies (Q3)
+- The offline voice now answers the question asked: greetings, health, location,
+  goals, skills, relationships and help each get a dedicated reply grounded in
+  live snapshot fields, routed through the shared deterministic intent parser
+  (extended with question intents that never inject goals). Urgent states —
+  death, sleep, critical health, nearby predators, pressing drives — still
+  speak first, and anything unrecognized falls back to the status dump.
+
 ### Single-command build-and-run
 - `run_eidolon.sh` now configures and incrementally builds the native game targets
   before startup (toolchain/dependency checks with actionable errors), ensures the

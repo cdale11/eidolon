@@ -386,3 +386,92 @@ TEST(dialogue_history_budget_is_bounded) {
   CHECK(capped.size() <= 1500 + 32);
   CHECK(capped.find("turn49") != std::string::npos); // newest kept
 }
+
+// ---------------------------------------------------------------------------
+// Q3 — intent-keyed offline templates. A fresh engine is healthy + awake, so
+// the questionnaire below must route topically (not to the status dump).
+// ---------------------------------------------------------------------------
+
+namespace {
+CognitiveSnapshot freshAwakeSnapshot() {
+  Engine engine;
+  engine.init(12345, true, 64, 64);
+  CognitiveSnapshot s = makeSnapshot(engine);
+  // Fresh organism must be alive and awake for topical routing tests.
+  CHECK(s.alive);
+  CHECK(s.awake);
+  return s;
+}
+} // namespace
+
+TEST(fallback_answers_greeting_topically) {
+  const CognitiveSnapshot s = freshAwakeSnapshot();
+  const std::string r = fallbackReply(s, "hello there");
+  CHECK(r.find("Good ") != std::string::npos);
+  CHECK(r.find(s.timeOfDayPhrase) != std::string::npos);
+}
+
+TEST(fallback_answers_status_topically) {
+  const CognitiveSnapshot s = freshAwakeSnapshot();
+  const std::string r = fallbackReply(s, "how are you?");
+  CHECK(r.find("Status this") != std::string::npos);
+  CHECK(r.find("energy") != std::string::npos);
+  CHECK(r.find("health") != std::string::npos);
+}
+
+TEST(fallback_answers_location_topically) {
+  const CognitiveSnapshot s = freshAwakeSnapshot();
+  const std::string r = fallbackReply(s, "where are you?");
+  CHECK(r.find(s.terrain) != std::string::npos);
+  CHECK(r.find(s.weather) != std::string::npos);
+  CHECK(r.find("currently") != std::string::npos);
+}
+
+TEST(fallback_answers_goals_topically) {
+  const CognitiveSnapshot s = freshAwakeSnapshot();
+  const std::string r = fallbackReply(s, "what are your goals?");
+  CHECK(r.find("goals") != std::string::npos);
+  CHECK(r.find(s.currentAction) != std::string::npos);
+}
+
+TEST(fallback_answers_skills_topically) {
+  const CognitiveSnapshot s = freshAwakeSnapshot();
+  const std::string r = fallbackReply(s, "what are your skills?");
+  CHECK(r.find("skills") != std::string::npos);
+  // Fresh engine has attempted nothing: must admit it, never invent competence.
+  CHECK(r.find("no practiced skills yet") != std::string::npos);
+}
+
+TEST(fallback_answers_relationships_topically) {
+  const CognitiveSnapshot s = freshAwakeSnapshot();
+  const std::string r = fallbackReply(s, "do you trust me?");
+  CHECK(r.find("trust") != std::string::npos);
+}
+
+TEST(fallback_answers_help_topically) {
+  const CognitiveSnapshot s = freshAwakeSnapshot();
+  const std::string r = fallbackReply(s, "help, what can you do?");
+  CHECK(r.find("You can ask me") != std::string::npos);
+  CHECK(r.find("forage") != std::string::npos);
+}
+
+TEST(fallback_unknown_falls_back_to_status_dump) {
+  // Gibberish matches no intent: the status dump is the last resort.
+  const CognitiveSnapshot s = freshAwakeSnapshot();
+  const std::string r = fallbackReply(s, "blorple xyzzy quux");
+  CHECK(r.find("Energy") != std::string::npos);
+}
+
+TEST(fallback_replies_deterministic_per_snapshot) {
+  const CognitiveSnapshot s = freshAwakeSnapshot();
+  CHECK_EQ(fallbackReply(s, "where are you?"), fallbackReply(s, "where are you?"));
+  CHECK_EQ(fallbackReply(s, "what are your goals?"), fallbackReply(s, "what are your goals?"));
+}
+
+TEST(fallback_command_states_facts_without_promising) {
+  const CognitiveSnapshot s = freshAwakeSnapshot();
+  const std::string r = fallbackReply(s, "find me some water");
+  CHECK(r.find("thirst") != std::string::npos);
+  // Must never promise action it cannot take from the reply path.
+  CHECK(r.find("I will") == std::string::npos);
+}

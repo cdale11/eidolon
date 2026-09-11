@@ -21,13 +21,25 @@ const std::vector<std::pair<UserIntentType, std::vector<std::string>>> IntentPar
   {UserIntentType::Avoid, {"avoid", "stay away from", "don't go near", "keep away from"}},
   {UserIntentType::Build, {"build", "make shelter", "construct", "build shelter", "make camp"}},
   {UserIntentType::Craft, {"craft", "make", "create", "forge", "build tool"}},
-  {UserIntentType::Observe, {"look", "observe", "see", "what do you see", "look around"}},
+  {UserIntentType::Observe, {"look", "observe", "see", "what do you see", "look around",
+                              "where are you", "where"}},
   {UserIntentType::Status, {"status", "how are you", "health", "how do you feel", "condition"}},
   {UserIntentType::Greet, {"hello", "hi", "hey", "greetings"}},
   {UserIntentType::Thank, {"thanks", "thank you", "thx", "ty"}},
   {UserIntentType::Stop, {"stop", "halt", "freeze"}},
   {UserIntentType::Wait, {"wait", "stay", "hold on"}},
   {UserIntentType::Cancel, {"cancel", "never mind", "forget it", "ignore"}},
+  // Q3 question intents (reply routing; appended so ties resolve to the earlier
+  // command entries and existing instruction behaviour is unchanged).
+  {UserIntentType::QuestionGoals, {"what are your goals", "your goals", "what are you doing",
+                                  "what are you up to", "your plans", "the plan", "what next"}},
+  {UserIntentType::QuestionSkills, {"skills", "skill", "what are you good at", "good at",
+                                    "are you skilled"}},
+  {UserIntentType::QuestionRelationships, {"how do you feel about me", "feel about me",
+                                           "do you trust me", "trust me", "trust",
+                                           "relationship", "like me", "do you like"}},
+  {UserIntentType::QuestionHelp, {"help", "what can you do", "commands", "what should i ask",
+                                  "how do i talk to you"}},
 };
 
 ParsedInstruction IntentParser::parse(const std::string& text) const {
