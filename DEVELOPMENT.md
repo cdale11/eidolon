@@ -227,6 +227,10 @@ git add <relevant> && git commit -m "phase: summary" && git push origin master
 curl http://localhost:8081/api/metrics   # Scheduler, stats, learner, fidelity
 curl http://localhost:8081/api/status    # Organism state
 curl -X POST http://localhost:8081/api/world/reset -d '{}'  # Fresh organism
+curl -X POST http://localhost:8081/api/browse/learn \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://example.test/resource","title":"Example","content":"approved text"}'
+python -m teacher.internet_corpus --db data/runs/server/memory.db --out data/training/internet.jsonl
 ```
 
 ---

@@ -466,13 +466,17 @@ and "client does the maximum work" invariants apply to all of them.
   - [x] Configurable `--internet-enabled` flag, search endpoint/key, timeouts, limits.
   - [x] Search endpoint: `POST /api/browse/search` (query → ranked results + snippets).
   - [x] Fetch endpoint: `POST /api/browse/fetch` (URL → extracted text content).
-  - [x] Results flow through normal memory/learning pipeline as "read content".
+  - [x] Results flow through normal memory/learning pipeline as "read content": approved
+        fetches/manual resources are stored in SQLite `internet_resources`, logged as
+        `read` timeline events, surfaced in metrics, and exported for offline retraining via
+        `python -m teacher.internet_corpus`.
   - [x] Graceful degradation: structured error responses, CAPTCHA detection.
   - [ ] Integration with organism's decision loop (browse as tool/action).
-  - [ ] User consent UI in chat (per-request or session approval).
+  - [x] User consent UI in chat (per-request approval): sidebar "Read web resource" either
+        stores pasted extracted text or calls `fetch` with `learn:true`.
   - [ ] Rate limiting + caching.
-  - [ ] Proper search API integration (SerpAPI, Bing, Google) with API keys.
-  - [ ] HTTPS support via OpenSSL-linked httplib.
+  - [x] Proper search API integration (SearXNG, DuckDuckGo, SerpAPI, Brave, Google, custom).
+  - [x] HTTPS support via OpenSSL-linked httplib in native builds.
 - **Client-side offload** *(implemented — Phase 15)*: most compute now migrates to the
   client per DESIGN §17 (a capable browser runs the sim in a Web Worker and posts
   snapshots back); headless fallback continues life when the client is away.

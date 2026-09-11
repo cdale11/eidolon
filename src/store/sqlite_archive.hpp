@@ -28,6 +28,15 @@ struct Message {
   int64_t t = 0;
 };
 
+struct InternetResource {
+  int64_t id = 0;
+  int64_t t = 0;
+  std::string url;
+  std::string title;
+  std::string content;
+  std::string source;
+};
+
 class SQLiteArchive : public Archive {
 public:
   explicit SQLiteArchive(const std::string& path, std::string& err);
@@ -50,6 +59,14 @@ public:
   void deleteConversation(int64_t conversationId);
   std::vector<ConversationInfo> listConversations() const;
   std::vector<Message> listMessages(int64_t conversationId, int limit = 200) const;
+
+  // Internet learning corpus: approved/fetched resources the organism has read.
+  int64_t recordInternetResource(int64_t t, const std::string& url,
+                                 const std::string& title,
+                                 const std::string& content,
+                                 const std::string& source);
+  std::vector<InternetResource> listInternetResources(int limit = 100) const;
+  int64_t internetResourceCount() const;
 
   // Observability.
   int64_t episodeCount() const;

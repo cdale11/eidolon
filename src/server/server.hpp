@@ -108,6 +108,8 @@ public:
   // Future Directions: Internet access (configurable, user-gated)
   std::string browseSearchJson(const std::string& jsonBody, std::string& err);
   std::string browseFetchJson(const std::string& jsonBody, std::string& err);
+  std::string browseLearnJson(const std::string& jsonBody, std::string& err);
+  std::string browseResourcesJson(const std::string& limitStr = "");
 
   std::string savePriorJson(const std::string& name);
   // Wildlife domestication: feed/tame the nearest prey; returns whether a companion was made.

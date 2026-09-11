@@ -108,4 +108,24 @@ TEST(sqlite_archive_conversations) {
   CHECK_EQ(msgs[2].role, std::string("user"));
   CHECK_EQ(msgs[2].text, std::string("how are you?"));
 }
+
+TEST(sqlite_archive_internet_resources) {
+  const std::string path = tmpDbPath();
+  std::string err;
+  SQLiteArchive a(path, err);
+  CHECK(err.empty());
+
+  const int64_t id = a.recordInternetResource(123, "https://example.test/a", "Example",
+                                             "A useful resource about survival.",
+                                             "user-approved");
+  CHECK(id >= 0);
+  CHECK_EQ(a.internetResourceCount(), 1);
+
+  const auto resources = a.listInternetResources();
+  CHECK_EQ(resources.size(), 1u);
+  CHECK_EQ(resources[0].url, std::string("https://example.test/a"));
+  CHECK_EQ(resources[0].title, std::string("Example"));
+  CHECK_EQ(resources[0].source, std::string("user-approved"));
+  CHECK(resources[0].content.find("survival") != std::string::npos);
+}
 #endif

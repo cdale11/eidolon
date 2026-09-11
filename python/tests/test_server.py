@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
 import urllib.request
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -20,6 +21,7 @@ PORT_BASE = int(os.environ.get("PORT_BASE", "9000"))
 from teacher.dataset import load_experiences as load_teacher_experiences  # noqa: E402
 from teacher.dataset import feature_matrix as teacher_feature_matrix  # noqa: E402
 from teacher.dataset import reward_best_labels as teacher_reward_labels  # noqa: E402
+from teacher.internet_corpus import export_jsonl as export_internet_jsonl  # noqa: E402
 
 
 def start_server(data_dir, port, extra=None):
@@ -222,6 +224,54 @@ def test_world_reset(work):
         time.sleep(1)
         t2 = http(port, "/api/status")["simTime"]
         assert t2 > s["simTime"], "sim not advancing after reset"
+    finally:
+        proc.kill()
+        proc.wait()
+
+
+def test_internet_resource_learning_is_opt_in(work):
+    port = PORT_BASE + 18
+    proc = start_server(work, port)
+    try:
+        try:
+            http(port, "/api/browse/learn", {
+                "url": "https://example.test/off",
+                "title": "Disabled",
+                "content": "should not be learned",
+            })
+            assert False, "disabled internet learning unexpectedly succeeded"
+        except urllib.error.HTTPError as e:
+            assert e.code == 400
+    finally:
+        proc.kill()
+        proc.wait()
+
+    proc = start_server(work, port, extra=["--internet-enabled", "--max-fetch-chars", "64"])
+    try:
+        learned = http(port, "/api/browse/learn", {
+            "url": "https://example.test/resource",
+            "title": "Useful Resource",
+            "content": "This resource is approved content for the organism to read and learn from.",
+        })
+        assert learned["ok"] is True
+        assert learned["content_chars"] == 64
+
+        resources = http(port, "/api/browse/resources?limit=5")
+        assert resources["ok"] is True
+        assert resources["count"] == 1
+        assert resources["resources"][0]["title"] == "Useful Resource"
+        assert "approved content" in resources["resources"][0]["snippet"]
+
+        metrics = http(port, "/api/metrics")
+        assert metrics["internet"]["enabled"] is True
+        assert metrics["internet"]["resources"] == 1
+
+        out = os.path.join(work, "internet.jsonl")
+        assert export_internet_jsonl(os.path.join(work, "memory.db"), out) == 1
+        with open(out, encoding="utf-8") as f:
+            row = json.loads(f.readline())
+        assert row["url"] == "https://example.test/resource"
+        assert "organism to read" in row["content"]
     finally:
         proc.kill()
         proc.wait()

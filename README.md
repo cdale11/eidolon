@@ -71,6 +71,10 @@ cmake --build build -j
 ./build/bin/eidolon-server --data data/runs/run1 --port 8081 \
     --llm http://127.0.0.1:8080/v1 --llm-timeout 20000
 
+# Optional internet reading: still user-approved and archived before training use
+./build/bin/eidolon-server --data data/runs/run1 --port 8081 --internet-enabled
+python -m teacher.internet_corpus --db data/runs/run1/memory.db --out data/training/internet.jsonl
+
 # Seeded deterministic replay (debugging)
 ./build/bin/eidolon-sim --seed 42 --deterministic --data data/runs/replay1 --days 1
 ```
@@ -78,6 +82,8 @@ cmake --build build -j
 The simulation runs in the portable `ReplicaCore` engine (C++17). The browser is only a
 client; closing it never stops the organism. The LLM is optional at runtime: the organism
 lives, learns and acts with zero LLM calls; language is added when a provider is reachable.
+Internet content is also optional and opt-in: approved web resources are archived as reading
+material, not injected as live prompt state or allowed to mutate the simulation directly.
 
 ## Client-first compute (portable engine)
 

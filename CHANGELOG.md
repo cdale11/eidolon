@@ -5,6 +5,17 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 
 ## [Unreleased]
 
+### Internet learning substrate
+- Internet access remains opt-in via `--internet-enabled`, but approved pages can now become
+  durable learning material: `POST /api/browse/fetch` supports `learn:true`,
+  `POST /api/browse/learn` archives pasted/extracted resources, and
+  `GET /api/browse/resources` lists the organism's approved reading corpus.
+- SQLite archives now include an `internet_resources` table for bounded resource text,
+  source metadata, and timestamps. Approved resources are also logged as `read` timeline
+  events and counted under `/api/metrics.internet`.
+- The chat UI has a per-resource consent button, "Read web resource", and offline tooling can
+  export approved resources for future retraining with `python -m teacher.internet_corpus`.
+
 ### Snapshot v14 durability
 - Advanced action/outcome counters in `Engine::Stats` and
   `LearnSystem::successRate_` now survive save/load, with field-specific round-trip tests.

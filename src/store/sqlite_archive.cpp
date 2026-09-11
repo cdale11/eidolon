@@ -9,7 +9,7 @@
 namespace eidolon {
 
 namespace {
-constexpr int kSchemaVersion = 1;
+constexpr int kSchemaVersion = 2;
 
 EventKind kindFromType(const std::string& type) {
   if (type == "forage") return EventKind::Forage;
@@ -99,10 +99,10 @@ void SQLiteArchive::migrate() {
   if (version == 0) {
     // Fresh database: create the full schema.
     ensureSchema();
-    exec("PRAGMA user_version=1");
+    exec("PRAGMA user_version=2");
   } else if (version < kSchemaVersion) {
-    // Future migrations append here (e.g. ALTER TABLE ... for v2).
-    exec("PRAGMA user_version=1");
+    ensureSchema();
+    exec("PRAGMA user_version=2");
   }
 }
 
@@ -115,9 +115,13 @@ void SQLiteArchive::ensureSchema() {
   exec("CREATE TABLE IF NOT EXISTS messages ("
        "id INTEGER PRIMARY KEY AUTOINCREMENT, conversation_id INTEGER, role TEXT, "
        "text TEXT, t INTEGER)");
+  exec("CREATE TABLE IF NOT EXISTS internet_resources ("
+       "id INTEGER PRIMARY KEY AUTOINCREMENT, t INTEGER, url TEXT UNIQUE, title TEXT, "
+       "content TEXT, source TEXT)");
   exec("CREATE INDEX IF NOT EXISTS idx_episodes_t ON episodes(t)");
   exec("CREATE INDEX IF NOT EXISTS idx_events_t ON events(t)");
   exec("CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id)");
+  exec("CREATE INDEX IF NOT EXISTS idx_internet_resources_t ON internet_resources(t)");
 }
 
 void SQLiteArchive::episode(const Episode& e) {
@@ -257,6 +261,70 @@ void SQLiteArchive::deleteConversation(int64_t conversationId) {
     sqlite3_bind_int64(stmt, 1, conversationId);
     runStatement(stmt);
   }
+}
+
+int64_t SQLiteArchive::recordInternetResource(int64_t t, const std::string& url,
+                                              const std::string& title,
+                                              const std::string& content,
+                                              const std::string& source) {
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_ || url.empty() || content.empty()) return -1;
+  sqlite3_stmt* stmt = nullptr;
+  if (!prepare("INSERT INTO internet_resources (t, url, title, content, source) "
+               "VALUES (?,?,?,?,?) "
+               "ON CONFLICT(url) DO UPDATE SET "
+               "t=excluded.t, title=excluded.title, content=excluded.content, "
+               "source=excluded.source",
+               &stmt) || !stmt) {
+    return -1;
+  }
+  sqlite3_bind_int64(stmt, 1, t);
+  sqlite3_bind_text(stmt, 2, url.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 3, title.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 4, content.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 5, source.c_str(), -1, SQLITE_TRANSIENT);
+  runStatement(stmt);
+  return sqlite3_last_insert_rowid(db_);
+}
+
+std::vector<InternetResource> SQLiteArchive::listInternetResources(int limit) const {
+  std::lock_guard<std::mutex> lock(mu_);
+  std::vector<InternetResource> out;
+  if (!db_ || limit <= 0) return out;
+  sqlite3_stmt* stmt = nullptr;
+  if (!prepare("SELECT id, t, url, title, content, source FROM internet_resources "
+               "ORDER BY t DESC LIMIT ?",
+               &stmt) || !stmt) {
+    return out;
+  }
+  sqlite3_bind_int(stmt, 1, std::min(limit, 500));
+  while (sqlite3_step(stmt) == SQLITE_ROW) {
+    InternetResource r;
+    r.id = sqlite3_column_int64(stmt, 0);
+    r.t = sqlite3_column_int64(stmt, 1);
+    const unsigned char* url = sqlite3_column_text(stmt, 2);
+    const unsigned char* title = sqlite3_column_text(stmt, 3);
+    const unsigned char* content = sqlite3_column_text(stmt, 4);
+    const unsigned char* source = sqlite3_column_text(stmt, 5);
+    r.url = url ? reinterpret_cast<const char*>(url) : "";
+    r.title = title ? reinterpret_cast<const char*>(title) : "";
+    r.content = content ? reinterpret_cast<const char*>(content) : "";
+    r.source = source ? reinterpret_cast<const char*>(source) : "";
+    out.push_back(std::move(r));
+  }
+  sqlite3_finalize(stmt);
+  return out;
+}
+
+int64_t SQLiteArchive::internetResourceCount() const {
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) return -1;
+  sqlite3_stmt* stmt = nullptr;
+  if (!prepare("SELECT COUNT(*) FROM internet_resources", &stmt) || !stmt) return -1;
+  int64_t n = 0;
+  if (sqlite3_step(stmt) == SQLITE_ROW) n = sqlite3_column_int64(stmt, 0);
+  sqlite3_finalize(stmt);
+  return n;
 }
 
 std::vector<ConversationInfo> SQLiteArchive::listConversations() const {

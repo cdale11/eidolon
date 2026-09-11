@@ -47,6 +47,9 @@ const char* kIndexHtml = R"html(<!DOCTYPE html>
   #offloadbtn { width: 100%; padding: 8px 12px; margin-top: 4px; border: 1px solid #10a37f;
     border-radius: 8px; background: #ececf1; color: #0d0d0d; cursor: pointer; font-size: 13px; }
   #offloadbtn.on { background: #e7f7f2; color: #10a37f; border-color: #10a37f; }
+  #learnurl { width: 100%; padding: 8px 12px; margin-top: 4px; border: 1px solid #10a37f;
+    border-radius: 8px; background: #f7f7f8; color: #0d0d0d; cursor: pointer; font-size: 13px; }
+  #learnurl:hover { background: #e7f7f2; }
   #diag { display: none; padding: 12px; border-top: 1px solid #ececec; background: #fafafa;
           font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px;
           white-space: pre; overflow-x: auto; max-height: 40vh; overflow-y: auto; }
@@ -113,6 +116,7 @@ const char* kIndexHtml = R"html(<!DOCTYPE html>
     <button id="diagbtn">Diagnostics</button>
     <button id="offloadbtn" title="Run the simulation in this browser tab (WASM worker) instead of on the server">Compute: server</button>
     <button id="soundbtn" title="Play soft audio cues on key state changes (alert/calm/distress)">Sound: on</button>
+    <button id="learnurl" title="Approve web content for the organism to read and archive">Read web resource</button>
   </div>
   <div id="convlist"></div>
   <div id="diag">loading…</div>
@@ -282,8 +286,29 @@ async function savePrior() {
      body: JSON.stringify({name: name.trim()})
    });
    const j = await r.json();
-   alert(j.ok ? 'Saved prior to ' + j.path : 'Save failed: ' + (j.error || 'unknown error'));
- }
+    alert(j.ok ? 'Saved prior to ' + j.path : 'Save failed: ' + (j.error || 'unknown error'));
+  }
+async function learnWebResource() {
+   const url = prompt('URL to approve as reading material:');
+   if (url == null || !url.trim()) return;
+   const title = prompt('Short title for this resource:', url.trim()) || '';
+   const content = prompt('Paste the extracted text to archive, or leave blank to fetch it from the server if configured:', '');
+   let body;
+   let endpoint;
+   if (content && content.trim()) {
+     endpoint = '/api/browse/learn';
+     body = {url: url.trim(), title: title.trim(), content: content.trim()};
+   } else {
+     endpoint = '/api/browse/fetch';
+     body = {url: url.trim(), title: title.trim(), learn: true};
+   }
+   const r = await fetch(endpoint, {
+     method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+   });
+   const j = await r.json();
+   alert(j.ok ? 'Resource archived for learning.' : 'Internet learning failed: ' + (j.error || 'unknown error'));
+   await refreshDiag();
+  }
 function fmtUs(us) {
   if (us < 1000) return us.toFixed(0) + ' us';
   if (us < 1000000) return (us / 1000).toFixed(2) + ' ms';
@@ -308,6 +333,10 @@ async function refreshDiag() {
     lines.push(`  predator_attacks=${a.predator_attacks} berries=${a.berries_eaten} drinks=${a.drinks} wounds=${a.wounds} infections=${a.infections}`);
     lines.push('LEARNER');
     lines.push(`  inferences=${m.learner.inferences} updates=${m.learner.updates}`);
+    if (m.internet) {
+      lines.push('INTERNET');
+      lines.push(`  enabled=${m.internet.enabled} resources=${m.internet.resources}`);
+    }
     el.textContent = lines.join('\n');
   } catch (e) {
     el.textContent = 'metrics unavailable: ' + e;
@@ -505,6 +534,7 @@ sendBtn.onclick = send;
 document.getElementById('newchat').onclick = newChat;
 document.getElementById('newworld').onclick = resetWorld;
 document.getElementById('saveprior').onclick = savePrior;
+document.getElementById('learnurl').onclick = learnWebResource;
 document.getElementById('diagbtn').onclick = toggleDiag;
 input.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
@@ -707,6 +737,21 @@ std::string jsonEscape(const std::string& s) {
     }
   }
   return out;
+}
+
+std::string trimCopy(const std::string& s) {
+  size_t a = 0, b = s.size();
+  while (a < b && (s[a] == ' ' || s[a] == '\n' || s[a] == '\r' || s[a] == '\t')) ++a;
+  while (b > a && (s[b - 1] == ' ' || s[b - 1] == '\n' || s[b - 1] == '\r' ||
+                   s[b - 1] == '\t')) {
+    --b;
+  }
+  return s.substr(a, b - a);
+}
+
+std::string clipped(const std::string& s, size_t n) {
+  if (s.size() <= n) return s;
+  return s.substr(0, n);
 }
 
 // Derive a fresh master seed from entropy sources (system clock, random_device, pid).
@@ -1030,6 +1075,10 @@ std::string Server::metricsJson() {
   lm.setNumber("inferences", static_cast<double>(learnMetrics.inferences));
   lm.setNumber("updates", static_cast<double>(learnMetrics.updates));
 
+  JsonValue internet = JsonValue::makeObject();
+  internet.setBool("enabled", browser_ && browser_->enabled());
+  internet.setNumber("resources", archive_ ? static_cast<double>(archive_->internetResourceCount()) : -1.0);
+
   JsonValue root = JsonValue::makeObject();
   JsonValue fid = JsonValue::makeObject();
   fid.setNumber("level", static_cast<double>(fidelity_.level));
@@ -1042,6 +1091,7 @@ std::string Server::metricsJson() {
   root.set("stats", std::move(st));
   root.set("learner", std::move(lm));
   root.set("fidelity", std::move(fid));
+  root.set("internet", std::move(internet));
   return root.dump();
 }
 
@@ -1719,9 +1769,94 @@ std::string Server::browseFetchJson(const std::string& jsonBody, std::string& er
   root.setString("url", result.url);
   if (result.success) {
     root.setString("content", result.content);
+    if (body.boolean("learn", false)) {
+      if (!archive_) {
+        err = "archive unavailable";
+        return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
+      }
+      const std::string title = clipped(trimCopy(body.str("title", "")), 200);
+      int64_t t = 0;
+      {
+        std::lock_guard<std::mutex> lock(engineMu_);
+        t = engine_.clock().now();
+      }
+      const int64_t id = archive_->recordInternetResource(t, result.url, title, result.content,
+                                                          "browse/fetch");
+      archive_->event(t, "read", ("internet url=" + result.url).c_str());
+      root.setBool("learned", id >= 0);
+      root.setNumber("resource_id", static_cast<double>(id));
+    } else {
+      root.setBool("learned", false);
+    }
   } else {
     root.setString("error", result.error);
   }
+  return root.dump();
+}
+
+std::string Server::browseLearnJson(const std::string& jsonBody, std::string& err) {
+  if (!browser_ || !browser_->enabled()) {
+    err = "internet access disabled";
+    return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
+  }
+  if (!archive_) {
+    err = "archive unavailable";
+    return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
+  }
+  JsonValue body;
+  if (!jsonParse(jsonBody, body)) {
+    err = "invalid JSON";
+    return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
+  }
+  const std::string url = trimCopy(body.str("url", ""));
+  const std::string title = clipped(trimCopy(body.str("title", "")), 200);
+  const std::string content = clipped(trimCopy(body.str("content", "")), browser_->config().maxFetchChars);
+  if (url.empty()) {
+    err = "empty url";
+    return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
+  }
+  if (content.empty()) {
+    err = "empty content";
+    return "{\"ok\":false,\"error\":\"" + jsonEscape(err) + "\"}";
+  }
+
+  int64_t t = 0;
+  {
+    std::lock_guard<std::mutex> lock(engineMu_);
+    t = engine_.clock().now();
+  }
+  const int64_t id = archive_->recordInternetResource(t, url, title, content, "user-approved");
+  archive_->event(t, "read", ("internet url=" + url).c_str());
+
+  JsonValue root = JsonValue::makeObject();
+  root.setBool("ok", id >= 0);
+  root.setNumber("resource_id", static_cast<double>(id));
+  root.setNumber("content_chars", static_cast<double>(content.size()));
+  root.setString("url", url);
+  return root.dump();
+}
+
+std::string Server::browseResourcesJson(const std::string& limitStr) {
+  const int limit = limitStr.empty() ? 50 : std::max(1, std::atoi(limitStr.c_str()));
+  JsonValue root = JsonValue::makeObject();
+  root.setBool("ok", true);
+  root.setBool("internet_enabled", browser_ && browser_->enabled());
+  JsonValue arr = JsonValue::makeArray();
+  if (archive_) {
+    for (const InternetResource& r : archive_->listInternetResources(limit)) {
+      JsonValue item = JsonValue::makeObject();
+      item.setNumber("id", static_cast<double>(r.id));
+      item.setNumber("t", static_cast<double>(r.t));
+      item.setString("url", r.url);
+      item.setString("title", r.title);
+      item.setString("source", r.source);
+      item.setNumber("content_chars", static_cast<double>(r.content.size()));
+      item.setString("snippet", clipped(r.content, 320));
+      arr.push(std::move(item));
+    }
+  }
+  root.set("resources", std::move(arr));
+  root.setNumber("count", archive_ ? static_cast<double>(archive_->internetResourceCount()) : -1.0);
   return root.dump();
 }
 
@@ -1925,6 +2060,18 @@ int Server::run() {
     std::string out = browseFetchJson(req.body, err);
     if (!err.empty()) res.status = 400;
     res.set_content(out, "application/json");
+  });
+
+  svr.Post("/api/browse/learn", [this](const httplib::Request& req, httplib::Response& res) {
+    std::string err;
+    std::string out = browseLearnJson(req.body, err);
+    if (!err.empty()) res.status = 400;
+    res.set_content(out, "application/json");
+  });
+
+  svr.Get("/api/browse/resources", [this](const httplib::Request& req, httplib::Response& res) {
+    res.set_content(browseResourcesJson(req.has_param("limit") ? req.get_param_value("limit") : ""),
+                    "application/json");
   });
   
   svr.Post("/api/send", [this](const httplib::Request& req, httplib::Response& res) {
