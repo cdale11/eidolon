@@ -100,6 +100,11 @@ public:
 
   size_t count() const { return structures_.size(); }
 
+  // Positions of all structures, sorted by (x, y) for deterministic iteration
+  // (unordered_map order is not stable). Used by E2 succession to spawn the
+  // successor near its predecessor's buildings.
+  std::vector<Vec2i> structurePositions() const;
+
   // Update structures (decay, weather effects)
   void update(uint64_t currentTick);
 

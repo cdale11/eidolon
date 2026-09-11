@@ -323,6 +323,16 @@ std::vector<uint32_t> StructureManager::structuresOfType(StructureType type) con
   return result;
 }
 
+std::vector<Vec2i> StructureManager::structurePositions() const {
+  std::vector<Vec2i> result;
+  result.reserve(structures_.size());
+  for (const auto& kv : structures_) result.push_back(kv.second.position);
+  std::sort(result.begin(), result.end(), [](const Vec2i& a, const Vec2i& b) {
+    return (a.x < b.x) || (a.x == b.x && a.y < b.y);
+  });
+  return result;
+}
+
 void StructureManager::update(uint64_t currentTick) {
   for (auto& kv : structures_) {
     Structure& s = kv.second;

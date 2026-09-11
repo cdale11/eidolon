@@ -621,16 +621,29 @@ Dependency: independent of cognitive/ecological expansion; keep separate from E0
 
 #### E2 — Correct succession without resetting the world
 Dependency: E0 ownership seams; decide successor arrival/body/spawn conditions first.
-- [ ] Split world initialization from new-individual initialization; continue ecology and
+(Decided: adult newcomer spawns near the predecessor's structures — shelter
+inheritance — falling back to the death site, then a random walkable tile.)
+- [x] Split world initialization from new-individual initialization; continue ecology and
       world time without a living humanoid. Replace server reset-on-death and align CLI/WASM
       lifecycle handling with the portable core; preserve structures even where currently
       stored outside `World`.
-- [ ] Persist distinct world/individual/generation IDs, birth/death times, predecessor links,
+      (Done: `Engine::respawnSuccessor()` reuses `initIndividual()` alone — world, clock,
+      ecology, structures and RNG streams continue; server death path no longer calls
+      `Engine::init`; CLI gains `--generations N` reusing the same schedule. WASM needs no
+      change: client death hands control back and the server respawns after silence.)
+- [x] Persist distinct world/individual/generation IDs, birth/death times, predecessor links,
       life statistics, and attributable history. Make death recording and successor creation
       restart-safe with versioned migrations and deterministic successor RNG derivation.
+      (Done: snapshot v16 carries `worldId`/`individualId`/`generation`/`rebirthCount`;
+      successor RNG derives from `worldId ^ generation`; death log lines carry
+      `gen=`+cause, birth lines carry generation/id/spawn; corpse-then-successor saves
+      make crash-before-save resume exactly one lineage.)
       **Gate:** death → save/reload → exactly one successor; unchanged world identity,
       monotonic time, retained ecology/buildings, archived predecessor stats, and no copied
       autobiography. Seeded multi-generation runs and client handoff retain parity.
+      (Verified: 3 new unit tests — world preservation, snapshot identity round-trip incl.
+      corpse restore, determinism; CLI `--generations 4` on a harsh seed ran 4 generations
+      in one persistent world; surviving-run replay byte-identical to pre-E2 baseline.)
 
 #### E3 — Complete attributed inheritance and grounded knowledge
 Dependency: E2 identities; extend `heredity`, `genetic_memory`, `memory_system`, `user_model`,

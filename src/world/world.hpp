@@ -220,6 +220,8 @@ public:
   void setOrganismPos(Vec2i p) { pos_ = p; }
   bool organismAlive() const { return alive_; }
   void killOrganism() { alive_ = false; }
+  // E2 succession: place a new living individual without regenerating the world.
+  void reviveOrganism(Vec2i p) { pos_ = p; alive_ = true; }
 
   const std::vector<Plant>& plants() const { return plants_; }
   std::vector<Plant>& plants() { return plants_; }

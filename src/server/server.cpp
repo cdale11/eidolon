@@ -918,39 +918,43 @@ void Server::simLoop() {
       std::lock_guard<std::mutex> lock(engineMu_);
       engine_.tickAndLog(log_);
       if (!engine_.isAlive()) {
-        // Auto-rebirth: fresh organism inherits the world, optionally with heredity
-        log_.line(engine_.clock().now(), "death", "organism died; auto-rebirth");
+        // E2 succession: the world persists — only the individual is replaced.
+        // The predecessor's death is already logged by tickAndLog (with generation
+        // and cause); save the corpse snapshot, create exactly one successor near
+        // the predecessor's structures, then save again immediately so a crash
+        // can never reboot into the corpse state and fork a second lineage.
+        log_.line(engine_.clock().now(), "death", "organism died; succession");
         std::string err;
         if (!engine_.saveFile(savePath, err)) {
           std::fprintf(stderr, "warning: death save failed: %s\n", err.c_str());
         }
         log_.flush();
 
-        // Generate new seed for fresh organism (entropy if not deterministic)
-        const uint64_t newSeed = opts_.deterministic ? (opts_.seed != 0 ? opts_.seed : entropySeed())
-                                                     : entropySeed();
-        engine_.init(newSeed, opts_.deterministic, opts_.worldW, opts_.worldH);
+        if (!engine_.respawnSuccessor()) {
+          std::fprintf(stderr, "warning: respawn refused (organism alive?)\n");
+        }
         if (!opts_.policyPriorPath.empty() &&
             !engine_.loadPolicyPrior(opts_.policyPriorPath)) {
           std::fprintf(stderr, "warning: cannot load policy prior %s; using random init\n",
                        opts_.policyPriorPath.c_str());
         }
-        if (!opts_.heredityPath.empty()) {
-          engine_.setHeredityPath(opts_.heredityPath, opts_.heredityWeight);
-          if (!engine_.loadHeredity()) {
-            std::fprintf(stderr, "warning: could not load heredity from %s (starting fresh)\n",
-                         opts_.heredityPath.c_str());
-          } else {
-            std::fprintf(stderr, "heredity loaded from %s (weight %.2f)\n",
-                         opts_.heredityPath.c_str(), opts_.heredityWeight);
-          }
-        }
+        // Heredity was already reloaded from the predecessor's genome inside
+        // respawnSuccessor (via initIndividual) when --heredity is configured.
         engine_.setArchive(archive_.get());
         log_.line(engine_.clock().now(), "birth",
-                  "auto-rebirth seed=%llu", static_cast<unsigned long long>(newSeed));
+                  "successor gen=%u id=%llu spawn=(%d,%d) world=%llu",
+                  engine_.generation(),
+                  static_cast<unsigned long long>(engine_.individualId()),
+                  engine_.world().organismPos().x, engine_.world().organismPos().y,
+                  static_cast<unsigned long long>(engine_.worldId()));
+        if (!engine_.saveFile(savePath, err)) {
+          std::fprintf(stderr, "warning: successor save failed: %s\n", err.c_str());
+        }
+        log_.flush();
         lastAutosave = engine_.clock().now();
-        std::fprintf(stderr, "auto-rebirth: new organism seed=%llu\n",
-                     static_cast<unsigned long long>(newSeed));
+        std::fprintf(stderr, "succession: gen=%u spawn=(%d,%d)\n", engine_.generation(),
+                     engine_.world().organismPos().x,
+                     engine_.world().organismPos().y);
       }
       if (engine_.clock().now() - lastAutosave >= 600) { // autosave every 10 sim-minutes
         lastAutosave = engine_.clock().now();

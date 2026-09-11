@@ -55,6 +55,13 @@ void Engine::init(uint64_t masterSeed, bool deterministic, int worldW, int world
 void Engine::initWorld(uint64_t masterSeed, bool deterministic, int worldW, int worldH) {
   masterSeed_ = masterSeed;
   deterministic_ = deterministic;
+  // E2 identity: a fresh world starts generation 0 of a new lineage.
+  worldId_ = masterSeed;
+  generation_ = 0;
+  {
+    uint64_t s = worldId_ ^ 0x9E3779B97F4A7C15ULL;
+    individualId_ = splitmix64(s);
+  }
   clock_.set(0);
   scheduler_.reset();
   structures_ = StructureManager{};
@@ -100,6 +107,20 @@ void Engine::initIndividual() {
   skills_ = SkillStore{};
   habits_ = HabitStore{};
   crafting_ = CraftingSystem{};
+  // E2: a new individual must not inherit its predecessor's learned social
+  // state. These systems are serialized (snapshot v13) but a successor starts
+  // with fresh relationships: predecessor records stay attributable history
+  // (heredity file / archive), never live trust or autobiography. On a fresh
+  // process these assignments are no-ops (members start default-constructed).
+  userModel_ = UserModel{};
+  instructionLearning_ = InstructionLearningSystem{};
+  wildlife_social_ = WildlifeSocialSystem{};
+  beliefs_ = BeliefIsingModel{};
+  prevMode_ = 0;
+  exploreDir_ = {1, 0};
+  exploreTicks_ = 0;
+  wasSick_ = false;
+  lastGoalEvalAt_ = 0;
   materials_ = MaterialInventory{};
   // A small starting stash so the crafting/construction systems are reachable without a
   // full material economy: the organism knows how to gather a little and experiment.
@@ -121,6 +142,44 @@ void Engine::initIndividual() {
   }
   
   recordEpisode(EventKind::Birth, 0, 0.5, 255, Participant::Self, Outcome::Success, 0.0f, 0.0f, 0.0f, 0.0f, Relevance::Rewarding);
+}
+
+bool Engine::respawnSuccessor() {
+  if (isAlive()) return false;
+  const Vec2i deathPos = world_.organismPos();
+  // The death block in tick() already saved heredity and bumped rebirthCount_;
+  // the successor continues that count as its generation number.
+  generation_ = rebirthCount_;
+  {
+    uint64_t s = worldId_ ^
+                 (static_cast<uint64_t>(generation_) * 0x9E3779B97F4A7C15ULL + 1);
+    individualId_ = splitmix64(s);
+  }
+  heredityLoaded_ = false; // re-read the genome file the predecessor just saved
+  initIndividual();
+  world_.reviveOrganism(findSuccessorSpawn(deathPos));
+  return true;
+}
+
+Vec2i Engine::findSuccessorSpawn(Vec2i deathPos) {
+  // Candidate anchors in deterministic order: predecessor structures (sorted by
+  // position), then the death site. Expanding Chebyshev rings find the nearest
+  // walkable tile; the world-RNG fallback keeps the result deterministic.
+  std::vector<Vec2i> anchors = structures_.structurePositions();
+  anchors.push_back(deathPos);
+  const Grid& g = world_.grid();
+  for (const Vec2i& a : anchors) {
+    for (int r = 0; r <= 8; ++r) {
+      for (int dy = -r; dy <= r; ++dy) {
+        for (int dx = -r; dx <= r; ++dx) {
+          if (std::max(std::abs(dx), std::abs(dy)) != r) continue;
+          const int x = a.x + dx, y = a.y + dy;
+          if (g.inBounds(x, y) && g.walkable(x, y)) return {x, y};
+        }
+      }
+    }
+  }
+  return g.randomWalkable(rngWorld_);
 }
 
 void Engine::recordEpisode(EventKind kind, uint8_t detail, double importance,
@@ -1199,9 +1258,10 @@ void Engine::tickAndLog(EventLog& log) noexcept {
   if (died_) {
     recordEpisode(EventKind::Death, 0, 1.0, 255, Participant::Self, Outcome::Failure, 0.0f, 0.0f, -1.0f, 0.0f, Relevance::Aversive);
     log.line(clock_.now(), "death",
-             "energy=%.1f hunger=%.1f thirst=%.1f health=%.1f pos=(%d,%d)",
-             body_.energy(), body_.hunger(), body_.thirst(), body_.health(),
-             world_.organismPos().x, world_.organismPos().y);
+             "gen=%u cause=%s energy=%.1f hunger=%.1f thirst=%.1f health=%.1f pos=(%d,%d)",
+             generation_, determineCauseOfDeath().c_str(), body_.energy(), body_.hunger(),
+             body_.thirst(), body_.health(), world_.organismPos().x,
+             world_.organismPos().y);
     return;
   }
   // Log life-mode transitions only (active/rest/sleep) to keep the trace readable.
@@ -1310,6 +1370,13 @@ void Engine::serializeState(BinaryWriter& w) const {
   materials_.serialize(w);
   beliefs_.serialize(w);
   conceptGraph_.serialize(w);
+  // v16: E2 succession identity — world/individual/generation survive save/load
+  // so a lineage continues exactly one successor across restarts. rebirthCount_
+  // is included so the corpse snapshot already counted its own death.
+  w.u64(worldId_);
+  w.u64(individualId_);
+  w.u32(generation_);
+  w.u32(rebirthCount_);
 }
 
 bool Engine::deserializeState(BinaryReader& r, std::string& err) {
@@ -1401,16 +1468,24 @@ bool Engine::deserializeState(BinaryReader& r, std::string& err) {
     return false;
   }
   if (!userModel_.deserialize(r) || !instructionLearning_.deserialize(r) ||
-      !wildlife_social_.deserialize(r) || !attachment_.deserialize(r) ||
-      !selfModel_.deserialize(r) || !metacognition_.deserialize(r) ||
-      !concepts_.deserialize(r) || !predictor_.deserialize(r) ||
-      !skills_.deserialize(r) || !habits_.deserialize(r) ||
-      !crafting_.deserialize(r) || !structures_.deserialize(r) ||
-      !materials_.deserialize(r) ||
-      !beliefs_.deserialize(r) || !conceptGraph_.deserialize(r)) {
+       !wildlife_social_.deserialize(r) || !attachment_.deserialize(r) ||
+       !selfModel_.deserialize(r) || !metacognition_.deserialize(r) ||
+       !concepts_.deserialize(r) || !predictor_.deserialize(r) ||
+       !skills_.deserialize(r) || !habits_.deserialize(r) ||
+       !crafting_.deserialize(r) || !structures_.deserialize(r) ||
+       !materials_.deserialize(r) ||
+       !beliefs_.deserialize(r) || !conceptGraph_.deserialize(r)) {
     err = "snapshot integrated-system corrupt";
     return false;
   }
+  // v16: E2 succession identity.
+  uint32_t gen, rebirths;
+  if (!r.u64(worldId_) || !r.u64(individualId_) || !r.u32(gen) || !r.u32(rebirths)) {
+    err = "snapshot succession-identity corrupt";
+    return false;
+  }
+  generation_ = gen;
+  rebirthCount_ = rebirths;
   return r.done();
 }
 

@@ -138,6 +138,9 @@ struct Stats {
   const World& world() const { return world_; }
   World& world() { return world_; }
   const Physiology& body() const { return body_; }
+  // Mutable body access for lifecycle handling and tests (e.g. forcing death to
+  // exercise succession). Gameplay code must go through tick()/execute().
+  Physiology& body() { return body_; }
   // Reset physiology to a fresh healthy state (wounds/infection cleared). Keeps the
   // world, learning and personality intact. Used by tests (e.g. re-exposing an
   // experienced organism to predators) and by the harness for repeat trials.
@@ -207,6 +210,26 @@ bool loadPolicyPrior(const std::string& path);
   // Rebirth tracking
   uint32_t rebirthCount() const { return rebirthCount_; }
   void incrementRebirthCount() { ++rebirthCount_; }
+
+  // E2 succession identity: the world persists across individual lives; each
+  // successor is a new individual (new autobiography, new trust/attachment).
+  // worldId_ is fixed at initWorld (the world seed); generation_ counts
+  // successions; individualId_ derives deterministically from both.
+  uint64_t worldId() const { return worldId_; }
+  uint64_t individualId() const { return individualId_; }
+  uint32_t generation() const { return generation_; }
+
+  // Create exactly one successor after death WITHOUT resetting the world:
+  // world time, ecology, structures and RNG streams continue; only per-life
+  // state is re-initialized via initIndividual(). The successor spawns on a
+  // walkable tile near the predecessor's structures (shelter inheritance),
+  // falling back to the death site and then a random walkable tile.
+  // Returns false if the organism is still alive (nothing to succeed).
+  // The driver (server/CLI) owns death logging, saving and heredity files;
+  // this only performs the in-memory succession. Restart-safe: the snapshot
+  // (v16) carries world/individual/generation identity, so a save taken before
+  // or after this call resumes exactly one continuing lineage.
+  bool respawnSuccessor();
   
   // Optional offline experience dump (teacher training data): when set, each tick appends
   // one JSONL record (features, action, reward, interpretable context). Used only by the
@@ -286,6 +309,10 @@ private:
   // feature buffers; never runs on the fine-tick hot path.
   void stepSlowMind(const float* featsBefore, const float* featsAfter, PolicyAction pa) noexcept;
   std::string determineCauseOfDeath() const noexcept;
+  // E2: walkable successor spawn near the predecessor's structures (sorted
+  // order), then the death site, then a random walkable tile. Deterministic
+  // given the world RNG stream state.
+  Vec2i findSuccessorSpawn(Vec2i deathPos);
   void dumpExperience(PolicyAction pa, bool agentic, float reward, float novelty,
                       bool aversive, bool safe, double eaten, bool drank) noexcept;
 
@@ -357,6 +384,11 @@ private:
 
   // Rebirth tracking
   uint32_t rebirthCount_ = 0;
+
+  // E2 succession identity (snapshot v16).
+  uint64_t worldId_ = 0;
+  uint64_t individualId_ = 0;
+  uint32_t generation_ = 0;
 
   // Crafting system for tools, structures, food processing
   CraftingSystem crafting_;

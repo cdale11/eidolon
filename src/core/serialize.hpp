@@ -33,7 +33,9 @@ constexpr uint32_t kSnapshotMagic = 0x4549444C; // "EIDL"
 //      LearnSystem::successRate_ so user-visible life summaries survive resume.
 // v15: Engine snapshots persist the pending EventQueue so raw tick() then save/load then
 //      tickAndLog() cannot silently drop due timeline/archive events.
-constexpr uint32_t kSnapshotVersion = 15;
+// v16: E2 succession identity (worldId/individualId/generation) so a lineage continues
+//      exactly one successor across save/load without resetting the world.
+constexpr uint32_t kSnapshotVersion = 16;
 
 struct BinaryWriter {
 public:

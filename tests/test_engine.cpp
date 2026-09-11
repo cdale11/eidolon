@@ -2,7 +2,9 @@
 
 #include <unistd.h>
 
+#include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #include "sim/engine.hpp"
@@ -249,4 +251,96 @@ TEST(engine_advanced_stats_survive_snapshot_roundtrip) {
   CHECK(restored.restore(e.snapshot(), err));
   CHECK_EQ(restored.stats().actionsBuild, e.stats().actionsBuild);
   CHECK_EQ(restored.stats().structuresBuilt, e.stats().structuresBuilt);
+}
+
+namespace {
+// Kill the organism deterministically: lethal damage, then one tick runs the
+// engine death block (heredity save skipped — no path set — rebirth counted).
+void killForSuccessionTest(Engine& e) {
+  e.body().takeDamage(100000.0);
+  e.tick();
+  CHECK(!e.isAlive());
+}
+} // namespace
+
+TEST(engine_succession_preserves_world) {
+  Engine e;
+  e.init(42, true, 64, 64);
+  (void)runTicks(e, 200);
+  CHECK(e.isAlive());
+  // Predecessor builds near its own position so the successor has a shelter anchor.
+  // (The organism may have built its own structures during the 200 ticks above.)
+  const size_t builtBefore = e.structures().count();
+  const Vec2i hut = e.world().organismPos();
+  e.structures().placeStructure(StructureType::Shelter, hut, 0, 0, 0);
+  CHECK_EQ(e.structures().count(), builtBefore + 1);
+  const uint64_t gridHash = e.world().grid().hash();
+  const int64_t deathTick = e.clock().now();
+  const uint64_t world = e.worldId();
+  killForSuccessionTest(e);
+  CHECK(e.respawnSuccessor());
+  CHECK(e.isAlive());
+  // Lineage: same world, generation 1, new individual.
+  CHECK_EQ(e.worldId(), world);
+  CHECK_EQ(e.generation(), 1u);
+  CHECK(e.individualId() != 0u);
+  // Continuity: world time monotonic, terrain untouched, buildings retained.
+  CHECK(e.clock().now() >= deathTick);
+  CHECK_EQ(e.world().grid().hash(), gridHash);
+  CHECK_EQ(e.structures().count(), builtBefore + 1);
+  // Shelter inheritance: successor spawns near the predecessor's building.
+  const Vec2i spawn = e.world().organismPos();
+  const int d = std::max(std::abs(spawn.x - hut.x), std::abs(spawn.y - hut.y));
+  CHECK(d <= 8);
+  CHECK(e.world().grid().walkable(spawn.x, spawn.y));
+  // New life: fresh body and fresh per-life stats, not the corpse's.
+  CHECK(e.body().alive());
+  CHECK_EQ(e.stats().ticksFine, 0u);
+}
+
+TEST(engine_succession_identity_survives_snapshot) {
+  Engine e;
+  e.init(99, true, 64, 64);
+  killForSuccessionTest(e);
+  CHECK(e.respawnSuccessor());
+  std::string err;
+  Engine r;
+  CHECK(r.restore(e.snapshot(), err));
+  CHECK_EQ(r.worldId(), e.worldId());
+  CHECK_EQ(r.individualId(), e.individualId());
+  CHECK_EQ(r.generation(), e.generation());
+  CHECK(r.isAlive());
+  CHECK(r.world().organismPos() == e.world().organismPos());
+  // A corpse snapshot restores exactly one continuable lineage: respawn works.
+  Engine c;
+  c.init(99, true, 64, 64);
+  killForSuccessionTest(c);
+  const auto corpse = c.snapshot();
+  Engine d;
+  CHECK(d.restore(corpse, err));
+  CHECK(!d.isAlive());
+  CHECK(d.respawnSuccessor());
+  CHECK(d.isAlive());
+  CHECK_EQ(d.generation(), 1u);
+}
+
+TEST(engine_succession_deterministic) {
+  // Same seed, same death tick, same structures -> identical successor state.
+  Engine a, b;
+  a.init(7, true, 64, 64);
+  b.init(7, true, 64, 64);
+  (void)runTicks(a, 100);
+  (void)runTicks(b, 100);
+  a.structures().placeStructure(StructureType::Shelter, a.world().organismPos(), 0, 0, 0);
+  b.structures().placeStructure(StructureType::Shelter, b.world().organismPos(), 0, 0, 0);
+  killForSuccessionTest(a);
+  killForSuccessionTest(b);
+  CHECK(a.respawnSuccessor());
+  CHECK(b.respawnSuccessor());
+  CHECK(a.world().organismPos() == b.world().organismPos());
+  CHECK_EQ(a.snapshot(), b.snapshot());
+  // No succession while alive.
+  Engine c;
+  c.init(7, true, 64, 64);
+  CHECK(!c.respawnSuccessor());
 }

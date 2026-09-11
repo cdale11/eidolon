@@ -13,6 +13,15 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   (`EIDOLON_BUILD_LLAMA=1`, default). Offline mode, data preservation, and
   owned-process cleanup are unchanged; failures now exit nonzero.
 
+### Persistent-world succession (E2)
+- Death no longer resets the world: the server and CLI (`--generations N`) create
+  exactly one successor in the same persistent world — world time, ecology,
+  structures and history continue. Successors spawn near the predecessor's
+  buildings (shelter inheritance), with fresh bodies, memories and relationships.
+- Snapshot v16 persists world/individual/generation identity, so a lineage survives
+  save/load and a crash can never fork a second lineage. Death/birth log lines now
+  carry generation, cause and spawn details.
+
 ### Internet learning substrate
 - Internet access remains opt-in via `--internet-enabled`, but approved pages can now become
   durable learning material: `POST /api/browse/fetch` supports `learn:true`,

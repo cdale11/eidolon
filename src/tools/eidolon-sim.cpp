@@ -51,6 +51,8 @@ void printUsage(FILE* out, const char* prog) {
 "  --policy-prior FILE      seed the fresh policy with teacher-baked weights\n"
                  "  --heredity FILE          load/save organism heredity from/to FILE\n"
                  "  --heredity-weight FLOAT  inheritance weight 0.0..1.0 (default 0.7)\n"
+                 "  --generations N          E2 succession: respawn up to N generations in the\n"
+                 "                           same persistent world on death (default 1 = stop on death)\n"
                  "  --bench                  run the hot-path benchmark + backend selection, then exit\n"
                 "  --bench-ticks N          ticks for --bench (default 5000)\n"
                 "  --bench-json             emit benchmark results as JSON\n"
@@ -210,6 +212,7 @@ int main(int argc, char** argv) {
   int64_t benchTicks = 5000;
   std::string heredityPath;
   float heredityWeight = 0.7f;
+  int generations = 1;
 
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
@@ -237,6 +240,7 @@ int main(int argc, char** argv) {
     else if (a == "--policy-prior") priorPath = need("FILE");
     else if (a == "--heredity") heredityPath = need("FILE");
     else if (a == "--heredity-weight") heredityWeight = std::atof(need("FLOAT"));
+    else if (a == "--generations") generations = std::atoi(need("N"));
     else if (a == "--bench") bench = true;
     else if (a == "--bench-ticks") benchTicks = std::atoll(need("N"));
     else if (a == "--bench-json") benchJson = true;
@@ -255,6 +259,7 @@ int main(int argc, char** argv) {
     return 2;
   }
   if (days <= 0.0) days = 1.0;
+  if (generations < 1) generations = 1;
 
   if (bench) {
     if (benchTicks <= 0) benchTicks = 5000;
@@ -358,7 +363,32 @@ int main(int argc, char** argv) {
   int64_t nextProgress = ((engine.clock().now() / 3600) + 1) * 3600;
   std::string whyStopped = "completed";
 
-  while (!g_stop.load() && engine.isAlive() && engine.clock().now() < target) {
+  int successions = 0;
+  while (!g_stop.load() && engine.clock().now() < target) {
+    if (!engine.isAlive()) {
+      // E2 succession: keep the world, replace the individual. Default
+      // (--generations 1) preserves the old stop-on-death behavior exactly.
+      if (successions + 1 >= generations) break;
+      ++successions;
+      log.line(engine.clock().now(), "death", "organism died; succession");
+      std::string serr;
+      if (!engine.saveFile(savePath, serr)) {
+        std::fprintf(stderr, "error: cannot save corpse snapshot: %s\n", serr.c_str());
+      }
+      if (!engine.respawnSuccessor()) break;
+      if (!priorPath.empty() && !engine.loadPolicyPrior(priorPath)) {
+        std::fprintf(stderr, "warning: cannot load policy prior %s on succession\n",
+                     priorPath.c_str());
+      }
+      log.line(engine.clock().now(), "birth", "successor gen=%u id=%llu spawn=(%d,%d)",
+               engine.generation(),
+               static_cast<unsigned long long>(engine.individualId()),
+               engine.world().organismPos().x, engine.world().organismPos().y);
+      log.flush();
+      std::fprintf(stderr, "succession: gen=%u spawn=(%d,%d)\n", engine.generation(),
+                   engine.world().organismPos().x, engine.world().organismPos().y);
+      continue;
+    }
     engine.tickAndLog(log);
     if (engine.clock().now() >= nextProgress) {
       nextProgress += 3600;
@@ -392,6 +422,9 @@ int main(int argc, char** argv) {
     std::fprintf(m, "seed=%llu\ndeterministic=%d\n",
                  static_cast<unsigned long long>(engine.masterSeed()),
                  engine.deterministic() ? 1 : 0);
+    std::fprintf(m, "world=%llu\ngeneration=%u\nsuccessions=%d\n",
+                 static_cast<unsigned long long>(engine.worldId()),
+                 engine.generation(), successions);
     const LearnerMetrics lm = engine.learn().metrics();
     std::fprintf(m, "learnerInferences=%llu\nlearnerUpdates=%llu\n",
                  static_cast<unsigned long long>(lm.inferences),
