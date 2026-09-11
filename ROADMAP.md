@@ -598,14 +598,23 @@ Vulkan llama.cpp launch already exist. In particular:
 
 #### E1 — Finish the single-command build-and-run experience
 Dependency: independent of cognitive/ecological expansion; keep separate from E0 refactoring.
-- [ ] Extend executable `run_eidolon.sh` to configure and incrementally build native game
+- [x] Extend executable `run_eidolon.sh` to configure and incrementally build native game
       targets before startup, and build required browser worker assets when offload is
       enabled. Detect toolchains/dependencies with actionable errors. Reuse existing local
       llama.cpp/model configuration and healthy-server detection; build its local Vulkan
       target when needed from available sources, or explain missing prerequisites.
-- [ ] Preserve offline mode, persistent data, configurable paths, readiness checks and
+      (Done: step [0/3] checks cmake/ninja/g++/sqlite headers, configures once, builds
+      incrementally every launch; skips present wasm assets, builds `build-wasm-simd`
+      worker via emsdk when missing; auto-builds llama-server Vulkan target behind
+      `EIDOLON_BUILD_LLAMA=1` (default), explains otherwise. `EIDOLON_NO_BUILD=1` /
+      `EIDOLON_WASM=0` escape hatches. Fixed EXIT-trap exit-status clobbering so
+      failures propagate nonzero.)
+- [x] Preserve offline mode, persistent data, configurable paths, readiness checks and
       owned-process cleanup; propagate build/startup failures with nonzero exit status.
       Update quickstart to the one command, with initial dependencies/model setup documented.
+      (Done: verified from another cwd — absent build dir builds from scratch and launches
+      a healthy organism; rerun reuses data without reset; offline mode works; error paths
+      for missing binary/llama-server exit 1 with actionable messages.)
       **Gate:** from another working directory, one invocation handles absent/stale game
       builds, launches chat + local LLM, reuses a healthy LLM, supports offline mode, preserves
       data on rerun, and cleans up owned children on failure/Ctrl+C. No second user launcher.

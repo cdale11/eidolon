@@ -61,7 +61,8 @@ cmake --build build -j
 # Run tests (C++ unit)
 ./build/tests/eidolon_tests
 
-# One-command launcher (llama-server on the iGPU + eidolon-server on 0.0.0.0:8081)
+# One-command launcher (builds the game if needed, then llama-server on the
+# iGPU + eidolon-server on 0.0.0.0:8081)
 ./run_eidolon.sh            # Ctrl+C stops both. EIDOLON_NO_LLM=1 for offline mode.
 
 # Headless simulation (no UI; runs until SIGINT)

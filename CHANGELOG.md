@@ -5,6 +5,14 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 
 ## [Unreleased]
 
+### Single-command build-and-run
+- `run_eidolon.sh` now configures and incrementally builds the native game targets
+  before startup (toolchain/dependency checks with actionable errors), ensures the
+  browser worker assets for client offload exist (builds via emsdk when missing),
+  and builds the local llama-server Vulkan target from sources when absent
+  (`EIDOLON_BUILD_LLAMA=1`, default). Offline mode, data preservation, and
+  owned-process cleanup are unchanged; failures now exit nonzero.
+
 ### Internet learning substrate
 - Internet access remains opt-in via `--internet-enabled`, but approved pages can now become
   durable learning material: `POST /api/browse/fetch` supports `learn:true`,
