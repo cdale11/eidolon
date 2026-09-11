@@ -1199,7 +1199,6 @@ std::string Server::sendMessage(const std::string& conversationIdStr,
   CognitiveSnapshot snap;
   {
     std::lock_guard<std::mutex> lock(engineMu_);
-    snap = makeSnapshot(engine_);
     // A user message marks the user present: it resets separation and drives a reunion
     // response through the attachment system, so the organism's attitude toward the user
     // (and its behaviour around presence/absence) evolves from real interaction.
@@ -1207,6 +1206,11 @@ std::string Server::sendMessage(const std::string& conversationIdStr,
     engine_.userModel().set_user_present(true, t);
     engine_.userModel().record_interaction(true, t);
     engine_.attachment().on_user_returns(t);
+    // Commands reach the organism: parse/validate the message, run its own
+    // obedience decision (accept/refuse), and inject accepted orders as goals.
+    // This happens BEFORE the snapshot so both reply paths see the decision.
+    engine_.processUserInstruction(trimmed, static_cast<uint64_t>(t));
+    snap = makeSnapshot(engine_);
   }
 
   if (archive_) {

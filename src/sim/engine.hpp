@@ -54,6 +54,20 @@ enum class Action : uint8_t {
 
 class Engine {
 public:
+// Outcome of routing one user chat message through instruction handling.
+// The organism decides autonomously whether to obey: `injected` tells whether
+// a user goal entered arbitration (obedience is prioritization, never remote
+// control); `reason` is the honest user-facing sentence the chat replies use.
+// Persisted in the snapshot (v18).
+struct InstructionOutcome {
+  uint64_t tick = 0;
+  UserIntentType intent = UserIntentType::None;
+  std::string target;
+  bool actionable = false; // a command, not a question/greeting
+  bool injected = false;   // a user goal entered arbitration
+  std::string verdict;     // "accepted"|"refused"|"no_action"
+  std::string reason;      // user-facing sentence (empty when nothing to say)
+};
 struct Stats {
     uint64_t ticksFine = 0;
     uint64_t ticksCoarse = 0;
@@ -258,9 +272,14 @@ bool loadPolicyPrior(const std::string& path);
   WildlifeSocialSystem& wildlifeSocial() { return wildlife_social_; }
   const WildlifeSocialSystem& wildlifeSocial() const { return wildlife_social_; }
 
-  // Process a user text instruction: parse, validate, update trust/habits, and
-  // optionally inject as a goal/policy bias. Returns whether instruction was valid.
-  bool processUserInstruction(const std::string& text, uint64_t tick);
+  // Process a user text instruction: parse, validate, update trust/habits, run the
+  // organism's own obedience decision, and optionally inject as a goal/policy
+  // bias. Returns the full outcome (accept/refuse + user-facing reason); the
+  // outcome is also kept as lastInstruction() for chat grounding.
+  InstructionOutcome processUserInstruction(const std::string& text, uint64_t tick);
+  // The most recent instruction outcome (v18-persisted). Empty reason = the last
+  // message was not a command.
+  const InstructionOutcome& lastInstruction() const { return lastInstruction_; }
 
   // Wildlife domestication: feed/tame the nearest live prey within `radius` tiles. Feeding
   // reduces its hunger and fear; once fear drops below the taming threshold the prey
@@ -395,6 +414,8 @@ private:
   uint32_t generation_ = 0;
   // E3: birth tick of the current individual (snapshot v17).
   int64_t birthTick_ = 0;
+  // Last routed user message (command autonomy outcome; snapshot v18).
+  InstructionOutcome lastInstruction_;
 
   // Crafting system for tools, structures, food processing
   CraftingSystem crafting_;

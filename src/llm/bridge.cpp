@@ -412,6 +412,11 @@ CognitiveSnapshot makeSnapshot(const Engine& engine) {
   }
   s.recentMemorySummary = summary;
 
+  // Last routed user message (command autonomy): lets both reply paths speak
+  // consistently with the organism's own accept/refuse decision.
+  s.lastInstructionIntent = static_cast<int>(engine.lastInstruction().intent);
+  s.lastInstructionSummary = engine.lastInstruction().reason;
+
   // Skills/competence (Q0: real Beta-mean competence from the SkillStore for
   // practiced skills only — the old hardcoded "forage=0.8 drink=0.6 craft=0.1"
   // told the LLM false facts about skills never attempted).
@@ -602,6 +607,15 @@ std::string fallbackReply(const CognitiveSnapshot& s, const std::string& userTex
   // reply — and states checkable facts only: commands are never promised, since
   // the reply path cannot actuate. Unknown input falls to the status dump.
   const ParsedInstruction pi = IntentParser().parse(userText);
+  // Command autonomy: the engine already accepted or refused this message (the
+  // server routes chat through processUserInstruction just before snapshotting).
+  // Appended only when this message produced the outcome, so the reply stays
+  // consistent with the organism's own decision.
+  const std::string verdict =
+      (!s.lastInstructionSummary.empty() &&
+       static_cast<int>(pi.intent) == s.lastInstructionIntent)
+          ? " " + s.lastInstructionSummary
+          : "";
   char big[1024];
   switch (pi.intent) {
     case UserIntentType::Greet:
@@ -673,7 +687,7 @@ std::string fallbackReply(const CognitiveSnapshot& s, const std::string& userTex
                                : "I see no plants nearby.";
       std::snprintf(big, sizeof(big), "%s (hunger %.0f). %s", word, s.hunger,
                     plants.c_str());
-      return big;
+      return std::string(big) + verdict;
     }
     case UserIntentType::Drink: {
       const char* word = s.thirst < 10.0 ? "I am not thirsty" : "I am getting thirsty";
@@ -682,13 +696,13 @@ std::string fallbackReply(const CognitiveSnapshot& s, const std::string& userTex
                               : "I see no water nearby.";
       std::snprintf(big, sizeof(big), "%s (thirst %.0f). %s Carrying %d/%d.", word,
                     s.thirst, water.c_str(), s.waterCarried, s.waterCapacity);
-      return big;
+      return std::string(big) + verdict;
     }
     case UserIntentType::Rest:
     case UserIntentType::Sleep:
       std::snprintf(big, sizeof(big), "I feel %s (fatigue %.0f, sleep pressure %.0f).",
                     s.physiologicalState.c_str(), s.fatigue, s.sleepPressure);
-      return big;
+      return std::string(big) + verdict;
     case UserIntentType::Flee:
     case UserIntentType::Avoid:
       if (s.predatorDist >= 0) {
@@ -698,12 +712,12 @@ std::string fallbackReply(const CognitiveSnapshot& s, const std::string& userTex
         std::snprintf(big, sizeof(big), "I see no predators right now (threat %.2f).",
                       s.threatLevel);
       }
-      return big;
+      return std::string(big) + verdict;
     case UserIntentType::Build:
     case UserIntentType::Craft:
       std::snprintf(big, sizeof(big), "My energy is %.0f. My practiced skills: %s.",
                     s.energy, s.skillSummary.c_str());
-      return big;
+      return std::string(big) + verdict;
     default:
       break; // GoToLocation/FollowMe/Explore/Stop/Wait/Cancel/None: status dump below
   }
@@ -714,12 +728,14 @@ std::snprintf(buf, sizeof(buf),
                  s.weather.c_str(), s.ambientTempC, opening, s.posX, s.posY,
                  s.energy, s.health, s.hunger, s.thirst,
                  s.waterCarried, s.waterCapacity);
-   // Add age info for life-stats awareness in fallback reply.
-   char ageBuf[64];
-   std::snprintf(ageBuf, sizeof(ageBuf), " I am %lld days old.",
-                 static_cast<long long>(s.simTime / 86400));
-   std::strncat(buf, ageBuf, sizeof(buf) - std::strlen(buf) - 1);
-   return buf;
+    // Add age info for life-stats awareness in fallback reply.
+    char ageBuf[64];
+    std::snprintf(ageBuf, sizeof(ageBuf), " I am %lld days old.",
+                  static_cast<long long>(s.simTime / 86400));
+    std::strncat(buf, ageBuf, sizeof(buf) - std::strlen(buf) - 1);
+    // Last-resort status dump still carries the command verdict when this
+    // message was one (e.g. "explore" is steered, not chatted about).
+    return std::string(buf) + verdict;
 }
 
 bool LLMBridge::post(const std::string& body, std::string& response) {
@@ -877,6 +893,10 @@ bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
       "just said — but they inform wording only. Facts about the world, the body, "
       "events and memories come from the state snapshot and memories alone; if the "
       "history claims something the snapshot contradicts, the snapshot wins.\n"
+      "COMMAND OBEDIENCE: lastInstruction is the organism's own accept/refuse "
+      "decision for the user's latest command (or \"none\"). Stay consistent "
+      "with it — never claim to obey a refused order, and never ignore an "
+      "accepted one.\n"
       "ARCHIVE-GROUNDED MEMORY: if grounded_memory is non-empty, it is the verified "
       "archive answer to the user's memory question. Phrase those facts naturally; do "
       "not replace them with guesses or unstated memories. If it says there is no clear "
@@ -922,6 +942,7 @@ bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
     "skills=[%s] "
     "recentMemories=[%s] "
     "lifeStats=\"%s\" "
+    "lastInstruction=\"%s\" "
     "circadian=[phase=%s phrase=\"%s\" season=%s] "
     "physiological=[state=%s primaryNeed=%s tone=%s]",
     static_cast<long long>(s.simTime), s.day, s.hour, s.awake ? "yes" : "no",
@@ -940,6 +961,7 @@ bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
     s.skillSummary.c_str(),
     s.recentMemorySummary.c_str(),
     s.lifeStatsSummary.c_str(),
+    s.lastInstructionSummary.empty() ? "none" : s.lastInstructionSummary.c_str(),
     s.phaseOfDay.c_str(), s.timeOfDayPhrase.c_str(), s.seasonName.c_str(),
     s.physiologicalState.c_str(), s.primaryNeed.c_str(), s.circadianTone.c_str()
   );

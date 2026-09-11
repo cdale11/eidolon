@@ -1381,6 +1381,14 @@ void Engine::serializeState(BinaryWriter& w) const {
   // v17: E3 birth tick (honest lifespan accounting) — Episode attribution rides
   // inside the memory-ring serialization above (sourceIndividualId per episode).
   w.i64(birthTick_);
+  // v18: last user-instruction outcome (command autonomy: accept/refuse + reason).
+  w.u64(lastInstruction_.tick);
+  w.u8(static_cast<uint8_t>(lastInstruction_.intent));
+  w.str(lastInstruction_.target);
+  w.u8(lastInstruction_.actionable ? 1 : 0);
+  w.u8(lastInstruction_.injected ? 1 : 0);
+  w.str(lastInstruction_.verdict);
+  w.str(lastInstruction_.reason);
 }
 
 bool Engine::deserializeState(BinaryReader& r, std::string& err) {
@@ -1495,6 +1503,18 @@ bool Engine::deserializeState(BinaryReader& r, std::string& err) {
     err = "snapshot birth-tick corrupt";
     return false;
   }
+  // v18: last user-instruction outcome.
+  uint8_t instrIntent, instrActionable, instrInjected;
+  if (!r.u64(lastInstruction_.tick) || !r.u8(instrIntent) || instrIntent > 22 ||
+      !r.str(lastInstruction_.target) || !r.u8(instrActionable) ||
+      instrActionable > 1 || !r.u8(instrInjected) || instrInjected > 1 ||
+      !r.str(lastInstruction_.verdict) || !r.str(lastInstruction_.reason)) {
+    err = "snapshot last-instruction corrupt";
+    return false;
+  }
+  lastInstruction_.intent = static_cast<UserIntentType>(instrIntent);
+  lastInstruction_.actionable = instrActionable != 0;
+  lastInstruction_.injected = instrInjected != 0;
   return r.done();
 }
 
@@ -1518,7 +1538,10 @@ bool Engine::loadFile(const std::string& path, std::string& err) {
                           err);
 }
 
-bool Engine::processUserInstruction(const std::string& text, uint64_t tick) {
+Engine::InstructionOutcome Engine::processUserInstruction(const std::string& text,
+                                                           uint64_t tick) {
+  InstructionOutcome oc;
+  oc.tick = tick;
   // Build validation context from current organism state
   ValidationContext ctx;
   ctx.health = body_.health();
@@ -1570,15 +1593,71 @@ bool Engine::processUserInstruction(const std::string& text, uint64_t tick) {
   // Process through instruction learning system
   ParsedInstruction instr;
   bool valid = instructionLearning_.process_instruction(text, ctx, tick, userModel_, instr);
-  
-  // If instruction is valid and maps to a goal-directed action, inject into goal system
-  // (Q3 question intents are excluded like greetings: asking is not commanding).
-  if (valid && instr.intent != UserIntentType::None && instr.intent != UserIntentType::Greet &&
-      instr.intent != UserIntentType::Thank && instr.intent != UserIntentType::Cancel &&
-      instr.intent != UserIntentType::QuestionGoals &&
-      instr.intent != UserIntentType::QuestionSkills &&
-      instr.intent != UserIntentType::QuestionRelationships &&
-      instr.intent != UserIntentType::QuestionHelp) {
+  oc.intent = instr.intent;
+  oc.target = instr.target;
+
+  // Not a command: questions, greetings, acknowledgements and unrecognized text
+  // never steer behaviour. (Observe/Stop/Wait are understood inputs that carry
+  // no goal, like greetings.)
+  switch (instr.intent) {
+    case UserIntentType::GoToLocation:
+    case UserIntentType::FollowMe:
+    case UserIntentType::Explore:
+    case UserIntentType::Forage:
+    case UserIntentType::Drink:
+    case UserIntentType::Rest:
+    case UserIntentType::Sleep:
+    case UserIntentType::Flee:
+    case UserIntentType::Avoid:
+    case UserIntentType::Build:
+    case UserIntentType::Craft:
+      oc.actionable = true;
+      break;
+    default:
+      oc.verdict = "no_action";
+      lastInstruction_ = oc;
+      return oc;
+  }
+
+  // The organism's own obedience decision: validation first (can't), then
+  // autonomy (won't). All branches are pure functions of state — deterministic
+  // and explainable, never a coin flip.
+  if (!valid) {
+    oc.verdict = "refused";
+    oc.reason = "I can't do that: " + instr.validationError + ".";
+    lastInstruction_ = oc;
+    return oc;
+  }
+  if (body_.isSleeping()) {
+    oc.verdict = "refused";
+    oc.reason = "I am asleep — I can't follow that right now.";
+    lastInstruction_ = oc;
+    return oc;
+  }
+  if (ctx.predatorNearby && ctx.predatorDist >= 0 && ctx.predatorDist <= 3 &&
+      instr.intent != UserIntentType::Flee && instr.intent != UserIntentType::Avoid) {
+    oc.verdict = "refused";
+    oc.reason = "There is a predator right here — I have to survive first.";
+    lastInstruction_ = oc;
+    return oc;
+  }
+  if (userModel_.trust < 0.25f) {
+    oc.verdict = "refused";
+    oc.reason = "I don't trust you enough yet to follow that.";
+    lastInstruction_ = oc;
+    return oc;
+  }
+  if ((instr.intent == UserIntentType::Rest || instr.intent == UserIntentType::Sleep) &&
+      (body_.thirst() > 85.0 || body_.hunger() > 80.0)) {
+    oc.verdict = "refused";
+    oc.reason = "I am too hungry or thirsty to rest right now.";
+    lastInstruction_ = oc;
+    return oc;
+  }
+
+  // Accepted: inject as a boosted goal and let the normal arbitration decide
+  // when it actually acts — obedience is prioritization, never remote control.
+  {
     // Map user intent to goal type
     GoalType goalType = GoalType::None;
     switch (instr.intent) {
@@ -1593,22 +1672,22 @@ bool Engine::processUserInstruction(const std::string& text, uint64_t tick) {
       case UserIntentType::Avoid: goalType = GoalType::FleeThreat; break;
       case UserIntentType::Build: goalType = GoalType::BuildShelter; break;
       case UserIntentType::Craft: goalType = GoalType::CraftTool; break;
-      case UserIntentType::Observe: goalType = GoalType::Explore; break;
-      case UserIntentType::Stop: case UserIntentType::Wait:
-        // These don't map to goals but are valid instructions
-        break;
       default:
         break;
     }
-    
-    // If we have a goal type, inject it with high priority
+
+    // If we have a goal type, inject it with high priority boost
     if (goalType != GoalType::None) {
       // Inject into goal system with high priority boost
       goal_emergence_.inject_user_goal(goalType, Vec2i{ctx.posX, ctx.posY}, tick, 0.5f);
+      oc.injected = true;
     }
   }
-  
-  return valid;
+
+  oc.verdict = "accepted";
+  oc.reason = "Okay — I'll prioritize that.";
+  lastInstruction_ = oc;
+  return oc;
 }
 
 bool Engine::tameNearestPrey(int radius, bool& tamedNow) noexcept {

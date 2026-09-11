@@ -43,6 +43,17 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   death, sleep, critical health, nearby predators, pressing drives — still
   speak first, and anything unrecognized falls back to the status dump.
 
+### User commands with organism autonomy
+- Chat messages are now routed through instruction handling before every reply:
+  orders ("forage", "explore", "rest", …) are validated and the organism makes
+  its own obedience decision — it refuses the impossible (validation), the
+  dangerous (predator on top of it), the distrusted (trust below 0.25), and
+  rest while starving/thirsty. Accepted orders enter goal arbitration as
+  boosted goals: obedience is prioritization, never remote control.
+- Both reply paths speak consistently with the decision: the offline templates
+  append the accept/refuse reason, and the LLM prompt carries it as
+  `lastInstruction`. The outcome persists in snapshots (v18).
+
 ### Single-command build-and-run
 - `run_eidolon.sh` now configures and incrementally builds the native game targets
   before startup (toolchain/dependency checks with actionable errors), ensures the

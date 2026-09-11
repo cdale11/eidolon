@@ -251,6 +251,21 @@ def test_offline_questionnaire_gets_topical_answers(work):
         proc.wait()
 
 
+def test_user_command_reaches_organism_and_reply_states_verdict(work):
+    """Commands steer the organism: an accepted order is injected as a goal and
+    the reply says so; the decision (not the chat) is the source of truth."""
+    port = PORT_BASE + 15
+    proc = start_server(work, port)  # no --llm: offline
+    try:
+        r = http(port, "/api/send", {"message": "explore the area"})
+        assert r["reply"].strip()
+        assert r["source"] == "fallback", r
+        assert "prioritize" in r["reply"], r["reply"]
+    finally:
+        proc.kill()
+        proc.wait()
+
+
 def test_archive_written_by_server(work):
     port = PORT_BASE + 5
     proc = start_server(work, port)

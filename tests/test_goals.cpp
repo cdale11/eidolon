@@ -66,3 +66,78 @@ TEST(engine_goal_emergence_wired) {
   }
   CHECK(any);
 }
+// ---------------------------------------------------------------------------
+// Command autonomy: user chat reaches the organism, which decides itself.
+// ---------------------------------------------------------------------------
+
+namespace {
+bool hasGoalType(const Engine& e, GoalType t) {
+  for (const auto& g : e.goalEmergence().active_goals()) {
+    if (g.type == t) return true;
+  }
+  return false;
+}
+} // namespace
+
+TEST(user_command_accepted_and_injected_when_trusted) {
+  Engine e;
+  e.init(17, true, 64, 64);
+  CHECK(e.userModel().trust >= 0.25f); // default stance: willing
+  const Engine::InstructionOutcome oc = e.processUserInstruction("explore the area", 100);
+  CHECK(oc.actionable);
+  CHECK_EQ(oc.verdict, std::string("accepted"));
+  CHECK(oc.injected);
+  CHECK(!oc.reason.empty());
+  CHECK(hasGoalType(e, GoalType::Explore));
+  CHECK_EQ(e.lastInstruction().verdict, std::string("accepted"));
+}
+
+TEST(user_command_refused_when_distrusted) {
+  Engine e;
+  e.init(17, true, 64, 64);
+  e.userModel().trust = 0.0f;
+  const Engine::InstructionOutcome oc = e.processUserInstruction("explore the area", 100);
+  CHECK(oc.actionable);
+  CHECK_EQ(oc.verdict, std::string("refused"));
+  CHECK(!oc.injected);
+  CHECK(oc.reason.find("trust") != std::string::npos);
+}
+
+TEST(user_command_refused_when_impossible) {
+  Engine e;
+  e.init(17, true, 64, 64);
+  // Fresh organism is satiated: foraging is correctly rejected by validation.
+  const Engine::InstructionOutcome oc = e.processUserInstruction("forage for food", 100);
+  CHECK(oc.actionable);
+  CHECK_EQ(oc.verdict, std::string("refused"));
+  CHECK(!oc.injected);
+  CHECK(oc.reason.find("I can't do that") != std::string::npos);
+}
+
+TEST(user_question_never_steers_behaviour) {
+  Engine e;
+  e.init(17, true, 64, 64);
+  const size_t before = e.goalEmergence().active_goals().size();
+  const Engine::InstructionOutcome oc =
+      e.processUserInstruction("what are your goals?", 100);
+  CHECK(!oc.actionable);
+  CHECK(!oc.injected);
+  CHECK_EQ(oc.verdict, std::string("no_action"));
+  CHECK_EQ(e.goalEmergence().active_goals().size(), before);
+}
+
+TEST(instruction_outcome_survives_snapshot_roundtrip) {
+  Engine e;
+  e.init(17, true, 64, 64);
+  const Engine::InstructionOutcome oc = e.processUserInstruction("explore the area", 100);
+  CHECK_EQ(oc.verdict, std::string("accepted"));
+  std::string err;
+  const std::vector<uint8_t> blob = e.snapshot();
+  Engine e2;
+  e2.init(99, true, 64, 64);
+  CHECK(e2.restore(blob, err));
+  CHECK_EQ(e2.lastInstruction().verdict, std::string("accepted"));
+  CHECK_EQ(e2.lastInstruction().reason, oc.reason);
+  CHECK(e2.lastInstruction().injected);
+  CHECK(hasGoalType(e2, GoalType::Explore)); // injected goal persisted too
+}

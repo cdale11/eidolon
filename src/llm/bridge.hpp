@@ -94,6 +94,13 @@ struct CognitiveSnapshot {
   // Recent memories (last 6 episodes, compact)
   std::string recentMemorySummary;
 
+  // Last routed user message (command autonomy): the engine's accept/refuse
+  // decision for the latest command, as an intent id + user-facing sentence.
+  // Empty summary = the last message was not a command. Lets both reply paths
+  // speak consistently with what the organism actually decided.
+  int lastInstructionIntent = -1;
+  std::string lastInstructionSummary;
+
   // Skills/competence
   std::string skillSummary;  // e.g. "forage=0.8, drink=0.6, craft=0.1"
 

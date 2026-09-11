@@ -37,7 +37,9 @@ constexpr uint32_t kSnapshotMagic = 0x4549444C; // "EIDL"
 //      exactly one successor across save/load without resetting the world.
 // v17: E3 inheritance attribution — per-episode sourceIndividualId in the memory ring
 //      plus Engine::birthTick_ for honest lifespan accounting in heredity.
-constexpr uint32_t kSnapshotVersion = 17;
+// v18: command autonomy — Engine::lastInstruction_ (last routed user message:
+//      accept/refuse verdict plus the user-facing reason for chat grounding).
+constexpr uint32_t kSnapshotVersion = 18;
 
 struct BinaryWriter {
 public:
