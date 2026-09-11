@@ -94,6 +94,16 @@ struct Stats {
   // Fresh organism. `masterSeed` drives every subsystem stream.
   void init(uint64_t masterSeed, bool deterministic, int worldW, int worldH);
 
+  // E0/E2 lifecycle seam: init() == initWorld() + initIndividual(), in that order,
+  // with identical observable behavior. initWorld() establishes world-side state that
+  // must survive across individual lives (world terrain/ecology, world time, the world
+  // RNG streams, persistent structures); initIndividual() establishes per-life state
+  // (body, mind, memory, skills, materials, individual RNG draws, heredity load).
+  // NOTE: world-preserving rebirth (calling initIndividual() alone on death) is E2
+  // work and is NOT wired yet — all callers still use init().
+  void initWorld(uint64_t masterSeed, bool deterministic, int worldW, int worldH);
+  void initIndividual();
+
   bool isAlive() const { return world_.organismAlive() && body_.alive(); }
 
   // The action chosen on the most recent tick (also persisted in the snapshot so a

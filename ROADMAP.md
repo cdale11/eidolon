@@ -577,10 +577,18 @@ Vulkan llama.cpp launch already exist. In particular:
   have not already been built. Extend this script rather than add another launcher.
 
 #### E0 — Separate maintenance/refactoring step
-- [ ] Map ownership and runtime wiring in `src/sim/engine.*`, `src/server/server.*`,
+- [x] Map ownership and runtime wiring in `src/sim/engine.*`, `src/server/server.*`,
       `src/store/`, and `src/mind/`; identify duplication, stubs, and large responsibilities.
       Reconcile only demonstrably stale completion claims with code/test evidence.
-- [ ] Perform focused, behavior-preserving refactoring in separate steps from feature work:
+      (Done: audit found `Engine::init` resets world+individual together; server death
+      path re-`init`s and resets the world; `GeneticMemorySystem::extractFromArchive` /
+      `applyToOrganism` are stubs; archive has no world/individual/generation IDs.)
+- [x] Lifecycle seam (behavior-preserving): `Engine::init` is now `initWorld` (seed,
+      clock, world gen, world RNG streams, structures) + `initIndividual` (body, mind,
+      memory, skills, heredity load, birth episode). All callers still use `init()`;
+      seeded `seed-42` logs are byte-identical to the pre-split baseline. World-preserving
+      rebirth via `initIndividual()` alone remains E2 work.
+- [ ] Further focused, behavior-preserving refactoring in separate steps from feature work:
       clearer world/individual ownership seams, smaller server/lifecycle responsibilities,
       explicit persistence/error contracts, and removal of verified duplication. Purpose:
       easier maintenance, root-cause bug resolution, and performance analysis/improvement.

@@ -46,9 +46,35 @@ bool deserializeRng(BinaryReader& r, Rng& out) {
 } // namespace
 
 void Engine::init(uint64_t masterSeed, bool deterministic, int worldW, int worldH) {
+  // Behavior-preserving composition: identical observable behavior to the former
+  // monolithic init (same statement order, same RNG draw order).
+  initWorld(masterSeed, deterministic, worldW, worldH);
+  initIndividual();
+}
+
+void Engine::initWorld(uint64_t masterSeed, bool deterministic, int worldW, int worldH) {
   masterSeed_ = masterSeed;
   deterministic_ = deterministic;
   clock_.set(0);
+  scheduler_.reset();
+  structures_ = StructureManager{};
+
+  rngWorld_ = subsystemStream(masterSeed_, Subsystem::World);
+  rngWeather_ = subsystemStream(masterSeed_, Subsystem::Weather);
+  rngBody_ = subsystemStream(masterSeed_, Subsystem::Body);
+  rngCognition_ = subsystemStream(masterSeed_, Subsystem::Cognition);
+  rngLearn_ = subsystemStream(masterSeed_, Subsystem::Learning);
+  rngEvents_ = subsystemStream(masterSeed_, Subsystem::Events);
+  {
+    uint64_t cs = masterSeed_ ^ 0xC1A661A1ULL;
+    rngCrafting_ = Rng(splitmix64(cs));
+  }
+
+  world_.generate(worldW > 0 ? worldW : kDefaultWorldW,
+                  worldH > 0 ? worldH : kDefaultWorldH, rngWorld_);
+}
+
+void Engine::initIndividual() {
   died_ = false;
   resting_ = false;
   lastDecisionAgentic_ = false;
@@ -57,7 +83,6 @@ void Engine::init(uint64_t masterSeed, bool deterministic, int worldW, int world
   statusInterval_ = 600;
   stats_ = Stats{};
   memorySys_ = MemorySystem(256);
-  scheduler_.reset();
   goal_emergence_ = GoalEmergence(masterSeed_);
   // The world predictor draws its initialization weights from a dedicated stream, NOT the
   // shared learning RNG — consuming rngLearn_ here would shift every downstream policy/
@@ -74,7 +99,6 @@ void Engine::init(uint64_t masterSeed, bool deterministic, int worldW, int world
   selfModel_ = SelfModel{};
   skills_ = SkillStore{};
   habits_ = HabitStore{};
-  structures_ = StructureManager{};
   crafting_ = CraftingSystem{};
   materials_ = MaterialInventory{};
   // A small starting stash so the crafting/construction systems are reachable without a
@@ -86,19 +110,6 @@ void Engine::init(uint64_t masterSeed, bool deterministic, int worldW, int world
   lastSlowMindAt_ = 0;
   selfModel_.autobiography.birth_tick = 0;
 
-  rngWorld_ = subsystemStream(masterSeed_, Subsystem::World);
-  rngWeather_ = subsystemStream(masterSeed_, Subsystem::Weather);
-  rngBody_ = subsystemStream(masterSeed_, Subsystem::Body);
-  rngCognition_ = subsystemStream(masterSeed_, Subsystem::Cognition);
-  rngLearn_ = subsystemStream(masterSeed_, Subsystem::Learning);
-  rngEvents_ = subsystemStream(masterSeed_, Subsystem::Events);
-  {
-    uint64_t cs = masterSeed_ ^ 0xC1A661A1ULL;
-    rngCrafting_ = Rng(splitmix64(cs));
-  }
-
-  world_.generate(worldW > 0 ? worldW : kDefaultWorldW,
-                  worldH > 0 ? worldH : kDefaultWorldH, rngWorld_);
   body_.reset();
   body_.setWaterCapacity(Physiology::kInnateWaterskinCapacity);
   body_.refillWater();
