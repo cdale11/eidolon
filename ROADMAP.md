@@ -557,6 +557,80 @@ and "client does the maximum work" invariants apply to all of them.
 
 ---
 
+### Reply quality — perceived response quality (Q0–Q4)
+
+Authority: the reply pipeline is `Server::sendMessage` → `makeSnapshot` →
+`LLMBridge::parse/respond` (or `groundedReply`/`fallbackReply` offline). These slices
+extend that pipeline; they do not replace it. Invariants hold throughout: no
+personality/biography as prompt text (trait words below are data summaries of the
+persisted latent vector, same as today's floats), LLM never mutates state, every reply
+stays attributable to snapshot/archive facts. Work in slice order — Q0 fixes active
+fabrication sources before Q1–Q4 tune quality on top.
+
+#### Q0 — Stop telling the LLM false facts (correctness first)
+- [ ] `skillSummary` is a hardcoded placeholder (`"forage=0.8 drink=0.6 craft=0.1"`,
+      `bridge.cpp`): wire real `SkillStore` competence values; omit skills with no
+      practice instead of inventing numbers.
+- [ ] `terrain` is a raw enum int (`"terrain=3"`): send the terrain/biome name.
+- [ ] `chatComplete` hardcodes a model GGUF path: use the configured model/endpoint.
+- [ ] Send all significant `activeGoals`, not just `activeGoals[0]`.
+- **Gate:** snapshot unit test asserts no placeholder constants, real terrain names, all
+  goals present, and model string from configuration; existing bridge tests stay green.
+
+#### Q1 — Give the LLM conversation memory (biggest perceived gap)
+Today `respond()` sees only the current message + snapshot: the organism cannot refer
+to earlier turns, answer follow-ups, or remember what the user just told it.
+- [ ] Attach the bounded tail of the current conversation (last ~6–10 exchanges from
+      SQLite `messages`, token-capped) to the `respond` prompt as dialogue history.
+- [ ] Keep history bounded and attributable: truncate old turns first, never send the
+      whole archive; history informs wording, snapshot/archive remain the only sources
+      of world fact (restate the no-invention rule with history present).
+- **Gate:** multi-turn test — "I am building a shelter" … "what did I just say I was
+  building?" is answered correctly with the LLM on; token budget per reply stays under
+  a documented cap; offline behavior unchanged.
+
+#### Q2 — Ground every reply in the archive, LLM on or off
+Today `groundedReply` (archive timeline) runs only when the LLM is down; with the LLM
+up, past-tense accuracy rests on 6 terse episode stubs (`"foraged (t=...)"`).
+- [ ] Route memory-referencing questions (`parsed.references_memory`) through
+      `GroundedLanguage`/archive first and pass the resulting grounded facts INTO the
+      `respond` prompt, so the LLM phrases verified facts instead of recalling them.
+- [ ] Enrich `recentMemorySummary`: outcomes, places and elapsed time
+      ("foraged berries near (12,28) yesterday, success") instead of bare kind+tick.
+- [ ] Attribute inherited episodes in the summary (`sourceIndividualId != 0` →
+      "my predecessor …"), reusing E3 attribution rather than a second mechanism.
+- **Gate:** "what did you do yesterday / while I was away" matches the archive with
+  LLM on and off; predecessor questions cite the predecessor, never the self.
+
+#### Q3 — Make the offline voice answer the question
+`fallbackReply` ignores the user text except for 3 hardcoded patterns; everything else
+gets a status dump regardless of what was asked.
+- [ ] Intent-keyed offline templates: greeting, status/health, location/weather,
+      goals/plans, skills, relationships, help/capabilities — each grounded in snapshot
+      fields, with the status dump as the last resort instead of the default.
+- [ ] Reuse the `parse` result intent routing already present (`IntentParser`) rather
+      than keyword-spotting twice.
+- **Gate:** a fixed questionnaire (greet/status/where/goals/skills/help) gets topical
+  grounded answers fully offline; replies stay deterministic per snapshot.
+
+#### Q4 — Voice consistency and evaluation
+- [ ] Derive personality trait words from the latent vector thresholds
+      ("cautious" for high threat sensitivity, …) to replace raw floats, keeping the
+      numbers out of the prompt; tone selection stays a pure function of snapshot state.
+- [ ] Per-reply sampling: short factual answers (low temperature, tight token cap) vs
+      open smalltalk; keep the 4B iGPU latency budget explicit per class.
+- [ ] Reply-quality harness: scripted multi-turn scenarios scored on grounding (every
+      checkable claim traces to snapshot/archive), non-fabrication (unknowns admitted),
+      relevance (answers the question asked), and voice consistency — run before/after
+      each Q slice so improvements are measured, not felt.
+- **Gate:** harness scores improve on grounding + relevance with no fabrication
+  regressions; p95 reply latency within budget on the reference machine.
+
+**Execution order:** Q0 → Q1 → Q2 → Q3 → Q4. Q1 and E3-slice-2 (predecessor
+relationship retrieval) should land together where they touch the same prompt code.
+
+---
+
 ### Expansion plan — implementation gaps only (E0–E7)
 
 Authority: DESIGN's "Expansion agreement — persistent world, mortal individuals".
