@@ -121,6 +121,9 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   tests, Python integrations, deterministic replay, a one-day smoke run, and a
   hot-path benchmark (`p50=157us`, `p95=213us`, RSS 8316 KB on this machine).
 
+E4 is now complete: plant biology, wildlife development/disease, and coupled
+food-web feedback are implemented, serialized, tested, and documented.
+
 ### Voice consistency and reply-quality harness (Q4)
 - Personality now reaches the language model as trait words ("cautious,
   curious") derived from latent thresholds instead of raw floats, and drives

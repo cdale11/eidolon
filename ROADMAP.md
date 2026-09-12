@@ -811,6 +811,8 @@ Dependency: E0 baseline; E2 needed for across-generation ecosystem gates.
 Entry points: `src/world/world.*`, `wildlife.*`, existing ecology/procedural modules.
 (Audit: L-system/reaction-diffusion generate geometry only and are unused by the
 world/engine — E4 builds mechanistic field/state updates instead, not on them.)
+**Status:** Complete through E4c; plant biology, wildlife development/disease, and
+food-web coupling are implemented, serialized, tested, benchmarked, and documented.
 - [x] Extend existing plant regrowth/environmental fields with functional water/nutrient/light
       budgets, root uptake, life stages, seasonal reproduction/pollination, seed dispersal,
       inherited traits, injury/disease and decomposition/soil nutrient feedback. Audit existing
