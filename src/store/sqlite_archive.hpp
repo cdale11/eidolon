@@ -18,6 +18,11 @@ struct ConversationInfo {
   int64_t id = 0;
   std::string title;
   int64_t createdAt = 0;
+  // E3-slice-2a: owning individual (as int64 bit pattern of the uint64 id).
+  // A successor never inherits the predecessor's chat as lived experience: on
+  // succession the server starts a fresh conversation under the new id, while
+  // old ones stay readable as attributed predecessor history.
+  int64_t individualId = 0;
 };
 
 struct Message {
@@ -26,6 +31,9 @@ struct Message {
   std::string role; // "user" | "organism"
   std::string text;
   int64_t t = 0;
+  // E3-slice-2a: writer attribution. Organism rows carry the speaker's
+  // individual id; user rows carry 0 — the human persists across generations.
+  int64_t individualId = 0;
 };
 
 struct InternetResource {
@@ -51,13 +59,21 @@ public:
   std::vector<ArchivedEvent> timeline(int64_t startTick, int64_t endTick,
                                       size_t limit = 128) const override;
 
-  // Conversations.
-  int64_t createConversation(const std::string& title, int64_t t);
+  // Conversations. individualId is the uint64 Engine id stored as int64 bits
+  // (equality-preserving); 0 = legacy/unattributed. User message rows should
+  // pass 0 — the human persists across generations.
+  int64_t createConversation(const std::string& title, int64_t t,
+                             int64_t individualId = 0);
   void appendMessage(int64_t conversationId, const std::string& role,
-                     const std::string& text, int64_t t);
+                     const std::string& text, int64_t t, int64_t individualId = 0);
   void setConversationTitle(int64_t conversationId, const std::string& title);
   void deleteConversation(int64_t conversationId);
   std::vector<ConversationInfo> listConversations() const;
+  // E3-slice-2a: attributed retrieval — all conversations owned by one
+  // individual, oldest-first, so a successor can read (not relive) a
+  // predecessor's dialogue history.
+  std::vector<ConversationInfo> listConversationsByIndividual(int64_t individualId,
+                                                              int limit = 50) const;
   std::vector<Message> listMessages(int64_t conversationId, int limit = 200) const;
   // Q1: most recent messages, returned oldest-first (chronological) for prompt
   // history. listMessages returns oldest-first with LIMIT, i.e. the FIRST rows —

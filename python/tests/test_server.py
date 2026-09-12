@@ -343,6 +343,40 @@ def test_chat_lifecycle(work):
         proc.wait()
 
 
+def test_conversations_attributed_to_individuals(work):
+    """E3-slice-2a: organism rows carry the speaker's individual id, user rows
+    carry 0, and a new individual (world reset here) starts a fresh chat while
+    the predecessor's chat stays listed under its own id."""
+    port = PORT_BASE + 16
+    proc = start_server(work, port)
+    try:
+        r1 = http(port, "/api/send", {"message": "hello"})
+        cid1 = r1["conversation_id"]
+        msgs = http(port, f"/api/messages?conversation_id={cid1}")
+        user_rows = [m for m in msgs if m["role"] == "user"]
+        org_rows = [m for m in msgs if m["role"] == "organism"]
+        assert user_rows and all(m["individual_id"] == 0 for m in user_rows), msgs
+        assert org_rows and all(m["individual_id"] != 0 for m in org_rows), msgs
+        owner1 = org_rows[0]["individual_id"]
+        assert all(m["individual_id"] == owner1 for m in org_rows), msgs
+        c1 = [c for c in http(port, "/api/conversations") if c["id"] == cid1][0]
+        assert c1["individual_id"] == owner1, c1
+
+        http(port, "/api/world/reset", {})
+        r2 = http(port, "/api/send", {"message": "hello again"})
+        assert r2["conversation_id"] != cid1, (cid1, r2)
+        convs = http(port, "/api/conversations")
+        assert any(c["id"] == cid1 and c["individual_id"] == owner1 for c in convs), convs
+        c2 = [c for c in convs if c["id"] == r2["conversation_id"]][0]
+        assert c2["individual_id"] != 0 and c2["individual_id"] != owner1, (owner1, c2)
+        msgs2 = http(port, f"/api/messages?conversation_id={r2['conversation_id']}")
+        assert all(m["individual_id"] == 0 or m["individual_id"] == c2["individual_id"]
+                   for m in msgs2), msgs2
+    finally:
+        proc.kill()
+        proc.wait()
+
+
 def test_world_reset(work):
     port = PORT_BASE + 8
     proc = start_server(work, port)

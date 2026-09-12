@@ -54,6 +54,14 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   append the accept/refuse reason, and the LLM prompt carries it as
   `lastInstruction`. The outcome persists in snapshots (v18).
 
+### Attributed conversation history (E3 slice 2a)
+- Chat is now owned per individual: organism messages carry the speaker's
+  individual id (SQLite v3, with v2 migration preserving legacy rows as
+  unattributed), user messages stay id 0 across generations, and the server
+  starts a fresh chat on succession or world reset — a successor can read its
+  predecessor's conversations as history, never as its own lived dialogue.
+  The API exposes `individual_id` on conversations and messages.
+
 ### Voice consistency and reply-quality harness (Q4)
 - Personality now reaches the language model as trait words ("cautious,
   curious") derived from latent thresholds instead of raw floats, and drives

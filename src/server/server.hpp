@@ -116,10 +116,15 @@ public:
   // Wildlife domestication: feed/tame the nearest prey; returns whether a companion was made.
   std::string tameJson();
 
-private:
+ private:
   void simLoop();
   void autosave();
-  int64_t currentConversation();
+  // E3-slice-2a: the current chat belongs to one individual. Returns the live
+  // conversation, starting a fresh attributed one when the individual changed
+  // (succession or world reset) so a successor never inherits the
+  // predecessor's dialogue as lived experience. simTime avoids a clock read
+  // outside the engine lock.
+  int64_t currentConversationFor(uint64_t individualId, int64_t simTime);
   // Grounded-language reply from the event timeline (empty if the message isn't a
   // past/personal-history question or has no archive). Deterministic, no LLM.
   std::string groundedReply(const std::string& text);
@@ -140,6 +145,9 @@ private:
 
   mutable std::mutex engineMu_; // guards engine_ (sim thread vs HTTP handlers)
   int64_t conversationId_ = -1;
+  // Owner of conversationId_: the Engine individual id speaking in it (uint64).
+  // Compared on every message; a mismatch means succession happened mid-chat.
+  uint64_t conversationOwnerId_ = 0;
   FidelitySettings fidelity_; // resolved at simLoop start (metrics/status report)
   // Phase 15: client-side offload
   std::atomic<bool> clientComputing_{false};

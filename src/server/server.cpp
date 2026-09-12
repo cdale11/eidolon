@@ -1025,9 +1025,16 @@ void Server::autosave() {
   log_.flush();
 }
 
-int64_t Server::currentConversation() {
-  if (conversationId_ < 0 && archive_) {
-    conversationId_ = archive_->createConversation("chat", 0);
+int64_t Server::currentConversationFor(uint64_t individualId, int64_t simTime) {
+  if (conversationId_ < 0 || conversationOwnerId_ != individualId) {
+    // New speaker (first chat, succession, or world reset): fresh conversation
+    // attributed to the living individual. The predecessor's chats stay in the
+    // archive as attributed history, never as this individual's own dialogue.
+    conversationId_ =
+        archive_ ? archive_->createConversation(
+                       "chat", simTime, static_cast<int64_t>(individualId))
+                 : -1;
+    conversationOwnerId_ = individualId;
   }
   return conversationId_;
 }
@@ -1193,10 +1200,10 @@ std::string Server::sendMessage(const std::string& conversationIdStr,
   if (!conversationIdStr.empty()) {
     convId = std::strtoll(conversationIdStr.c_str(), nullptr, 10);
   }
-  if (convId <= 0) convId = currentConversation();
 
   // Snapshot the current state for the reply (grounded in real state).
   CognitiveSnapshot snap;
+  uint64_t speakerId = 0;
   {
     std::lock_guard<std::mutex> lock(engineMu_);
     // A user message marks the user present: it resets separation and drives a reunion
@@ -1210,8 +1217,13 @@ std::string Server::sendMessage(const std::string& conversationIdStr,
     // obedience decision (accept/refuse), and inject accepted orders as goals.
     // This happens BEFORE the snapshot so both reply paths see the decision.
     engine_.processUserInstruction(trimmed, static_cast<uint64_t>(t));
+    speakerId = engine_.individualId();
     snap = makeSnapshot(engine_);
   }
+  // E3-slice-2a: implicit chats belong to the living individual. An explicit
+  // conversation_id (user reopening an old chat) is honored as-is — attribution
+  // on the rows still records who actually spoke.
+  if (convId <= 0) convId = currentConversationFor(speakerId, snap.simTime);
 
   if (archive_) {
     // Title the conversation from its first user message (ChatGPT-style).
@@ -1220,7 +1232,8 @@ std::string Server::sendMessage(const std::string& conversationIdStr,
       if (title.size() > 40) title = title.substr(0, 40) + "...";
       archive_->setConversationTitle(convId, title);
     }
-    archive_->appendMessage(convId, "user", trimmed, snap.simTime);
+    // User rows carry 0: the human persists across generations, individuals don't.
+    archive_->appendMessage(convId, "user", trimmed, snap.simTime, 0);
   }
 
   // Q1: bounded prior dialogue tail (up to 10 turns) so the LLM can resolve
@@ -1281,7 +1294,9 @@ std::string Server::sendMessage(const std::string& conversationIdStr,
   }
 
   if (archive_) {
-    archive_->appendMessage(convId, "organism", reply, snap.simTime);
+    // Organism rows carry the speaker: who actually lived this exchange.
+    archive_->appendMessage(convId, "organism", reply, snap.simTime,
+                            static_cast<int64_t>(speakerId));
   }
 
   char latBuf[64];
@@ -1338,15 +1353,23 @@ std::string Server::conversationsJson() {
     if (!first) out += ",";
     first = false;
     out += "{\"id\":" + std::to_string(c.id) + ",\"title\":\"" + jsonEscape(c.title) +
-           "\",\"created_at\":" + std::to_string(c.createdAt) + "}";
+           "\",\"created_at\":" + std::to_string(c.createdAt) + ",\"individual_id\":" +
+           std::to_string(c.individualId) + "}";
   }
   return out + "]";
 }
 
 std::string Server::newConversationJson() {
   if (!archive_) return "{\"error\":\"no archive\"}";
-  const int64_t id = archive_->createConversation("New chat",
-                                                  engine_.clock().now());
+  uint64_t speakerId = 0;
+  int64_t now = 0;
+  {
+    std::lock_guard<std::mutex> lock(engineMu_);
+    speakerId = engine_.individualId();
+    now = engine_.clock().now();
+  }
+  const int64_t id = archive_->createConversation(
+      "New chat", now, static_cast<int64_t>(speakerId));
   if (id < 0) return "{\"error\":\"create failed\"}";
   return "{\"conversation_id\":" + std::to_string(id) + "}";
 }
@@ -1355,7 +1378,10 @@ std::string Server::deleteConversationJson(const std::string& conversationIdStr)
   const int64_t convId = std::strtoll(conversationIdStr.c_str(), nullptr, 10);
   if (archive_ && convId > 0) {
     archive_->deleteConversation(convId);
-    if (conversationId_ == convId) conversationId_ = -1;
+    if (conversationId_ == convId) {
+      conversationId_ = -1;
+      conversationOwnerId_ = 0;
+    }
   }
   return "{\"ok\":true}";
 }
@@ -1448,7 +1474,8 @@ std::string Server::messagesJson(const std::string& conversationIdStr,
     first = false;
     out += "{\"id\":" + std::to_string(m.id) + ",\"role\":\"" + jsonEscape(m.role) +
            "\",\"text\":\"" + jsonEscape(m.text) + "\",\"t\":" +
-           std::to_string(m.t) + "}";
+           std::to_string(m.t) + ",\"individual_id\":" +
+           std::to_string(m.individualId) + "}";
   }
   return out + "]";
 }

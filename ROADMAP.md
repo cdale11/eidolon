@@ -772,6 +772,12 @@ Dependency: E2 identities; extend `heredity`, `genetic_memory`, `memory_system`,
       retrieval; let new interactions revise inherited expectations independently of the
       predecessor's trust/attachment. Provide a documented adult-language/knowledge baseline
       without claiming practical mastery or seeding a textual personality.
+      (Slice 2a done: conversations/messages carry the speaker's individual id
+      SQLite v3 with v2 migration; the server starts a fresh attributed chat on
+      succession/reset so a successor never inherits dialogue as autobiography;
+      user rows stay 0 across generations; `listConversationsByIndividual`
+      retrieval + API `individual_id` fields. Predecessor-stat exposure, chat
+      citations and the knowledge baseline remain open.)
 - [x] Replace simplistic death-location lessons with evidence-based causal hypotheses;
       support belief contradiction/revision and distinguish descriptions from practiced skills.
       (Done, slice 1: `makeDeathMemory` is cause-specific — location counts as evidence
