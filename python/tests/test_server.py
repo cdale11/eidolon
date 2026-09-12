@@ -54,6 +54,20 @@ def http(port, path, data=None):
         return json.loads(resp.read().decode())
 
 
+def is_respond_call(req):
+    """Parse/respond dispatch for stub LLMs. Sniffs the request content first
+    (respond payloads carry "user_intent"), because per-class sampling caps
+    (Q4: factual=128, open=256) make max_tokens unreliable. Falls back to the
+    old max_tokens split for non-JSON stub content (reasoning-model fences)."""
+    try:
+        content = req["messages"][-1]["content"]
+        if isinstance(content, str) and "user_intent" in json.loads(content):
+            return True
+    except Exception:
+        pass
+    return int(req.get("max_tokens", 0)) > 200
+
+
 def test_ui_and_status(work):
     proc = start_server(work, PORT_BASE)
     try:
@@ -182,8 +196,7 @@ def test_send_reports_llm_provenance(work):
         def do_POST(self):
             length = int(self.headers.get("Content-Length", 0))
             req = json.loads(self.rfile.read(length) or b"{}")
-            mt = int(req.get("max_tokens", 0))
-            if mt <= 200:
+            if not is_respond_call(req):
                 body = {"choices": [{"message": {"content":
                     "{\"intent\":\"greet\",\"topic\":\"\",\"tone\":\"warm\","
                     "\"references_memory\":false}"}}]}
@@ -406,8 +419,7 @@ def test_conversation_history_reaches_llm(work):
         def do_POST(self):
             length = int(self.headers.get("Content-Length", 0))
             req = json.loads(self.rfile.read(length) or b"{}")
-            mt = int(req.get("max_tokens", 0))
-            if mt <= 200:  # /parse call
+            if not is_respond_call(req):  # /parse call
                 msg = {"content": "{\"intent\":\"question\",\"topic\":\"shelter\","
                                   "\"tone\":\"neutral\",\"references_memory\":false}"}
             else:  # /respond call: record the payload, return a fixed reply
@@ -469,8 +481,7 @@ def test_memory_question_passes_grounded_archive_to_llm(work):
         def do_POST(self):
             length = int(self.headers.get("Content-Length", 0))
             req = json.loads(self.rfile.read(length) or b"{}")
-            mt = int(req.get("max_tokens", 0))
-            if mt <= 200:
+            if not is_respond_call(req):
                 msg = {"content": "{\"intent\":\"question\",\"topic\":\"past\","
                                   "\"tone\":\"neutral\",\"references_memory\":true}"}
             else:
@@ -527,9 +538,8 @@ def test_reasoning_model_replies(work):
         def do_POST(self):
             length = int(self.headers.get("Content-Length", 0))
             req = json.loads(self.rfile.read(length) or b"{}")
-            mt = int(req.get("max_tokens", 0))
             think = "The organism is autonomous. " * 120  # long chain-of-thought
-            if mt <= 200:  # /parse call: JSON object wrapped after the reasoning
+            if not is_respond_call(req):  # /parse call: JSON wrapped after reasoning
                 msg = {"reasoning_content": think,
                        "content": "Let me classify this message carefully. "
                                   "```json\n{\"intent\":\"question\",\"topic\":\"weather\","

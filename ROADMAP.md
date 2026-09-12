@@ -639,17 +639,29 @@ gets a status dump regardless of what was asked.
   are pure functions of the snapshot.)
 
 #### Q4 — Voice consistency and evaluation
-- [ ] Derive personality trait words from the latent vector thresholds
+- [x] Derive personality trait words from the latent vector thresholds
       ("cautious" for high threat sensitivity, …) to replace raw floats, keeping the
       numbers out of the prompt; tone selection stays a pure function of snapshot state.
-- [ ] Per-reply sampling: short factual answers (low temperature, tight token cap) vs
+      (Done: `traitWords` maps thirds of [-1,1] for the 7 voice-relevant dims;
+      drives became a strongest-first ranking; `circadianTone` untouched.)
+- [x] Per-reply sampling: short factual answers (low temperature, tight token cap) vs
       open smalltalk; keep the 4B iGPU latency budget explicit per class.
-- [ ] Reply-quality harness: scripted multi-turn scenarios scored on grounding (every
+      (Done: factual = 0.2/128 tokens for memory/status/orders, open = 0.7/256;
+      budgets documented on the constants; `chatComplete` takes temperature.)
+- [x] Reply-quality harness: scripted multi-turn scenarios scored on grounding (every
       checkable claim traces to snapshot/archive), non-fabrication (unknowns admitted),
       relevance (answers the question asked), and voice consistency — run before/after
       each Q slice so improvements are measured, not felt.
+      (Done: `python/tests/test_reply_quality.py`, auto-run by the integration
+      driver — 21 checks: offline relevance/latency, non-fabrication, archive
+      grounding, prompt structure, trait/drive words, voice stability, sampling
+      classes, stub-LLM latency. Baseline before Q4 was 14/20 with exactly the
+      trait/sampling gaps failing; after: 21/21.)
 - **Gate:** harness scores improve on grounding + relevance with no fabrication
   regressions; p95 reply latency within budget on the reference machine.
+  (Done: grounding + relevance stayed green from Q0–Q3, fabrication checks
+  green, offline p95 ≈ 1ms vs 2000ms CI budget; iGPU reference budgets
+  explicit in code, real-model timing left to manual runs.)
 
 **Execution order:** Q0 → Q1 → Q2 → Q3 → Q4. Q1 and E3-slice-2 (predecessor
 relationship retrieval) should land together where they touch the same prompt code.

@@ -10,6 +10,7 @@
 
 #include "core/json.hpp"
 #include "mind/memory.hpp"
+#include "mind/personality.hpp"
 #include "mind/goal_emergence.hpp"
 #include "mind/user_model.hpp"
 #include "mind/wildlife_social.hpp"
@@ -142,6 +143,22 @@ std::string formatDialogueHistory(const std::vector<DialogueTurn>& history);
 // Was: only activeGoals[0] reached the LLM, hiding competing drives.
 std::string joinGoalNames(const std::vector<std::string>& goals);
 
+// Q4: trait words derived from latent thresholds (thirds of [-1,1]). Pure
+// function of the latent data — no textual personality anywhere, and raw floats
+// never reach the prompt. Tone selection stays a pure function of snapshot
+// state (circadianTone), untouched by this.
+std::string traitWords(const PersonalityLatent& latent);
+
+// Q4: per-reply sampling classes with explicit iGPU latency budgets (4B Q4_K_M
+// on the 740M at ~10 tok/s: factual ≤128 tokens ≈ 13s worst case; open ≤256).
+// Factual = short exact answers (low temperature, tight cap); Open = smalltalk.
+enum class ReplyClass { Factual, Open };
+ReplyClass replyClass(const ParsedMessage& parsed);
+constexpr double kFactualTemperature = 0.2;
+constexpr int kFactualMaxTokens = 128;
+constexpr double kOpenTemperature = 0.7;
+constexpr int kOpenMaxTokens = 256;
+
 // Deterministic fallback reply generated purely from state (LLM down/garbage).
 // `userHour` (optional, <0 = use sim hour) is the user's local-hour for the greeting
 // slot only — a "good morning" respects the user's timezone, while the organism's
@@ -194,7 +211,7 @@ public:
     int64_t completionTokens = -1;
   };
   bool chatComplete(const JsonValue& messages, int maxTokens, JsonValue& out,
-                    CallStats* stats = nullptr);
+                    CallStats* stats = nullptr, double temperature = 0.7);
   bool post(const std::string& body, std::string& response);
 
   std::string endpoint_;

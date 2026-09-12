@@ -226,6 +226,39 @@ std::string joinGoalNames(const std::vector<std::string>& goals) {
   return out.empty() ? "none" : out;
 }
 
+// Q4: latent thirds ([-1,1]) mapped to trait words. Only voice-relevant,
+// actively-used dims; reserved/residue/affinity dims stay out of the voice.
+std::string traitWords(const PersonalityLatent& latent) {
+  const char* word = nullptr;
+  std::string out;
+  const auto add = [&](int dim, const char* hi, const char* lo) {
+    const float v = latent.value(dim);
+    word = (v > 0.33f) ? hi : (v < -0.33f) ? lo : nullptr;
+    if (word) {
+      if (!out.empty()) out += ", ";
+      out += word;
+    }
+  };
+  add(PersonalityLatent::kThreatSensitivity, "cautious", "bold");
+  add(PersonalityLatent::kNoveltySensitivity, "curious", "habitual");
+  add(PersonalityLatent::kRewardSensitivity, "eager", "reserved");
+  add(PersonalityLatent::kSocialSensitivity, "attached", "solitary");
+  add(PersonalityLatent::kImpulsivity, "impulsive", "deliberate");
+  add(PersonalityLatent::kPersistence, "persistent", "distractible");
+  add(PersonalityLatent::kStressReactivity, "jumpy", "stoic");
+  return out.empty() ? "even-tempered" : out;
+}
+
+// Q4: memory/status/goal/skill questions and orders get short exact answers;
+// greetings and smalltalk get the loose open class.
+ReplyClass replyClass(const ParsedMessage& parsed) {
+  if (parsed.referencesMemory) return ReplyClass::Factual;
+  if (parsed.intent == "question" || parsed.intent == "request") {
+    return ReplyClass::Factual;
+  }
+  return ReplyClass::Open;
+}
+
 std::string formatDialogueHistory(const std::vector<DialogueTurn>& history) {
   // Token budget: ~1500 chars total (~400 tokens), 400 chars per turn. Newest
   // turns win: iterate newest-first, then restore chronological order, so the
@@ -329,25 +362,39 @@ CognitiveSnapshot makeSnapshot(const Engine& engine) {
   // Personality & drives (summary)
   const auto& latent = engine.learn().personality();
   const auto& drives = engine.learn().driveWeights();
-  
-  // Personality summary from latent vector
-  char persBuf[256];
-  std::snprintf(persBuf, sizeof(persBuf),
-    "rewardSens=%.2f threatSens=%.2f noveltySens=%.2f socialSens=%.2f impulsivity=%.2f persistence=%.2f",
-    latent.value(PersonalityLatent::kRewardSensitivity),
-    latent.value(PersonalityLatent::kThreatSensitivity),
-    latent.value(PersonalityLatent::kNoveltySensitivity),
-    latent.value(PersonalityLatent::kSocialSensitivity),
-    latent.value(PersonalityLatent::kImpulsivity),
-    latent.value(PersonalityLatent::kPersistence));
-  s.personalitySummary = persBuf;
 
-  // Drive summary
-  char driveBuf[256];
-  std::snprintf(driveBuf, sizeof(driveBuf),
-    "hunger=%.2f thirst=%.2f rest=%.2f energy=%.2f curiosity=%.2f",
-    drives.hunger, drives.thirst, drives.rest, drives.energy, drives.curiosity);
-  s.driveSummary = driveBuf;
+  // Q4: trait words from latent thresholds — raw floats never reach the prompt.
+  s.personalitySummary = traitWords(latent);
+
+  // Q4: drives as a strongest-first ranking ("hunger>thirst>rest>..."):
+  // relative magnitudes without raw floats in the prompt.
+  {
+    const std::pair<const char*, float> named[] = {
+        {"hunger", drives.hunger},
+        {"thirst", drives.thirst},
+        {"rest", drives.rest},
+        {"energy", drives.energy},
+        {"curiosity", drives.curiosity},
+    };
+    // Insertion-order-stable selection sort (fixed size 5, deterministic ties
+    // keep the canonical order above).
+    size_t order[] = {0, 1, 2, 3, 4};
+    for (size_t i = 0; i < 5; ++i) {
+      for (size_t j = i + 1; j < 5; ++j) {
+        if (named[order[j]].second > named[order[i]].second) {
+          const size_t t = order[i];
+          order[i] = order[j];
+          order[j] = t;
+        }
+      }
+    }
+    std::string ranked;
+    for (size_t i = 0; i < 5; ++i) {
+      if (i > 0) ranked += ">";
+      ranked += named[order[i]].first;
+    }
+    s.driveSummary = ranked;
+  }
 
 // Life-stats summary (age in days, per-action totals, milestones).
    char lifeBuf[512];
@@ -771,7 +818,7 @@ bool LLMBridge::post(const std::string& body, std::string& response) {
 }
 
 bool LLMBridge::chatComplete(const JsonValue& messages, int maxTokens, JsonValue& out,
-                             CallStats* stats) {
+                             CallStats* stats, double temperature) {
   ++calls_;
   const auto t0 = std::chrono::steady_clock::now();
   JsonValue req = JsonValue::makeObject();
@@ -779,7 +826,7 @@ bool LLMBridge::chatComplete(const JsonValue& messages, int maxTokens, JsonValue
   req.setString("model", model_);
   req.set("messages", messages);
   req.setNumber("max_tokens", maxTokens);
-  req.setNumber("temperature", 0.7);
+  req.setNumber("temperature", temperature);
   // Nemotron-style reasoning models ramble for ~hundreds of tokens before answering,
   // blowing the latency budget on the iGPU. Disable the [THINK] phase for chat;
   // structured thinking is not needed for these short classify/respond calls.
@@ -888,6 +935,8 @@ bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
       "only speak from the provided state snapshot. Never invent events, memories, "
       "goals or relationships. If asked about something not in the snapshot or "
       "memories, say you do not remember it. Keep replies short (1-3 sentences).\n"
+      "STYLE: factual answers (health, memory, goals, orders) are short and exact — "
+      "one or two sentences, no flourish. Smalltalk may be warmer.\n"
       "CONVERSATION HISTORY: the prompt may include recent dialogue turns before the "
       "current message. Use them to resolve follow-ups and refer back to what was "
       "just said — but they inform wording only. Facts about the world, the body, "
@@ -981,7 +1030,11 @@ bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
 
   JsonValue choice;
   CallStats rs;
-  if (!chatComplete(msgs, 1024, choice, &rs)) {
+  // Q4: factual answers (memory/status/orders) sample tight and short; open
+  // smalltalk may wander. Budgets are explicit per class (see bridge.hpp).
+  const bool factual = replyClass(parsed) == ReplyClass::Factual;
+  if (!chatComplete(msgs, factual ? kFactualMaxTokens : kOpenMaxTokens, choice, &rs,
+                    factual ? kFactualTemperature : kOpenTemperature)) {
     std::fprintf(stderr, "LLMBridge: chatComplete failed in respond\n");
     lastRespondMs_ = -1.0;
     lastRespondTokens_ = -1;

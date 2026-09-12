@@ -54,6 +54,18 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   append the accept/refuse reason, and the LLM prompt carries it as
   `lastInstruction`. The outcome persists in snapshots (v18).
 
+### Voice consistency and reply-quality harness (Q4)
+- Personality now reaches the language model as trait words ("cautious,
+  curious") derived from latent thresholds instead of raw floats, and drives
+  as a strongest-first ranking; tone selection is untouched and stays a pure
+  function of snapshot state.
+- Replies sample per class: factual answers (memory, status, orders) at low
+  temperature with a tight 128-token cap, open smalltalk at 0.7/256 — with
+  the 4B iGPU latency budget explicit per class.
+- New `python/tests/test_reply_quality.py` scores grounding, non-fabrication,
+  relevance, voice consistency and latency (21 checks, auto-run with the
+  suite); Q4 baseline was 14/20 with exactly the trait/sampling gaps failing.
+
 ### Single-command build-and-run
 - `run_eidolon.sh` now configures and incrementally builds the native game targets
   before startup (toolchain/dependency checks with actionable errors), ensures the

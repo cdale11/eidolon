@@ -475,3 +475,59 @@ TEST(fallback_command_states_facts_without_promising) {
   // Must never promise action it cannot take from the reply path.
   CHECK(r.find("I will") == std::string::npos);
 }
+
+// ---------------------------------------------------------------------------
+// Q4 — trait words, drive ranking, reply classes.
+// ---------------------------------------------------------------------------
+
+TEST(trait_words_from_latent_thresholds) {
+  PersonalityLatent latent; // all zeros -> neutral everywhere
+  CHECK_EQ(traitWords(latent), std::string("even-tempered"));
+  latent[PersonalityLatent::kThreatSensitivity] = 0.8f;
+  latent[PersonalityLatent::kNoveltySensitivity] = -0.9f;
+  CHECK_EQ(traitWords(latent), std::string("cautious, habitual"));
+  latent[PersonalityLatent::kThreatSensitivity] = -0.5f;
+  CHECK_EQ(traitWords(latent), std::string("bold, habitual"));
+  // Boundary band stays silent: exactly ±0.33 is neutral, not a trait.
+  PersonalityLatent edge;
+  edge[PersonalityLatent::kImpulsivity] = 0.33f;
+  edge[PersonalityLatent::kPersistence] = -0.33f;
+  CHECK_EQ(traitWords(edge), std::string("even-tempered"));
+}
+
+TEST(snapshot_personality_and_drives_have_no_raw_floats) {
+  Engine engine;
+  engine.init(12345, true, 64, 64);
+  const CognitiveSnapshot s = makeSnapshot(engine);
+  CHECK(!s.personalitySummary.empty());
+  CHECK(!s.driveSummary.empty());
+  CHECK(s.personalitySummary.find_first_of("0123456789") == std::string::npos);
+  CHECK(s.driveSummary.find_first_of("0123456789") == std::string::npos);
+  CHECK(s.driveSummary.find('>') != std::string::npos); // ranked, strongest first
+  // Pure function of state: same engine, same words.
+  const CognitiveSnapshot s2 = makeSnapshot(engine);
+  CHECK_EQ(s.personalitySummary, s2.personalitySummary);
+  CHECK_EQ(s.driveSummary, s2.driveSummary);
+}
+
+TEST(reply_class_splits_factual_from_open) {
+  ParsedMessage q;
+  q.intent = "question";
+  CHECK(replyClass(q) == ReplyClass::Factual);
+  ParsedMessage m;
+  m.intent = "smalltalk";
+  m.referencesMemory = true;
+  CHECK(replyClass(m) == ReplyClass::Factual);
+  ParsedMessage r;
+  r.intent = "request";
+  CHECK(replyClass(r) == ReplyClass::Factual);
+  ParsedMessage g;
+  g.intent = "greet";
+  CHECK(replyClass(g) == ReplyClass::Open);
+  ParsedMessage s;
+  s.intent = "smalltalk";
+  CHECK(replyClass(s) == ReplyClass::Open);
+  ParsedMessage o;
+  o.intent = "other";
+  CHECK(replyClass(o) == ReplyClass::Open);
+}
