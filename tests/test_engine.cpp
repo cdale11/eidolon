@@ -288,9 +288,15 @@ TEST(engine_succession_preserves_world) {
   CHECK(e.clock().now() >= deathTick);
   CHECK_EQ(e.world().grid().hash(), gridHash);
   CHECK_EQ(e.structures().count(), builtBefore + 1);
-  // Shelter inheritance: successor spawns near the predecessor's building.
+  // Shelter inheritance: successor spawns near the predecessor's buildings.
+  // (Near ANY structure: the organism may have built elsewhere during its life,
+  // and anchors are position-sorted — the guarantee is proximity to buildings,
+  // not to this hut in particular.)
   const Vec2i spawn = e.world().organismPos();
-  const int d = std::max(std::abs(spawn.x - hut.x), std::abs(spawn.y - hut.y));
+  int d = std::numeric_limits<int>::max();
+  for (const Vec2i& s : e.structures().structurePositions()) {
+    d = std::min(d, std::max(std::abs(spawn.x - s.x), std::abs(spawn.y - s.y)));
+  }
   CHECK(d <= 8);
   CHECK(e.world().grid().walkable(spawn.x, spawn.y));
   // New life: fresh body and fresh per-life stats, not the corpse's.

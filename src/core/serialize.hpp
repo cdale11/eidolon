@@ -43,7 +43,10 @@ constexpr uint32_t kSnapshotMagic = 0x4549444C; // "EIDL"
 //      generation, lifespan, cause of death) so successors cite accurately.
 // v20: revisable inherited lore — BeliefIsingModel place anchors
 //      (kind/x/y per spin) for contradiction by lived experience.
-constexpr uint32_t kSnapshotVersion = 20;
+// v21: E4a-c world ecology — Plant biology state (stage/water/infection/
+//      vigor/age), soil nutrient grid, WildlifeAgent life state (age/sex/
+//      injury/disease/immunity/traits/cooldowns) plus the next-agent-id counter.
+constexpr uint32_t kSnapshotVersion = 21;
 
 struct BinaryWriter {
 public:

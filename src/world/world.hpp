@@ -154,6 +154,16 @@ enum class PlantType : uint8_t {
   Wood = 3,
 };
 
+// E4a: life stages. Seedling = young (little yield); Growing = vegetative;
+// Mature = full yield, seeds in spring/summer when full; Dead = decomposing
+// (removed once its nutrients return to the soil).
+enum class GrowthStage : uint8_t {
+  Seedling = 0,
+  Growing = 1,
+  Mature = 2,
+  Dead = 3,
+};
+
 struct Plant {
   Vec2i pos;
   PlantType type = PlantType::Edible;
@@ -162,6 +172,15 @@ struct Plant {
   double regrowthRate = 0.01;
   double toxicity = 0.0;
   double medicinalValue = 0.0;
+
+  // E4a: functional biology. Growth is gated by water/nutrient/light budgets;
+  // plants pass life stages, reproduce by seed in growing seasons with mutated
+  // vigor, catch and shake blight, die of age/disease, and decompose into soil.
+  GrowthStage stage = GrowthStage::Growing;
+  float water = 0.7f;      // 0..1 budget: rain + nearby water fill it, time drains it
+  float infection = 0.0f;  // blight 0..1: penalty, spreads, kills at 1
+  float vigor = 1.0f;      // inherited growth-efficiency trait (0.6..1.4)
+  int64_t ageTicks = 0;    // sim-seconds lived
 
   void serialize(BinaryWriter& w) const;
   bool deserialize(BinaryReader& r);
@@ -250,14 +269,25 @@ public:
   // Nearest walkable tile adjacent to a water/river tile (shore); {-1,-1} if none.
   Vec2i adjacentWalkable(Vec2i water) const;
 
+  // E4a: soil nutrient cycle. 0..1 per tile; growth drinks it, decomposition
+  // feeds it. Out-of-bounds reads 0; writes there are dropped.
+  float soilAt(int x, int y) const;
+  void addNutrient(Vec2i pos, float amount);
+
   void serialize(BinaryWriter& w) const;
   bool deserialize(BinaryReader& r);
 
-private:
+ private:
   // Cached per-cell terrain infection factor (2.0 on swamp/deep-water, else 1.0).
   // Derived purely from static grid geometry, rebuilt on generate/deserialize and
   // reused every tick (no O(w*h) allocation/scan in the hot path).
   void rebuildTerrainFactor();
+  // E4a: one plant-ecology step (budgets, stages, blight, seeding, decay).
+  // Deterministic: index order, world RNG stream only, O(plants) per step
+  // (blight scan goes quadratic only while blight is actually present).
+  void stepPlants(int64_t dt, double daylight, int season, bool raining, Rng& r);
+  // Canopy shade multiplier 0..1 from biome (forest shade, swamp gloom).
+  float shadeAt(int x, int y) const;
   std::vector<float> terrainFactor_;
   Grid grid_;
   Weather weather_;
@@ -270,6 +300,9 @@ private:
   bool alive_ = true;
   std::vector<Plant> plants_;
   std::vector<WaterSource> waterSources_;
+  // E4a: soil nutrient grid (w*h floats, serialized). Decomposition feeds it,
+  // growth drinks it, geology slowly restores it toward baseline.
+  std::vector<float> soil_;
 };
 
 } // namespace eidolon

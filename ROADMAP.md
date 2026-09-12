@@ -809,10 +809,16 @@ Dependency: E2 identities; extend `heredity`, `genetic_memory`, `memory_system`,
 #### E4 — Deepen biological mechanisms, incrementally
 Dependency: E0 baseline; E2 needed for across-generation ecosystem gates.
 Entry points: `src/world/world.*`, `wildlife.*`, existing ecology/procedural modules.
-- [ ] Extend existing plant regrowth/environmental fields with functional water/nutrient/light
+(Audit: L-system/reaction-diffusion generate geometry only and are unused by the
+world/engine — E4 builds mechanistic field/state updates instead, not on them.)
+- [x] Extend existing plant regrowth/environmental fields with functional water/nutrient/light
       budgets, root uptake, life stages, seasonal reproduction/pollination, seed dispersal,
       inherited traits, injury/disease and decomposition/soil nutrient feedback. Audit existing
       L-system/reaction-diffusion support before adding mechanisms; geometry alone is not biology.
+      (Done, E4a: per-plant water budget + soil-nutrient grid + canopy light gate growth;
+      Seedling/Growing/Mature stages; spring/summer seeding with mutated vigor, capped
+      population; blight spread/recovery/kill; age/blight death decomposes into soil;
+      snapshot v21. Survival balance re-tuned and verified: seed-7 3-day + phase5 gates green.)
 - [ ] Extend existing rabbit/wolf sensing, feeding, hunting, fleeing and taming with development,
       reproduction, inherited variation, aging, injury/immunity/disease, and learned/species-
       appropriate social/territorial behavior. Add species only after supporting mechanisms.

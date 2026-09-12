@@ -90,6 +90,14 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   labeled records, revisable beliefs, zero practiced skills, fresh
   relationships — a life of its own, not a textual persona.
 
+### Functional plant biology (E4a)
+- Plants now live: water budgets (rain/shore/drain), a soil-nutrient grid fed
+  by decomposition and drunk by growth, canopy light gating, Seedling/Growing/
+  Mature stages, spring/summer seeding with mutated vigor under a population
+  cap, spreading/clearing blight, death by age or disease returning nutrients
+  to the soil. Regrowth stays near historic rates under good conditions, so
+  existing survival balance holds (verified by the seed-7 and phase-5 gates).
+
 ### Voice consistency and reply-quality harness (Q4)
 - Personality now reaches the language model as trait words ("cautious,
   curious") derived from latent thresholds instead of raw floats, and drives

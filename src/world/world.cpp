@@ -295,16 +295,28 @@ void eidolon::Plant::serialize(eidolon::BinaryWriter& w) const {
   w.f64(regrowthRate);
   w.f64(toxicity);
   w.f64(medicinalValue);
+  // E4a: functional biology state (engine snapshot v21).
+  w.u8(static_cast<uint8_t>(stage));
+  w.f32(water);
+  w.f32(infection);
+  w.f32(vigor);
+  w.i64(ageTicks);
 }
 
 bool eidolon::Plant::deserialize(eidolon::BinaryReader& r) {
   int64_t x, y;
-  uint8_t t;
+  uint8_t t, st;
+  int64_t age;
   if (!r.i64(x) || !r.i64(y) || !r.u8(t) || !r.f64(amount) ||
       !r.f64(maxAmount) || !r.f64(regrowthRate) || !r.f64(toxicity) || !r.f64(medicinalValue))
     return false;
+  if (!r.u8(st) || st > 3 || !r.f32(water) || !r.f32(infection) || !r.f32(vigor) ||
+      !r.i64(age))
+    return false;
   pos = {static_cast<int>(x), static_cast<int>(y)};
   type = static_cast<eidolon::PlantType>(t);
+  stage = static_cast<eidolon::GrowthStage>(st);
+  ageTicks = age;
   return true;
 }
 
@@ -349,6 +361,9 @@ void eidolon::World::generate(int w, int h, eidolon::Rng& r) {
 
   plants_.clear();
   waterSources_.clear();
+  // E4a: fresh soil everywhere (mid-fertility); decomposition and growth move
+  // it from here.
+  soil_.assign(static_cast<size_t>(w) * h, 0.55f);
 
   // Guaranteed starter edible plant within sight of spawn, placed first so the
   // organism always has a first meal reachable and tests can rely on plants()[0].
@@ -369,6 +384,8 @@ void eidolon::World::generate(int w, int h, eidolon::Rng& r) {
           pl.regrowthRate = 1.0;
           pl.toxicity = 0.0;
           pl.medicinalValue = 0.0;
+          pl.stage = eidolon::GrowthStage::Mature; // starter is ready to eat
+          pl.vigor = 1.0f;
           plants_.push_back(pl);
           placed = true;
         }
@@ -426,6 +443,9 @@ void eidolon::World::generate(int w, int h, eidolon::Rng& r) {
     pl.regrowthRate = 0.5 + r.unit() * 1.0;
     pl.toxicity = toxicity;
     pl.medicinalValue = medicinal;
+    pl.stage = pl.amount >= pl.maxAmount * 0.85 ? eidolon::GrowthStage::Mature
+                                                : eidolon::GrowthStage::Growing;
+    pl.vigor = 0.85f + static_cast<float>(r.unit()) * 0.3f;
     plants_.push_back(pl);
   }
 
@@ -484,18 +504,171 @@ void eidolon::World::generate(int w, int h, eidolon::Rng& r) {
   wildlife_.spawn(grid_, r, pos_);
 }
 
-eidolon::WorldUpdate eidolon::World::update(const eidolon::SimClock& c, int64_t dt, eidolon::Rng& r) {
-  eidolon::WorldUpdate out;
+float eidolon::World::shadeAt(int x, int y) const {
+  const eidolon::Biome b = grid_.biome(x, y);
+  if (b == eidolon::Biome::TemperateForest || b == eidolon::Biome::BorealForest) return 0.55f;
+  if (b == eidolon::Biome::Swamp) return 0.8f;
+  return 1.0f;
+}
+
+float eidolon::World::soilAt(int x, int y) const {
+  if (!grid_.inBounds(x, y)) return 0.0f;
+  return soil_[static_cast<size_t>(y) * grid_.width() + x];
+}
+
+void eidolon::World::addNutrient(eidolon::Vec2i pos, float amount) {
+  if (!grid_.inBounds(pos.x, pos.y)) return;
+  float& s = soil_[static_cast<size_t>(pos.y) * grid_.width() + pos.x];
+  s = std::max(0.0f, std::min(1.0f, s + amount));
+}
+
+void eidolon::World::stepPlants(int64_t dt, double daylight, int season, bool raining,
+                                eidolon::Rng& r) {
+  const double dts = static_cast<double>(dt);
+  const bool growingSeason = (season == 0 || season == 1); // spring/summer
+  const double seasonMult =
+      season == 0 ? 1.0 : season == 1 ? 1.1 : season == 2 ? 0.6 : 0.15;
+  const int W = grid_.width();
+  // Geology breathes slowly back toward baseline; rain feeds soil a little.
+  // (Uptake below is an order of magnitude smaller than one season of growth
+  // so ordinary foraging cannot desertify the map; over-harvest still shows.)
+  for (float& s : soil_) {
+    s += (0.55f - s) * 0.002f * static_cast<float>(dts / 3600.0);
+    if (raining) s = std::min(1.0f, s + 0.004f * static_cast<float>(dts / 3600.0));
+  }
+
+  bool anyBlight = false;
+  for (const eidolon::Plant& q : plants_) {
+    if (q.stage != eidolon::GrowthStage::Dead && q.infection > 0.25f) {
+      anyBlight = true;
+      break;
+    }
+  }
+  const size_t cap = static_cast<size_t>(W) * grid_.height() / 40;
+  std::vector<eidolon::Plant> seedlings;
+  std::vector<size_t> dead;
+
+  for (size_t i = 0; i < plants_.size(); ++i) {
+    eidolon::Plant& pl = plants_[i];
+    pl.ageTicks += dt;
+
+    // Water budget: rain and shorelines fill it, time drains it (desert faster).
+    const float drain =
+        grid_.at(pl.pos.x, pl.pos.y) == eidolon::Terrain::Desert ? 0.1f : 0.05f;
+    if (raining) {
+      pl.water = std::min(1.0f, pl.water + 0.6f * static_cast<float>(dts / 3600.0));
+    } else if (adjacentToWater(pl.pos)) {
+      pl.water = std::min(1.0f, pl.water + 0.3f * static_cast<float>(dts / 3600.0));
+    } else {
+      pl.water = std::max(0.0f, pl.water - drain * static_cast<float>(dts / 3600.0));
+    }
+
+    // Blight: wet spreads and worsens it, dry air clears it.
+    if (raining) {
+      pl.infection = std::min(1.0f, pl.infection + 0.02f * static_cast<float>(dts / 3600.0));
+    } else if (pl.water < 0.3f) {
+      pl.infection = std::max(0.0f, pl.infection - 0.05f * static_cast<float>(dts / 3600.0));
+    }
+    if (anyBlight && pl.infection < 1.0f) {
+      for (const eidolon::Plant& q : plants_) {
+        if (q.infection <= 0.3f || q.stage == eidolon::GrowthStage::Dead) continue;
+        if (distCheb(q.pos, pl.pos) <= 2) {
+          pl.infection =
+              std::min(1.0f, pl.infection + 0.08f * static_cast<float>(dts / 3600.0));
+          break;
+        }
+      }
+    }
+
+    // Growth gated by the scarcest budget. Light only throttles (plants grow at
+    // night from stores); water/soil can genuinely stall growth. The 0.7 base
+    // keeps typical regrowth near the pre-E4a rate so existing survival balance
+    // holds while drought/shade/poor soil visibly bite.
+    const float light =
+        0.35f + 0.65f * static_cast<float>(daylight) * shadeAt(pl.pos.x, pl.pos.y);
+    const float soil = soilAt(pl.pos.x, pl.pos.y);
+    float gate = pl.water;
+    if (soil < gate) gate = soil;
+    if (light < gate) gate = light;
+    const double g = gate * seasonMult * pl.vigor;
+    const double rate =
+        pl.regrowthRate * (0.7 + 0.3 * g) * (1.0 - 0.7 * pl.infection);
+    if (pl.amount < pl.maxAmount) {
+      pl.amount = std::min(pl.maxAmount, pl.amount + rate * dts / 5400.0);
+      addNutrient(pl.pos, static_cast<float>(-0.002 * rate * dts / 3600.0));
+    }
+
+    // Life stages follow fullness.
+    const double frac = pl.amount / pl.maxAmount;
+    if (frac < 0.3) {
+      pl.stage = eidolon::GrowthStage::Seedling;
+    } else if (frac > 0.85) {
+      pl.stage = eidolon::GrowthStage::Mature;
+    } else {
+      pl.stage = eidolon::GrowthStage::Growing;
+    }
+
+    // Seeding: full mature plants in growing season spend half their mass to
+    // scatter 1-2 seedlings (vigor mutates). Deterministic index order.
+    if (pl.stage == eidolon::GrowthStage::Mature && growingSeason &&
+        pl.amount >= pl.maxAmount * 0.95 && soil >= 0.3f &&
+        plants_.size() + seedlings.size() < cap) {
+      const int nSeeds = 1 + (r.unit() < 0.5 ? 1 : 0);
+      for (int k = 0; k < nSeeds; ++k) {
+        for (int tries = 0; tries < 8; ++tries) {
+          const int nx = pl.pos.x + r.irange(-6, 6);
+          const int ny = pl.pos.y + r.irange(-6, 6);
+          if (!grid_.inBounds(nx, ny) || !grid_.walkable(nx, ny)) continue;
+          if (grid_.at(nx, ny) == eidolon::Terrain::Desert) continue;
+          bool crowded = false;
+          for (const eidolon::Plant& q : plants_) {
+            if (distCheb(q.pos, {nx, ny}) <= 1) { crowded = true; break; }
+          }
+          if (crowded) continue;
+          eidolon::Plant child;
+          child.pos = {nx, ny};
+          child.type = pl.type;
+          child.maxAmount = 6.0 + r.unit() * 10.0;
+          child.amount = child.maxAmount * 0.2;
+          child.regrowthRate = pl.regrowthRate * (0.8 + r.unit() * 0.4);
+          child.stage = eidolon::GrowthStage::Seedling;
+          child.water = 0.7f;
+          child.vigor = std::max(
+              0.6f, std::min(1.4f, pl.vigor + (static_cast<float>(r.unit()) - 0.5f) * 0.3f));
+          seedlings.push_back(child);
+          break;
+        }
+      }
+      pl.amount *= 0.7;
+      pl.stage = eidolon::GrowthStage::Growing;
+    }
+
+    // Death by age or blight: nutrients return to the soil, body is removed.
+    const int64_t maxAge =
+        static_cast<int64_t>((45.0 + pl.vigor * 30.0) * 86400.0);
+    if (pl.ageTicks > maxAge || pl.infection >= 1.0f) {
+      addNutrient(pl.pos, 0.25f);
+      pl.amount = 0.0;
+      pl.stage = eidolon::GrowthStage::Dead;
+      dead.push_back(i);
+    }
+  }
+
+  for (const eidolon::Plant& s : seedlings) plants_.push_back(s);
+  // Erase dead back-to-front so indices stay valid (deterministic order kept).
+  for (size_t k = dead.size(); k-- > 0;) {
+    plants_.erase(plants_.begin() + static_cast<ptrdiff_t>(dead[k]));
+  }
+}
+
+eidolon::WorldUpdate eidolon::World::update(const eidolon::SimClock& c, int64_t dt, eidolon::Rng& r) {  eidolon::WorldUpdate out;
   const bool wasRaining = weather_.raining();
   const bool wasSnowing = weather_.snowing();
   const bool wasStorming = weather_.storming();
   weather_.update(c, dt, r);
 
-  for (eidolon::Plant& pl : plants_) {
-    if (pl.amount < pl.maxAmount) {
-      pl.amount = std::min(pl.maxAmount, pl.amount + pl.regrowthRate * dt / 5400.0);
-    }
-  }
+  // E4a: functional plant ecology replaces the flat regrowth line below.
+  stepPlants(dt, c.daylight(), weather_.season(), weather_.raining(), r);
 
   for (eidolon::WaterSource& ws : waterSources_) {
     if (ws.current < ws.capacity) {
@@ -724,6 +897,9 @@ void eidolon::World::serialize(eidolon::BinaryWriter& w) const {
   for (const eidolon::Plant& pl : plants_) pl.serialize(w);
   w.u64(static_cast<uint64_t>(waterSources_.size()));
   for (const eidolon::WaterSource& ws : waterSources_) ws.serialize(w);
+  // E4a: soil nutrients (engine snapshot v21).
+  w.u64(static_cast<uint64_t>(soil_.size()));
+  for (float s : soil_) w.f32(s);
   wildlife_.serialize(w);
   infectionCA_.serialize(w);
 }
@@ -750,6 +926,15 @@ bool eidolon::World::deserialize(eidolon::BinaryReader& r) {
   waterSources_.resize(static_cast<size_t>(n));
   for (eidolon::WaterSource& ws : waterSources_) {
     if (!ws.deserialize(r)) return false;
+  }
+  // E4a: soil nutrients; size must match the grid or the snapshot is corrupt.
+  if (!r.u64(n) || n > (1u << 24)) return false;
+  soil_.resize(static_cast<size_t>(n));
+  for (float& s : soil_) {
+    if (!r.f32(s)) return false;
+  }
+  if (soil_.size() != static_cast<size_t>(grid_.width()) * grid_.height()) {
+    return false;
   }
   if (!wildlife_.deserialize(r)) return false;
   if (!infectionCA_.deserialize(r)) return false;

@@ -166,8 +166,17 @@ TEST(world_consume_and_regrow) {
   const double eaten = w.consumePlant(p0->pos, 5.0);
   CHECK(eaten > 0.0 && eaten <= 5.0);
   SimClock c;
-  w.update(c, 5400, r); // 1.5 hours → +1 berry
-  CHECK_EQ(w.plants()[0].amount, before - eaten + 1.0);
+  w.update(c, 5400, r); // 1.5 hours of E4a coupled regrowth (budgets, not flat +1)
+  const double after = w.plants()[0].amount;
+  CHECK(after > before - eaten);   // regrew something
+  CHECK(after <= w.plants()[0].maxAmount + 1e-9); // never exceeds the cap
+  // Drought-stressed control: no water, poor soil, dark — regrowth stalls but
+  // never reverses (stressed trickle, no death by update alone).
+  w.plants()[0].water = 0.0f;
+  w.plants()[0].amount = 2.0;
+  const double starved = w.plants()[0].amount;
+  w.update(c, 5400, r);
+  CHECK(w.plants()[0].amount >= starved);
 }
 
 TEST(world_adjacent_to_water) {
@@ -255,4 +264,93 @@ TEST(weather_serdes_roundtrip) {
   CHECK_EQ(a.raining(), b.raining());
   CHECK_EQ(a.snowing(), b.snowing());
   CHECK_EQ(a.storming(), b.storming());
+}
+
+// ---------------------------------------------------------------------------
+// E4a: functional plant biology — stages, budgets, blight, seeding, decay.
+// ---------------------------------------------------------------------------
+
+TEST(plant_life_stages_follow_fullness) {
+  World w;
+  Rng r(21);
+  w.generate(48, 48, r);
+  SimClock c;
+  for (int i = 0; i < 5; ++i) w.update(c, 3600, r);
+  CHECK(!w.plants().empty());
+  for (const Plant& pl : w.plants()) {
+    const double frac = pl.amount / pl.maxAmount;
+    if (pl.stage == GrowthStage::Dead) continue;
+    if (frac < 0.3) CHECK(pl.stage == GrowthStage::Seedling);
+    else if (frac > 0.85) CHECK(pl.stage == GrowthStage::Mature);
+    else CHECK(pl.stage == GrowthStage::Growing);
+  }
+}
+
+TEST(plant_seeding_expands_population_in_spring) {
+  // Mature full plants spend mass to scatter seedlings (deterministic seed).
+  World w;
+  Rng r(22);
+  w.generate(32, 32, r);
+  SimClock c;
+  for (auto& pl : w.plants()) {
+    pl.amount = pl.maxAmount;
+    pl.water = 1.0f;
+  }
+  const size_t before = w.plants().size();
+  bool grew = false;
+  for (int day = 0; day < 6 && !grew; ++day) {
+    w.update(c, 86400, r);
+    grew = w.plants().size() > before;
+  }
+  CHECK(grew);
+  // Population stays bounded by the seeding cap (area/40).
+  CHECK(w.plants().size() <= static_cast<size_t>(32 * 32 / 40) + 8u);
+}
+
+TEST(plant_blight_spreads_and_kills_then_feeds_soil) {
+  World w;
+  Rng r(23);
+  w.generate(32, 32, r);
+  SimClock c;
+  // Park a healthy plant next to a blighted one.
+  CHECK(w.plants().size() >= 2u);
+  w.plants()[0].infection = 0.9f;
+  w.plants()[1].pos = {w.plants()[0].pos.x + 1, w.plants()[0].pos.y};
+  w.plants()[1].infection = 0.0f;
+  const float soilBefore = w.soilAt(w.plants()[0].pos.x, w.plants()[0].pos.y);
+  w.update(c, 12 * 3600, r);
+  CHECK(w.plants()[1].infection > 0.0f); // caught it from its neighbor
+  // Lethal blight decomposes the body into the soil and removes it.
+  w.plants()[0].infection = 1.5f;
+  const Vec2i grave = w.plants()[0].pos;
+  w.update(c, 3600, r);
+  bool corpseGone = true;
+  for (const Plant& pl : w.plants()) {
+    if (pl.pos == grave) corpseGone = false;
+  }
+  CHECK(corpseGone);
+  CHECK(w.soilAt(grave.x, grave.y) > soilBefore);
+}
+
+TEST(plant_serialize_roundtrip_covers_biology) {
+  World a, b;
+  Rng ra(42), rb(42);
+  a.generate(32, 32, ra);
+  b.generate(32, 32, rb);
+  SimClock c;
+  a.update(c, 3 * 86400, ra);
+  std::vector<uint8_t> blob = packSnapshot(kSnapshotVersion,
+                                           [&](BinaryWriter& w) { a.serialize(w); });
+  std::string err;
+  bool ok = unpackSnapshot(blob, kSnapshotVersion,
+                           [&](BinaryReader& r) { return b.deserialize(r); }, err);
+  CHECK(ok);
+  CHECK_EQ(a.plants().size(), b.plants().size());
+  for (size_t i = 0; i < a.plants().size(); ++i) {
+    CHECK(a.plants()[i].stage == b.plants()[i].stage);
+    CHECK_EQ(a.plants()[i].water, b.plants()[i].water);
+    CHECK_EQ(a.plants()[i].vigor, b.plants()[i].vigor);
+    CHECK_EQ(a.plants()[i].ageTicks, b.plants()[i].ageTicks);
+  }
+  CHECK_EQ(a.soilAt(5, 5), b.soilAt(5, 5));
 }
