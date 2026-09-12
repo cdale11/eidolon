@@ -279,3 +279,217 @@ TEST(wildlife_domestication_tames_prey) {
   CHECK(tamedNow);
   CHECK(rabbit->fear <= 0.15);
 }
+
+// ---------------------------------------------------------------------------
+// E4b: development, reproduction, aging, injury, disease.
+// ---------------------------------------------------------------------------
+
+namespace {
+// A breeding-ready pair parked side by side (adult fed female + adult male).
+void parkBreedingPair(World& w, Species s, WildlifeAgent*& female, WildlifeAgent*& male) {
+  female = male = nullptr;
+  int n = 0;
+  for (WildlifeAgent& a : w.wildlife().agents()) {
+    if (a.species != s || !a.alive) continue;
+    a.ageTicks = (s == Species::Wolf ? 25 : 6) * 86400; // adult
+    a.hunger = 10.0;
+    a.disease = 0.0;
+    a.offspringCooldownUntil = 0;
+    a.female = (n++ % 2 == 0); // force a pair regardless of spawn sexes
+    if (a.female && !female) female = &a;
+    if (!a.female && !male) male = &a;
+  }
+  CHECK(female && male);
+  male->pos = {female->pos.x + 1, female->pos.y};
+}
+
+int countSpecies(const World& w, Species s) {
+  int n = 0;
+  for (const WildlifeAgent& a : w.wildlife().agents()) {
+    if (a.alive && a.species == s) ++n;
+  }
+  return n;
+}
+} // namespace
+
+TEST(wildlife_reproduction_births_juvenile_with_blended_traits) {
+  World w;
+  Rng r(41);
+  w.generate(64, 64, r);
+  WildlifeAgent *female = nullptr, *male = nullptr;
+  parkBreedingPair(w, Species::Rabbit, female, male);
+  female->metabolism = 1.1;
+  male->metabolism = 0.9;
+  const int before = countSpecies(w, Species::Rabbit);
+  SimClock c;
+  for (int i = 0; i < 20; ++i) {
+    w.update(c, Wildlife::kInterval, r);
+    c.advance(Wildlife::kInterval);
+  }
+  CHECK_EQ(countSpecies(w, Species::Rabbit), before + 1);
+  // The newborn is a juvenile with blended traits, near its mother.
+  bool foundPup = false;
+  for (const WildlifeAgent& a : w.wildlife().agents()) {
+    if (a.species != Species::Rabbit || !a.alive) continue;
+    if (a.ageTicks < 5 * 86400 && distCheb(a.pos, female->pos) <= 8) {
+      foundPup = true;
+      CHECK(a.metabolism >= 0.8 && a.metabolism <= 1.2);
+      CHECK(a.hardiness >= 0.8 && a.hardiness <= 1.2);
+    }
+  }
+  CHECK(foundPup);
+  CHECK(female->offspringCooldownUntil > 0); // mother rests before next birth
+}
+
+TEST(wildlife_wolf_pups_do_not_hunt) {
+  // Juveniles forage; only adults stalk prey or the organism.
+  World w;
+  Rng r(42);
+  w.generate(64, 64, r);
+  WildlifeAgent* wolf = nullptr;
+  for (WildlifeAgent& a : w.wildlife().agents()) {
+    if (a.species == Species::Wolf) { wolf = &a; break; }
+  }
+  CHECK(wolf);
+  wolf->ageTicks = 86400; // 1 day old: pup
+  wolf->hunger = 90.0;
+  wolf->state = AnimalState::Hunt;
+  SimClock c;
+  for (int i = 0; i < 10; ++i) {
+    w.update(c, Wildlife::kInterval, r);
+    c.advance(Wildlife::kInterval);
+  }
+  CHECK(wolf->state != AnimalState::Hunt);
+}
+
+TEST(wildlife_old_age_kills_and_feeds_soil) {
+  World w;
+  Rng r(43);
+  w.generate(32, 32, r);
+  WildlifeAgent* rabbit = nullptr;
+  for (WildlifeAgent& a : w.wildlife().agents()) {
+    if (a.species == Species::Rabbit) { rabbit = &a; break; }
+  }
+  CHECK(rabbit);
+  rabbit->ageTicks = 25 * 86400 + 5 * 60; // past the rabbit grave age
+  rabbit->hunger = 0.0;
+  rabbit->energy = 100.0;
+  const float soilBefore = w.soilAt(rabbit->pos.x, rabbit->pos.y);
+  SimClock c;
+  w.update(c, Wildlife::kInterval, r);
+  CHECK(!rabbit->alive);
+  CHECK(w.soilAt(rabbit->pos.x, rabbit->pos.y) > soilBefore); // remains feed soil
+}
+
+TEST(wildlife_disease_spreads_and_kills_without_immunity) {
+  World w;
+  Rng r(44);
+  w.generate(128, 128, r); // room for an index case + three neighbors
+  // One index case + three naive neighbors, re-parked together each step; the
+  // index case is refreshed (a starved untreated body dies in ~2 steps).
+  WildlifeAgent* sick = nullptr;
+  std::vector<WildlifeAgent*> naive;
+  for (WildlifeAgent& a : w.wildlife().agents()) {
+    if (a.species != Species::Rabbit || !a.alive) continue;
+    if (!sick) sick = &a;
+    else if (naive.size() < 3) naive.push_back(&a);
+  }
+  CHECK(sick && naive.size() == 3u);
+  SimClock c;
+  bool caught = false;
+  for (int i = 0; i < 30; ++i) {
+    sick->alive = true;
+    sick->disease = 0.9;
+    sick->hunger = 90.0;
+    for (WildlifeAgent* h : naive) {
+      h->pos = {sick->pos.x + 1, sick->pos.y};
+      h->immunity = 0.0;
+    }
+    w.update(c, Wildlife::kInterval, r);
+    c.advance(Wildlife::kInterval);
+    for (const WildlifeAgent* h : naive) {
+      if (h->disease > 0.0) caught = true;
+    }
+  }
+  CHECK(caught); // transmission works
+  // And untreated starved disease kills: let one case run its course.
+  sick->disease = 0.9;
+  sick->hunger = 90.0;
+  for (int i = 0; i < 10 && sick->alive; ++i) {
+    w.update(c, Wildlife::kInterval, r);
+    c.advance(Wildlife::kInterval);
+  }
+  CHECK(!sick->alive);
+}
+
+TEST(wildlife_recovery_banks_immunity) {
+  World w;
+  Rng r(45);
+  w.generate(32, 32, r);
+  WildlifeAgent* rabbit = nullptr;
+  for (WildlifeAgent& a : w.wildlife().agents()) {
+    if (a.species == Species::Rabbit) { rabbit = &a; break; }
+  }
+  CHECK(rabbit);
+  rabbit->disease = 0.5;
+  rabbit->hunger = 0.0; // fed body clears it
+  rabbit->immunity = 0.0;
+  SimClock c;
+  for (int i = 0; i < 60; ++i) {
+    w.update(c, Wildlife::kInterval, r);
+    c.advance(Wildlife::kInterval);
+    rabbit->hunger = 0.0; // keep fed (deterministic recovery)
+  }
+  CHECK(rabbit->disease < 0.1);
+  CHECK(rabbit->immunity > 0.0); // recovery taught resistance
+}
+
+TEST(wildlife_population_capped) {
+  // Even ideal breeding conditions cannot explode past the species cap.
+  World w;
+  Rng r(46);
+  w.generate(48, 48, r);
+  for (WildlifeAgent& a : w.wildlife().agents()) {
+    if (a.species != Species::Rabbit) continue;
+    a.ageTicks = 6 * 86400;
+    a.hunger = 0.0;
+    a.disease = 0.0;
+    a.offspringCooldownUntil = 0;
+  }
+  SimClock c;
+  for (int i = 0; i < 400; ++i) {
+    w.update(c, Wildlife::kInterval, r);
+    c.advance(Wildlife::kInterval);
+  }
+  CHECK(countSpecies(w, Species::Rabbit) <= 64);
+}
+
+TEST(wildlife_lifestate_survives_roundtrip) {
+  World a, b;
+  Rng ra(47), rb(47);
+  a.generate(48, 48, ra);
+  b.generate(48, 48, rb);
+  SimClock c;
+  for (int i = 0; i < 30; ++i) {
+    a.update(c, Wildlife::kInterval, ra);
+    c.advance(Wildlife::kInterval);
+  }
+  std::vector<uint8_t> blob = packSnapshot(kSnapshotVersion,
+                                           [&](BinaryWriter& w) { a.serialize(w); });
+  std::string err;
+  bool ok = unpackSnapshot(blob, kSnapshotVersion,
+                           [&](BinaryReader& r) { return b.deserialize(r); }, err);
+  CHECK(ok);
+  CHECK_EQ(a.wildlife().agents().size(), b.wildlife().agents().size());
+  for (size_t i = 0; i < a.wildlife().agents().size(); ++i) {
+    const WildlifeAgent& x = a.wildlife().agents()[i];
+    const WildlifeAgent& y = b.wildlife().agents()[i];
+    CHECK_EQ(x.ageTicks, y.ageTicks);
+    CHECK_EQ(x.female, y.female);
+    CHECK_EQ(x.injury, y.injury);
+    CHECK_EQ(x.disease, y.disease);
+    CHECK_EQ(x.immunity, y.immunity);
+    CHECK_EQ(x.metabolism, y.metabolism);
+    CHECK_EQ(x.hardiness, y.hardiness);
+  }
+}

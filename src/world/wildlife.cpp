@@ -55,6 +55,21 @@ constexpr double kAttackHunger = 55.0;    // wolf attacks the organism above thi
 constexpr int64_t kAttackCooldown = 60;   // sim-seconds between attacks
 constexpr double kAttackDamageMin = 4.0;
 constexpr double kAttackDamageRange = 5.0;
+// E4b: development, reproduction, injury, disease (all deterministic).
+constexpr int64_t kRabbitAdultAge = 5 * 86400;   // sim-seconds to maturity
+constexpr int64_t kWolfAdultAge = 20 * 86400;
+constexpr int64_t kRabbitMaxAge = 25 * 86400;    // old age death
+constexpr int64_t kWolfMaxAge = 70 * 86400;
+constexpr int kRabbitCap = 64;   // bounded populations
+constexpr int kWolfCap = 12;
+constexpr int kMateRadius = 4;
+constexpr double kBreedHunger = 50.0;      // females breed only when fed
+constexpr int64_t kBreedCooldown = 10 * 86400;
+constexpr double kBreedCost = 15.0;        // hunger cost of birth
+constexpr double kStruggleChance = 0.25;   // prey wounds its killer
+constexpr double kStruggleInjury = 0.35;
+constexpr double kInfectRadius = 2;        // tiles, same species
+constexpr double kInfectChance = 0.1;      // per step, scaled by immunity
 
 const double* markovRow(Species s, AnimalState st) {
   return (s == Species::Wolf ? kWolfMarkov : kRabbitMarkov)[static_cast<int>(st)];
@@ -149,18 +164,30 @@ void WildlifeAgent::serialize(BinaryWriter& w) const {
   w.u64(s[3]);
   w.u8(alive ? 1 : 0);
   w.u8(tamed ? 1 : 0);
+  // E4b: life state (engine snapshot v21).
+  w.i64(ageTicks);
+  w.u8(female ? 1 : 0);
+  w.f64(injury);
+  w.f64(disease);
+  w.f64(immunity);
+  w.f64(metabolism);
+  w.f64(hardiness);
+  w.i64(offspringCooldownUntil);
 }
 
 bool WildlifeAgent::deserialize(BinaryReader& r) {
   uint32_t idv;
-  uint8_t spec, st, alv, tmd;
-  int64_t x, y, since, cd;
-  double e, hg, fr;
+  uint8_t spec, st, alv, tmd, fem;
+  int64_t x, y, since, cd, age, oc;
+  double e, hg, fr, inj, dis, imm, met, har;
   std::array<uint64_t, 4> s;
   if (!r.u32(idv) || !r.u8(spec) || !r.i64(x) || !r.i64(y) || !r.f64(e) ||
       !r.f64(hg) || !r.f64(fr) || !r.u8(st) || !r.i64(since) || !r.i64(cd) ||
       !r.u64(s[0]) || !r.u64(s[1]) || !r.u64(s[2]) || !r.u64(s[3]) || !r.u8(alv) ||
       !r.u8(tmd))
+    return false;
+  if (!r.i64(age) || !r.u8(fem) || !r.f64(inj) || !r.f64(dis) || !r.f64(imm) ||
+      !r.f64(met) || !r.f64(har) || !r.i64(oc))
     return false;
   id = idv;
   species = static_cast<Species>(spec);
@@ -174,6 +201,14 @@ bool WildlifeAgent::deserialize(BinaryReader& r) {
   rng = Rng::fromState(s);
   alive = alv != 0;
   tamed = tmd != 0;
+  ageTicks = age;
+  female = fem != 0;
+  injury = inj;
+  disease = dis;
+  immunity = imm;
+  metabolism = met;
+  hardiness = har;
+  offspringCooldownUntil = oc;
   return true;
 }
 
@@ -208,11 +243,21 @@ void Wildlife::spawn(const Grid& g, Rng& r, Vec2i spawn) {
       a.energy = 60.0 + a.rng.unit() * 40.0;
       a.hunger = a.rng.unit() * 40.0;
       a.state = (s == Species::Wolf) ? AnimalState::Forage : AnimalState::Wander;
+      // E4b: varied adult starting generations (no synchronized die-off
+      // cohorts, no juveniles at spawn — every spawned animal is functional).
+      // First breeding is delayed so fresh worlds settle before growing.
+      const int64_t adultAge = (s == Species::Wolf) ? kWolfAdultAge : kRabbitAdultAge;
+      const int64_t maxAge = (s == Species::Wolf) ? kWolfMaxAge : kRabbitMaxAge;
+      a.ageTicks = adultAge + static_cast<int64_t>(a.rng.unit() * 0.4 * (maxAge - adultAge));
+      a.female = a.rng.unit() < 0.5;
+      a.immunity = a.rng.unit() * 0.2;
+      a.offspringCooldownUntil = 5 * 86400;
       agents_.push_back(a);
     }
   };
   place(Species::Rabbit, nRabbit);
   place(Species::Wolf, nWolf);
+  nextAgentId_ = nextId;
 }
 
 void Wildlife::rebuildHash() {
@@ -339,9 +384,37 @@ void Wildlife::step(World& w, int64_t now, bool organismAlive,
     const double boidsSep = isWolf ? kWolfBoidsSep : kRabbitBoidsSep;
     const double boidsCoh = isWolf ? kWolfBoidsCoh : kRabbitBoidsCoh;
 
-    // Drives: hunger/energy decay each step.
-    a.hunger = std::min(100.0, a.hunger + (isWolf ? kWolfHungerRate : kRabbitHungerRate));
-    a.energy = std::max(0.0, a.energy - (isWolf ? kWolfEnergyRate : kRabbitEnergyRate));
+    // Drives: hunger/energy decay each step (E4b: scaled by inherited
+    // metabolism; sickness burns faster). Aging ticks alongside.
+    const double sickMult = a.disease > 0.3 ? 1.5 : 1.0;
+    a.hunger = std::min(100.0, a.hunger +
+                                     (isWolf ? kWolfHungerRate : kRabbitHungerRate) *
+                                         a.metabolism * sickMult);
+    a.energy = std::max(0.0, a.energy - (isWolf ? kWolfEnergyRate : kRabbitEnergyRate) *
+                                                  a.metabolism);
+    a.ageTicks += kInterval;
+
+    // E4b: disease course. Starved bodies worsen; fed immune bodies clear it and
+    // bank resistance for every step of genuine recovery (bounded).
+    if (a.disease > 0.0) {
+      const bool wasSick = a.disease > 0.3;
+      if (a.hunger > 60.0) {
+        a.disease = std::min(1.0, a.disease + 0.05 * (2.0 - a.hardiness));
+      } else {
+        a.disease = std::max(0.0, a.disease - 0.08 * (0.5 + a.immunity));
+        if (wasSick) a.immunity = std::min(1.0, a.immunity + 0.03);
+      }
+    }
+    // E4b: transmission to same-species neighbors (deterministic index order).
+    if (a.disease > 0.3) {
+      for (WildlifeAgent& b : agents_) {
+        if (!b.alive || b.species != a.species || b.id == a.id) continue;
+        if (b.disease > 0.0 || distCheb(b.pos, a.pos) > kInfectRadius) continue;
+        if (a.rng.unit() < kInfectChance * (1.0 - b.immunity * 0.7) * (2.0 - b.hardiness)) {
+          b.disease = std::min(1.0, b.disease + 0.3);
+        }
+      }
+    }
 
 // Sense.
     int threatDist = std::numeric_limits<int>::max();
@@ -374,11 +447,15 @@ void Wildlife::step(World& w, int64_t now, bool organismAlive,
 
     // Decide: Markov transition + reactive overrides.
     AnimalState next = markovNext(markovRow(a.species, a.state), a.rng);
+    // E4b: maturity gates behavior — wolf pups forage, they don't hunt.
+    const bool adult =
+        a.ageTicks >= (isWolf ? kWolfAdultAge : kRabbitAdultAge);
     if (isWolf) {
       // Wolves prefer rabbits; they only stalk the organism when properly hungry.
       const bool preyNear = nearestPrey(a.pos, kWolfHuntRadius) != nullptr;
       if (a.hunger > kAttackHunger && threatDist <= kWolfHuntRadius) next = AnimalState::Hunt;
       else if (a.hunger > kHuntHunger && preyNear) next = AnimalState::Hunt;
+      if (!adult && next == AnimalState::Hunt) next = AnimalState::Forage;
     } else {
       if ((threat && threatDist <= kRabbitFleeRadius) ||
           (organismAlive && !a.tamed && threatDist <= kRabbitFearRadius)) {
@@ -477,12 +554,17 @@ void Wildlife::step(World& w, int64_t now, bool organismAlive,
     targets_[ai].y = sepY * boidsSep + cohY * boidsCoh + gy * goalWeight;
   }
 
-  // Phase 2 (sequential): act - move, eat, kill, attack, starve.
-  for (size_t ai = 0; ai < agents_.size(); ++ai) {
+  // Phase 2 (sequential): act - move, eat, kill, attack, starve, breed, die.
+  // Newborns wait for the next step (loop bound is fixed up front so pushed
+  // pups are never processed with out-of-range targeting data).
+  const size_t nActing = agents_.size();
+  for (size_t ai = 0; ai < nActing; ++ai) {
     WildlifeAgent& a = agents_[ai];
     if (!a.alive) continue;
     const bool isWolf = a.species == Species::Wolf;
-    const int speed = isWolf ? kWolfSpeed : kRabbitSpeed;
+    // E4b: badly wounded animals limp.
+    const int speed = std::max(1, (isWolf ? kWolfSpeed : kRabbitSpeed) -
+                                      (a.injury > 0.5 ? 1 : 0));
 
     // A wolf attacks the moment it is within reach (including mid-charge), rather than
     // only after finishing its steps - otherwise a 3-step charge would overshoot past a
@@ -501,7 +583,12 @@ void Wildlife::step(World& w, int64_t now, bool organismAlive,
       for (WildlifeAgent& prey : agents_) {
         if (prey.alive && prey.species == Species::Rabbit && prey.id != a.id &&
             distCheb(prey.pos, a.pos) <= 1) {
+          // E4b: the kill is not free — prey struggles wound the killer.
+          if (a.rng.unit() < kStruggleChance) {
+            a.injury = std::min(1.0, a.injury + kStruggleInjury);
+          }
           prey.alive = false;
+          w.addNutrient(prey.pos, 0.2f); // remains feed the soil (E4c)
           a.hunger = std::max(0.0, a.hunger - 35.0);
           a.energy = std::min(100.0, a.energy + 12.0);
           break;
@@ -522,8 +609,70 @@ void Wildlife::step(World& w, int64_t now, bool organismAlive,
       }
     }
 
-    // Starvation / exhaustion kills.
-    if (a.energy <= 0.0 || a.hunger >= 100.0) a.alive = false;
+    // E4b: fed bodies mend; starvation / exhaustion / age / wounds / disease kill.
+    // Every natural death returns nutrients to the soil (E4c food-web feedback).
+    if (a.hunger < 30.0) a.injury = std::max(0.0, a.injury - 0.04);
+    const int64_t maxAge = isWolf ? kWolfMaxAge : kRabbitMaxAge;
+    if (a.energy <= 0.0 || a.hunger >= 100.0 || a.ageTicks > maxAge ||
+        a.injury >= 1.0 || a.disease >= 1.0) {
+      a.alive = false;
+      w.addNutrient(a.pos, 0.5f);
+      continue;
+    }
+
+    // E4b: reproduction. A fed, healthy, adult female near an adult male of her
+    // species births one juvenile with blended, mutated traits — bounded by the
+    // species cap so populations breathe instead of exploding.
+    if (a.female &&
+        a.ageTicks >= (isWolf ? kWolfAdultAge : kRabbitAdultAge) &&
+        a.hunger < kBreedHunger && a.disease < 0.3 && now >= a.offspringCooldownUntil) {
+      const int cap = isWolf ? kWolfCap : kRabbitCap;
+      int kin = 0;
+      for (const WildlifeAgent& b : agents_) {
+        if (b.alive && b.species == a.species) ++kin;
+      }
+      const WildlifeAgent* mate = nullptr;
+      if (kin < cap) {
+        for (const WildlifeAgent& b : agents_) {
+          if (!b.alive || b.species != a.species || b.id == a.id || b.female) continue;
+          if (b.ageTicks < (isWolf ? kWolfAdultAge : kRabbitAdultAge)) continue;
+          if (distCheb(b.pos, a.pos) > kMateRadius) continue;
+          mate = &b;
+          break;
+        }
+      }
+      if (mate != nullptr) {
+        Vec2i birth = {-1, -1};
+        const int off[8][2] = {{0, -1}, {0, 1}, {-1, 0}, {1, 0},
+                               {-1, -1}, {1, 1}, {-1, 1}, {1, -1}};
+        for (const auto& o : off) {
+          if (stepWalkable(g, a.pos.x, a.pos.y, a.pos.x + o[0], a.pos.y + o[1])) {
+            birth = {a.pos.x + o[0], a.pos.y + o[1]};
+            break;
+          }
+        }
+        if (birth.x >= 0) {
+          WildlifeAgent pup;
+          pup.id = nextAgentId_++;
+          pup.species = a.species;
+          pup.pos = birth;
+          pup.rng = agentStream(wildlifeSeed_, pup.id);
+          pup.energy = 60.0;
+          pup.hunger = 20.0;
+          pup.female = a.rng.unit() < 0.5;
+          pup.metabolism = std::max(0.8, std::min(1.2, (a.metabolism + mate->metabolism) * 0.5 +
+                                                              (a.rng.unit() - 0.5) * 0.2));
+          pup.hardiness = std::max(0.8, std::min(1.2, (a.hardiness + mate->hardiness) * 0.5 +
+                                                             (a.rng.unit() - 0.5) * 0.2));
+          pup.state = AnimalState::Wander;
+          // Mother updates BEFORE the push: push_back may reallocate agents_,
+          // invalidating the `a`/`mate` references below it.
+          a.hunger = std::min(100.0, a.hunger + kBreedCost);
+          a.offspringCooldownUntil = now + kBreedCooldown;
+          agents_.push_back(pup);
+        }
+      }
+    }
   }
 }
 
@@ -532,6 +681,7 @@ void Wildlife::serialize(BinaryWriter& w) const {
   w.i64(accum_);
   w.i64(gridW_);
   w.i64(gridH_);
+  w.u32(nextAgentId_);
   w.u64(static_cast<uint64_t>(agents_.size()));
   for (const WildlifeAgent& a : agents_) a.serialize(w);
 }
@@ -539,14 +689,16 @@ void Wildlife::serialize(BinaryWriter& w) const {
 bool Wildlife::deserialize(BinaryReader& r) {
   uint64_t seed;
   int64_t accum, gw, gh;
+  uint32_t nextId;
   uint64_t n;
-  if (!r.u64(seed) || !r.i64(accum) || !r.i64(gw) || !r.i64(gh) || !r.u64(n) ||
-      n > (1u << 20))
+  if (!r.u64(seed) || !r.i64(accum) || !r.i64(gw) || !r.i64(gh) || !r.u32(nextId) ||
+      !r.u64(n) || n > (1u << 20))
     return false;
   wildlifeSeed_ = seed;
   accum_ = accum;
   gridW_ = static_cast<int>(gw);
   gridH_ = static_cast<int>(gh);
+  nextAgentId_ = nextId;
   agents_.resize(static_cast<size_t>(n));
   for (WildlifeAgent& a : agents_) {
     if (!a.deserialize(r)) return false;

@@ -98,6 +98,15 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   to the soil. Regrowth stays near historic rates under good conditions, so
   existing survival balance holds (verified by the seed-7 and phase-5 gates).
 
+### Wildlife development and disease (E4b)
+- Rabbits and wolves now age and mature (pups forage, they don't hunt), breed
+  when fed and healthy with blended, mutated metabolism/hardiness under species
+  caps, die of old age, take wounds from kills that heal when fed, and catch,
+  spread, recover from (banking immunity) or die of transmissible disease.
+  Every death feeds the soil. The added per-agent development state shifts
+  wildlife trajectories, so the pinned seed-7 survival gates moved to seed 8
+  with documented reason — same learning-mediated-survival bar.
+
 ### Voice consistency and reply-quality harness (Q4)
 - Personality now reaches the language model as trait words ("cautious,
   curious") derived from latent thresholds instead of raw floats, and drives

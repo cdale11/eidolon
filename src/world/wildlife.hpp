@@ -51,6 +51,16 @@ struct WildlifeAgent {
   Rng rng; // per-agent stream (persisted for bit-exact restore)
   bool alive = true;
 
+  // E4b: development, reproduction, injury, disease. All serialized (v21).
+  int64_t ageTicks = 0;  // sim-seconds lived
+  bool female = false;
+  double injury = 0.0;   // 0..1 wounds: slows past 0.5, kills at 1
+  double disease = 0.0;  // 0..1 infection: transmissible, kills at 1
+  double immunity = 0.0; // 0..1 learned resistance after recovery
+  double metabolism = 1.0; // inherited hunger/energy-rate multiplier (0.8..1.2)
+  double hardiness = 1.0;  // inherited harm/disease resistance (0.8..1.2)
+  int64_t offspringCooldownUntil = 0; // females only: earliest next birth
+
   void serialize(BinaryWriter& w) const;
   bool deserialize(BinaryReader& r);
 };
@@ -93,6 +103,8 @@ private:
   int neighbors(Vec2i pos, int radius, int* out, int outSize) const;
 
   std::vector<WildlifeAgent> agents_;
+  // E4b: next birth id (serialized; keeps ids unique across save/load).
+  uint32_t nextAgentId_ = 0;
   std::vector<int> cellHead_; // per-cell head index into cellNext_
   std::vector<int> cellNext_; // linked list: agent index -> next
   struct Vec2d {

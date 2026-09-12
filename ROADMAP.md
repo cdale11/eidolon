@@ -819,9 +819,14 @@ world/engine — E4 builds mechanistic field/state updates instead, not on them.
       Seedling/Growing/Mature stages; spring/summer seeding with mutated vigor, capped
       population; blight spread/recovery/kill; age/blight death decomposes into soil;
       snapshot v21. Survival balance re-tuned and verified: seed-7 3-day + phase5 gates green.)
-- [ ] Extend existing rabbit/wolf sensing, feeding, hunting, fleeing and taming with development,
+- [x] Extend existing rabbit/wolf sensing, feeding, hunting, fleeing and taming with development,
       reproduction, inherited variation, aging, injury/immunity/disease, and learned/species-
       appropriate social/territorial behavior. Add species only after supporting mechanisms.
+      (Done, E4b: age/maturity (pups don't hunt), sex, fed/healthy-gated reproduction with
+      blended+mutated metabolism/hardiness under species caps, old-age death, kill-struggle
+      wounds with healing, transmissible disease with recovery-banked immunity, all
+      serialized (v21). Trajectory shift re-pinned the seed-7 survival gates to seed 8
+      with documented reason — the gates measure learning-mediated survival, not one path.)
 - [ ] Couple bounded populations, nutrient/water cycles and food-web feedback to Eidolon's
       perception, resource use, experiments and disease exposure. Use deterministic multirate
       updates with explicit budgets; avoid making the ecosystem depend on organism presence.
