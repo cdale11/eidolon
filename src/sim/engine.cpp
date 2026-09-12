@@ -774,6 +774,14 @@ double Engine::hazardDose() const noexcept {
   if (adjacentDeep) dose += 0.0006;  // deep-water proximity
   if (adjacentWater && (world_.weather().raining() || world_.weather().storming()))
     dose += 0.0005;  // wading/standing in runoff while wet
+  // E4c: sick animals shed disease nearby — the food web reaches the body.
+  for (const WildlifeAgent& a : world_.wildlife().agents()) {
+    if (!a.alive || a.disease <= 0.3) continue;
+    if (distCheb(a.pos, p) <= 3) {
+      dose += 0.0004;
+      break;
+    }
+  }
   return dose;
 }
 

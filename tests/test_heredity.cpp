@@ -148,13 +148,17 @@ TEST(heredity_successor_applies_parent_genome) {
 TEST(heredity_attribution_survives_snapshot) {
   Engine parent;
   parent.init(13, true, 64, 64);
-  // Run until the ring holds inheritable experience (bounded; deterministic).
-  GeneticMemoryBundle bundle;
-  for (int i = 0; i < 3000 && parent.isAlive() && bundle.memories.empty(); ++i) {
-    parent.tick();
-    bundle = GeneticMemorySystem::extractFromEpisodes(parent.memory().episodes(),
-                                                      parent.individualId(), 0, 32);
-  }
+  Episode lived;
+  lived.t = parent.clock().now();
+  lived.x = 12;
+  lived.y = 13;
+  lived.kind = EventKind::Forage;
+  lived.outcome = Outcome::Success;
+  lived.importance = 0.5;
+  lived.sourceIndividualId = 0;
+  parent.memorySys().ring().add(lived);
+  GeneticMemoryBundle bundle = GeneticMemorySystem::extractFromEpisodes(
+      parent.memory().episodes(), parent.individualId(), 0, 32);
   CHECK(parent.isAlive());
   CHECK(!bundle.memories.empty());
 

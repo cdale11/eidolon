@@ -32,7 +32,7 @@ constexpr double kWolfMarkov[5][5] = {
 // Per-species parameters (tiles / wildlife step at kInterval sim-seconds).
 constexpr int kRabbitSpeed = 2;
 constexpr int kWolfSpeed = 3;
-constexpr int kRabbitSenseRadius = 12;
+constexpr int kRabbitSenseRadius = 24;
 constexpr int kWolfSenseRadius = 14;
 constexpr int kRabbitFleeRadius = 8;  // wolves trigger rabbit flee
 constexpr int kRabbitFearRadius = 8;  // the organism triggers rabbit flee
@@ -43,15 +43,17 @@ constexpr double kRabbitBoidsSep = 1.0;
 constexpr double kRabbitBoidsCoh = 0.4;
 constexpr double kWolfBoidsSep = 0.8;
 constexpr double kWolfBoidsCoh = 0.3;
-// Drives (per wildlife step).
-constexpr double kRabbitHungerRate = 0.3;
-constexpr double kRabbitEnergyRate = 0.15;
-constexpr double kWolfHungerRate = 0.6;
-constexpr double kWolfEnergyRate = 0.25;
-constexpr double kRabbitEatHunger = 70.0; // graze only when this hungry
+// Drives (per wildlife step). E4c: energy economics must sustain multi-day
+// lives, not just demos. Wildlife steps every five sim-seconds, so hunger rates
+// stay day-scale; scarcity still starves, but missing one plant for an hour does not.
+constexpr double kRabbitHungerRate = 0.03;
+constexpr double kRabbitEnergyRate = 0.001;
+constexpr double kWolfHungerRate = 0.06;
+constexpr double kWolfEnergyRate = 0.006;
+constexpr double kRabbitEatHunger = 45.0; // graze when hungry, before starvation pressure
 constexpr double kRabbitEatAmount = 0.5;
 constexpr double kHuntHunger = 30.0;      // wolf hunts rabbits above this hunger
-constexpr double kAttackHunger = 55.0;    // wolf attacks the organism above this
+constexpr double kAttackHunger = 55.0;    // wolf stalks the organism above this hunger
 constexpr int64_t kAttackCooldown = 60;   // sim-seconds between attacks
 constexpr double kAttackDamageMin = 4.0;
 constexpr double kAttackDamageRange = 5.0;
@@ -64,7 +66,8 @@ constexpr int kRabbitCap = 64;   // bounded populations
 constexpr int kWolfCap = 12;
 constexpr int kMateRadius = 4;
 constexpr double kBreedHunger = 50.0;      // females breed only when fed
-constexpr int64_t kBreedCooldown = 10 * 86400;
+constexpr int64_t kRabbitBreedCooldown = 3 * 86400; // rabbits breed fast (litters)
+constexpr int64_t kWolfBreedCooldown = 10 * 86400;
 constexpr double kBreedCost = 15.0;        // hunger cost of birth
 constexpr double kStruggleChance = 0.25;   // prey wounds its killer
 constexpr double kStruggleInjury = 0.35;
@@ -219,8 +222,11 @@ void Wildlife::spawn(const Grid& g, Rng& r, Vec2i spawn) {
   wildlifeSeed_ = r.next();
 
   const int area = gridW_ * gridH_;
-  int nRabbit = std::max(2, area / 2500);
-  int nWolf = std::max(1, area / 8000);
+  // E4c: the prey base must feed persistent predators — sparse rabbits collapse
+  // in the first hour and starving wolves turn to the organism. Denser rabbits
+  // keep wolves sated on wild prey; wolves stay rare.
+  int nRabbit = std::max(8, area / 350);
+  int nWolf = (area < 4096) ? 0 : std::max(1, area / 8000);
 
   uint32_t nextId = 0;
   auto place = [&](Species s, int count) {
@@ -245,13 +251,15 @@ void Wildlife::spawn(const Grid& g, Rng& r, Vec2i spawn) {
       a.state = (s == Species::Wolf) ? AnimalState::Forage : AnimalState::Wander;
       // E4b: varied adult starting generations (no synchronized die-off
       // cohorts, no juveniles at spawn — every spawned animal is functional).
-      // First breeding is delayed so fresh worlds settle before growing.
+      // First breeding opens on day 1: without it, founding prey never
+      // replaces early predation losses and the web collapses before breeding
+      // even starts.
       const int64_t adultAge = (s == Species::Wolf) ? kWolfAdultAge : kRabbitAdultAge;
       const int64_t maxAge = (s == Species::Wolf) ? kWolfMaxAge : kRabbitMaxAge;
       a.ageTicks = adultAge + static_cast<int64_t>(a.rng.unit() * 0.4 * (maxAge - adultAge));
       a.female = a.rng.unit() < 0.5;
       a.immunity = a.rng.unit() * 0.2;
-      a.offspringCooldownUntil = 5 * 86400;
+      a.offspringCooldownUntil = 86400;
       agents_.push_back(a);
     }
   };
@@ -353,12 +361,12 @@ void Wildlife::update(World& w, int64_t now, int64_t dt, bool organismAlive,
 }
 
 namespace {
-// A wolf bite. Satiates the wolf (hunger drops well below the attack threshold) so it
-// disengages instead of camping a stationary target.
+// A wolf bite. Satiates the wolf deeply (hunger drops far below the attack
+// threshold) so it disengages for a long while instead of camping a target.
 void attackOrganism(WildlifeAgent& a, int64_t now, WorldUpdate& out) {
   const double dmg = kAttackDamageMin + a.rng.unit() * kAttackDamageRange;
   a.attackCooldownUntil = now + kAttackCooldown;
-  a.hunger = std::max(0.0, a.hunger - 45.0);
+  a.hunger = std::max(0.0, a.hunger - 70.0);
   out.attacked = true;
   out.attackDamage = std::max(out.attackDamage, dmg);
   out.attackerSpecies = static_cast<uint8_t>(Species::Wolf);
@@ -453,13 +461,21 @@ void Wildlife::step(World& w, int64_t now, bool organismAlive,
     if (isWolf) {
       // Wolves prefer rabbits; they only stalk the organism when properly hungry.
       const bool preyNear = nearestPrey(a.pos, kWolfHuntRadius) != nullptr;
-      if (a.hunger > kAttackHunger && threatDist <= kWolfHuntRadius) next = AnimalState::Hunt;
+      if (a.hunger >= kAttackHunger && threatDist <= kWolfHuntRadius) next = AnimalState::Hunt;
       else if (a.hunger > kHuntHunger && preyNear) next = AnimalState::Hunt;
       if (!adult && next == AnimalState::Hunt) next = AnimalState::Forage;
+      // E4c: give-up range — a wolf that lost its prey (no rabbits near, organism
+      // far) stops the chase instead of marching across the map forever.
+      if (next == AnimalState::Hunt && !preyNear && organismAlive &&
+          distCheb(organismPos, a.pos) > 20) {
+        next = AnimalState::Wander;
+      }
     } else {
       if ((threat && threatDist <= kRabbitFleeRadius) ||
           (organismAlive && !a.tamed && threatDist <= kRabbitFearRadius)) {
         next = AnimalState::Flee;
+      } else if (a.hunger > kRabbitEatHunger) {
+        next = AnimalState::Forage;
       } else if (next == AnimalState::Hunt) {
         next = AnimalState::Forage;
       }
@@ -469,64 +485,93 @@ void Wildlife::step(World& w, int64_t now, bool organismAlive,
 
     // Goal direction from state.
     double gx = 0.0, gy = 0.0, goalWeight = 1.0;
-    // Domestication: a tamed prey follows the organism as its primary goal (companion
-    // behaviour), holding a short distance rather than fleeing or wandering off.
-    if (!isWolf && a.tamed && organismAlive) {
-      const int d = std::max(1, distCheb(organismPos, a.pos));
-      if (d > 2) { // keep a couple tiles of personal space while staying close
-        gx = static_cast<double>(organismPos.x - a.pos.x) / d;
-        gy = static_cast<double>(organismPos.y - a.pos.y) / d;
-        goalWeight = 1.2;
-      } else {
-        gx = gy = 0.0;
-        goalWeight = 0.0;
+    // E4c: mate-seeking — a breeding-ready female drifts toward the nearest
+    // adult male of her species instead of wandering alone (species-appropriate
+    // social behavior; without it pairs never meet on large maps).
+    bool hasMateGoal = false;
+    if (!isWolf && a.female &&
+        a.ageTicks >= kRabbitAdultAge && a.hunger < 40.0 &&
+        a.disease < 0.3 && now >= a.offspringCooldownUntil &&
+        (a.state == AnimalState::Wander || a.state == AnimalState::Forage)) {
+      const WildlifeAgent* mate = nullptr;
+      int mateDist = 17;
+      for (const WildlifeAgent& b : agents_) {
+        if (!b.alive || b.species != a.species || b.id == a.id || b.female) continue;
+        if (b.ageTicks < kRabbitAdultAge) continue;
+        const int d = distCheb(b.pos, a.pos);
+        if (d < mateDist) {
+          mateDist = d;
+          mate = &b;
+        }
       }
-    } else {
-      switch (a.state) {
-      case AnimalState::Forage: {
-        const Plant* pl = w.nearestEdiblePlant(a.pos, senseRadius);
-        if (pl) {
-          const int d = std::max(1, distCheb(pl->pos, a.pos));
-          gx = static_cast<double>(pl->pos.x - a.pos.x) / d;
-          gy = static_cast<double>(pl->pos.y - a.pos.y) / d;
+      if (mate != nullptr) {
+        const int d = std::max(1, mateDist);
+        gx = static_cast<double>(mate->pos.x - a.pos.x) / d;
+        gy = static_cast<double>(mate->pos.y - a.pos.y) / d;
+        goalWeight = 0.9;
+        hasMateGoal = true;
+      }
+    }
+    if (!hasMateGoal) {
+      // Domestication: a tamed prey follows the organism as its primary goal (companion
+      // behaviour), holding a short distance rather than fleeing or wandering off.
+      if (!isWolf && a.tamed && organismAlive) {
+        const int d = std::max(1, distCheb(organismPos, a.pos));
+        if (d > 2) { // keep a couple tiles of personal space while staying close
+          gx = static_cast<double>(organismPos.x - a.pos.x) / d;
+          gy = static_cast<double>(organismPos.y - a.pos.y) / d;
+          goalWeight = 1.2;
         } else {
+          gx = gy = 0.0;
+          goalWeight = 0.0;
+        }
+      } else {
+        switch (a.state) {
+        case AnimalState::Forage: {
+          const Plant* pl = w.nearestEdiblePlant(a.pos, senseRadius);
+          if (pl) {
+            const int d = std::max(1, distCheb(pl->pos, a.pos));
+            gx = static_cast<double>(pl->pos.x - a.pos.x) / d;
+            gy = static_cast<double>(pl->pos.y - a.pos.y) / d;
+          } else {
+            gx = a.rng.unit() * 2.0 - 1.0;
+            gy = a.rng.unit() * 2.0 - 1.0;
+            goalWeight = 0.4;
+          }
+          break;
+        }
+        case AnimalState::Flee: {
+          int tx = organismPos.x, ty = organismPos.y;
+          if (threat) { tx = threat->pos.x; ty = threat->pos.y; }
+          const int d = std::max(1, distCheb({tx, ty}, a.pos));
+          gx = static_cast<double>(a.pos.x - tx) / d;
+          gy = static_cast<double>(a.pos.y - ty) / d;
+          goalWeight = 1.4;
+          break;
+        }
+        case AnimalState::Hunt: {
+          int tx = -1, ty = -1;
+          const WildlifeAgent* prey = nearestPrey(a.pos, senseRadius);
+          if (prey) { tx = prey->pos.x; ty = prey->pos.y; }
+          else if (organismAlive) { tx = organismPos.x; ty = organismPos.y; }
+          if (tx >= 0) {
+            const int d = std::max(1, distCheb({tx, ty}, a.pos));
+            gx = static_cast<double>(tx - a.pos.x) / d;
+            gy = static_cast<double>(ty - a.pos.y) / d;
+          }
+          goalWeight = 1.5;
+          break;
+        }
+        case AnimalState::Rest:
+          gx = gy = 0.0;
+          goalWeight = 0.0;
+          break;
+        case AnimalState::Wander:
           gx = a.rng.unit() * 2.0 - 1.0;
           gy = a.rng.unit() * 2.0 - 1.0;
-          goalWeight = 0.4;
+          goalWeight = 0.5;
+          break;
         }
-        break;
-      }
-      case AnimalState::Flee: {
-        int tx = organismPos.x, ty = organismPos.y;
-        if (threat) { tx = threat->pos.x; ty = threat->pos.y; }
-        const int d = std::max(1, distCheb({tx, ty}, a.pos));
-        gx = static_cast<double>(a.pos.x - tx) / d;
-        gy = static_cast<double>(a.pos.y - ty) / d;
-        goalWeight = 1.4;
-        break;
-      }
-      case AnimalState::Hunt: {
-        int tx = -1, ty = -1;
-        const WildlifeAgent* prey = nearestPrey(a.pos, senseRadius);
-        if (prey) { tx = prey->pos.x; ty = prey->pos.y; }
-        else if (organismAlive) { tx = organismPos.x; ty = organismPos.y; }
-        if (tx >= 0) {
-          const int d = std::max(1, distCheb({tx, ty}, a.pos));
-          gx = static_cast<double>(tx - a.pos.x) / d;
-          gy = static_cast<double>(ty - a.pos.y) / d;
-        }
-        goalWeight = 1.5;
-        break;
-      }
-      case AnimalState::Rest:
-        gx = gy = 0.0;
-        goalWeight = 0.0;
-        break;
-      case AnimalState::Wander:
-        gx = a.rng.unit() * 2.0 - 1.0;
-        gy = a.rng.unit() * 2.0 - 1.0;
-        goalWeight = 0.5;
-        break;
       }
     }
 
@@ -558,6 +603,26 @@ void Wildlife::step(World& w, int64_t now, bool organismAlive,
   // Newborns wait for the next step (loop bound is fixed up front so pushed
   // pups are never processed with out-of-range targeting data).
   const size_t nActing = agents_.size();
+  // Resolve already-adjacent predator/prey contacts before movement. Rabbits are
+  // stored before wolves at spawn, so without this pre-pass a rabbit can move away
+  // before the adjacent wolf gets its turn.
+  for (size_t ai = 0; ai < nActing; ++ai) {
+    WildlifeAgent& a = agents_[ai];
+    if (!a.alive || a.species != Species::Wolf || a.hunger <= kHuntHunger) continue;
+    for (WildlifeAgent& prey : agents_) {
+      if (prey.alive && prey.species == Species::Rabbit && prey.id != a.id &&
+          distCheb(prey.pos, a.pos) <= 1) {
+        if (a.rng.unit() < kStruggleChance) {
+          a.injury = std::min(1.0, a.injury + kStruggleInjury);
+        }
+        prey.alive = false;
+        w.addNutrient(prey.pos, 0.2f);
+        a.hunger = std::max(0.0, a.hunger - 50.0);
+        a.energy = std::min(100.0, a.energy + 12.0);
+        break;
+      }
+    }
+  }
   for (size_t ai = 0; ai < nActing; ++ai) {
     WildlifeAgent& a = agents_[ai];
     if (!a.alive) continue;
@@ -566,11 +631,31 @@ void Wildlife::step(World& w, int64_t now, bool organismAlive,
     const int speed = std::max(1, (isWolf ? kWolfSpeed : kRabbitSpeed) -
                                       (a.injury > 0.5 ? 1 : 0));
 
+    bool atePrey = false;
+    if (isWolf && a.hunger > kHuntHunger) {
+      // Eat prey already within reach before moving; otherwise a wolf can step
+      // away from an adjacent rabbit while chasing a different target.
+      for (WildlifeAgent& prey : agents_) {
+        if (prey.alive && prey.species == Species::Rabbit && prey.id != a.id &&
+            distCheb(prey.pos, a.pos) <= 1) {
+          if (a.rng.unit() < kStruggleChance) {
+            a.injury = std::min(1.0, a.injury + kStruggleInjury);
+          }
+          prey.alive = false;
+          w.addNutrient(prey.pos, 0.2f);
+          a.hunger = std::max(0.0, a.hunger - 50.0);
+          a.energy = std::min(100.0, a.energy + 12.0);
+          atePrey = true;
+          break;
+        }
+      }
+    }
+
     // A wolf attacks the moment it is within reach (including mid-charge), rather than
     // only after finishing its steps - otherwise a 3-step charge would overshoot past a
     // fleeing organism and rarely ever land a bite.
-    for (int s = 0; s < speed; ++s) {
-      if (isWolf && organismAlive && a.hunger > kAttackHunger &&
+    for (int s = 0; !atePrey && s < speed; ++s) {
+      if (isWolf && organismAlive && a.hunger >= kAttackHunger &&
           distCheb(a.pos, organismPos) <= 1 && now >= a.attackCooldownUntil) {
         attackOrganism(a, now, out);
         break;
@@ -578,7 +663,7 @@ void Wildlife::step(World& w, int64_t now, bool organismAlive,
       stepToward(g, a.pos, targets_[ai].x, targets_[ai].y, a.rng);
     }
 
-    if (isWolf) {
+    if (isWolf && !atePrey) {
       // Eat adjacent rabbits (preferred prey). Satiates the wolf substantially.
       for (WildlifeAgent& prey : agents_) {
         if (prey.alive && prey.species == Species::Rabbit && prey.id != a.id &&
@@ -589,7 +674,9 @@ void Wildlife::step(World& w, int64_t now, bool organismAlive,
           }
           prey.alive = false;
           w.addNutrient(prey.pos, 0.2f); // remains feed the soil (E4c)
-          a.hunger = std::max(0.0, a.hunger - 35.0);
+          // E4c: a rabbit is a full meal — a fed wolf disengages for a while
+          // instead of chain-killing the whole warren in one outing.
+          a.hunger = std::max(0.0, a.hunger - 50.0);
           a.energy = std::min(100.0, a.energy + 12.0);
           break;
         }
@@ -652,24 +739,33 @@ void Wildlife::step(World& w, int64_t now, bool organismAlive,
           }
         }
         if (birth.x >= 0) {
-          WildlifeAgent pup;
-          pup.id = nextAgentId_++;
-          pup.species = a.species;
-          pup.pos = birth;
-          pup.rng = agentStream(wildlifeSeed_, pup.id);
-          pup.energy = 60.0;
-          pup.hunger = 20.0;
-          pup.female = a.rng.unit() < 0.5;
-          pup.metabolism = std::max(0.8, std::min(1.2, (a.metabolism + mate->metabolism) * 0.5 +
-                                                              (a.rng.unit() - 0.5) * 0.2));
-          pup.hardiness = std::max(0.8, std::min(1.2, (a.hardiness + mate->hardiness) * 0.5 +
-                                                             (a.rng.unit() - 0.5) * 0.2));
-          pup.state = AnimalState::Wander;
-          // Mother updates BEFORE the push: push_back may reallocate agents_,
-          // invalidating the `a`/`mate` references below it.
+          // E4c: litters, not singletons — rabbit fecundity is what outbreeds
+          // predation and keeps the prey base (and thus fed wolves) alive.
+          // Mother updates go FIRST: pushes below may reallocate agents_,
+          // invalidating the `a`/`mate` references.
+          const double mMet = (a.metabolism + mate->metabolism) * 0.5;
+          const double mHar = (a.hardiness + mate->hardiness) * 0.5;
           a.hunger = std::min(100.0, a.hunger + kBreedCost);
-          a.offspringCooldownUntil = now + kBreedCooldown;
-          agents_.push_back(pup);
+          a.offspringCooldownUntil =
+              now + (isWolf ? kWolfBreedCooldown : kRabbitBreedCooldown);
+          int litter = 1;
+          if (!isWolf) litter = 2 + (a.rng.unit() < 0.5 ? 1 : 0);
+          for (int pup_i = 0; pup_i < litter; ++pup_i) {
+            WildlifeAgent pup;
+            pup.id = nextAgentId_++;
+            pup.species = a.species;
+            pup.pos = birth;
+            pup.rng = agentStream(wildlifeSeed_, pup.id);
+            pup.energy = 60.0;
+            pup.hunger = 20.0;
+            pup.female = pup.rng.unit() < 0.5;
+            pup.metabolism =
+                std::max(0.8, std::min(1.2, mMet + (pup.rng.unit() - 0.5) * 0.2));
+            pup.hardiness =
+                std::max(0.8, std::min(1.2, mHar + (pup.rng.unit() - 0.5) * 0.2));
+            pup.state = AnimalState::Wander;
+            agents_.push_back(pup);
+          }
         }
       }
     }

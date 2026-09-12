@@ -563,8 +563,9 @@ void eidolon::World::stepPlants(int64_t dt, double daylight, int season, bool ra
       pl.water = std::max(0.0f, pl.water - drain * static_cast<float>(dts / 3600.0));
     }
 
-    // Blight: wet spreads and worsens it, dry air clears it.
-    if (raining) {
+    // Blight: wet spreads and worsens EXISTING infection (rain never
+    // spontaneously generates it), dry air clears it.
+    if (pl.infection > 0.0f && raining) {
       pl.infection = std::min(1.0f, pl.infection + 0.02f * static_cast<float>(dts / 3600.0));
     } else if (pl.water < 0.3f) {
       pl.infection = std::max(0.0f, pl.infection - 0.05f * static_cast<float>(dts / 3600.0));
@@ -581,24 +582,26 @@ void eidolon::World::stepPlants(int64_t dt, double daylight, int season, bool ra
     }
 
     // Growth gated by the scarcest budget. Light only throttles (plants grow at
-    // night from stores); water/soil can genuinely stall growth. The 0.7 base
-    // keeps typical regrowth near the pre-E4a rate so existing survival balance
-    // holds while drought/shade/poor soil visibly bite.
+    // night from stores); water/soil can genuinely stall growth. Season scales
+    // everything (winter dormancy); bone-dry plants go near-dormant. Typical
+    // spring regrowth stays near the pre-E4a rate so survival balance holds.
     const float light =
         0.35f + 0.65f * static_cast<float>(daylight) * shadeAt(pl.pos.x, pl.pos.y);
     const float soil = soilAt(pl.pos.x, pl.pos.y);
     float gate = pl.water;
     if (soil < gate) gate = soil;
     if (light < gate) gate = light;
-    const double g = gate * seasonMult * pl.vigor;
-    const double rate =
-        pl.regrowthRate * (0.7 + 0.3 * g) * (1.0 - 0.7 * pl.infection);
+    const double g = gate * pl.vigor;
+    double rate = pl.regrowthRate * seasonMult * (0.65 + 0.35 * g) *
+                  (1.0 - 0.7 * pl.infection);
+    if (pl.water <= 0.01f) rate *= 0.25; // drought dormancy
     if (pl.amount < pl.maxAmount) {
       pl.amount = std::min(pl.maxAmount, pl.amount + rate * dts / 5400.0);
       addNutrient(pl.pos, static_cast<float>(-0.002 * rate * dts / 3600.0));
     }
 
-    // Life stages follow fullness.
+    // Life stages follow fullness. (Resynced again after wildlife below, so
+    // grazing in the same step never leaves a stale stage behind.)
     const double frac = pl.amount / pl.maxAmount;
     if (frac < 0.3) {
       pl.stage = eidolon::GrowthStage::Seedling;
@@ -669,7 +672,6 @@ eidolon::WorldUpdate eidolon::World::update(const eidolon::SimClock& c, int64_t 
 
   // E4a: functional plant ecology replaces the flat regrowth line below.
   stepPlants(dt, c.daylight(), weather_.season(), weather_.raining(), r);
-
   for (eidolon::WaterSource& ws : waterSources_) {
     if (ws.current < ws.capacity) {
       ws.current = std::min(ws.capacity, ws.current + ws.flowRate * dt);
@@ -678,6 +680,18 @@ eidolon::WorldUpdate eidolon::World::update(const eidolon::SimClock& c, int64_t 
 
   // Wildlife advances on its own throttle (kInterval sim-seconds).
   wildlife_.update(*this, c.now(), dt, alive_, pos_, out);
+  // E4c: grazing happens above, so resync life stages to post-graze amounts —
+  // a stage must never describe pre-graze fullness.
+  for (eidolon::Plant& pl : plants_) {
+    const double frac = pl.amount / pl.maxAmount;
+    if (frac < 0.3) {
+      pl.stage = eidolon::GrowthStage::Seedling;
+    } else if (frac > 0.85) {
+      pl.stage = eidolon::GrowthStage::Mature;
+    } else {
+      pl.stage = eidolon::GrowthStage::Growing;
+    }
+  }
 
   // Phase 5 branch: cellular automata for infection/disease spread (DESIGN §22).
   // Update CA with infection rate, immunity, and terrain factors (swamp/deep-water = higher).

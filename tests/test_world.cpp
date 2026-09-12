@@ -312,13 +312,22 @@ TEST(plant_blight_spreads_and_kills_then_feeds_soil) {
   Rng r(23);
   w.generate(32, 32, r);
   SimClock c;
-  // Park a healthy plant next to a blighted one.
+  for (WildlifeAgent& a : w.wildlife().agents()) a.alive = false;
+  // Park a healthy plant next to a blighted one. Pinned water/infection keep
+  // the test independent of weather: dry air must not clear the source below
+  // the infectious threshold, rain must not kill it (index shift) mid-step.
   CHECK(w.plants().size() >= 2u);
-  w.plants()[0].infection = 0.9f;
-  w.plants()[1].pos = {w.plants()[0].pos.x + 1, w.plants()[0].pos.y};
+  w.plants()[0].pos = {10, 10};
+  w.plants()[0].infection = 0.7f;
+  w.plants()[0].water = 1.0f;
+  w.plants()[1].pos = {11, 10};
   w.plants()[1].infection = 0.0f;
   const float soilBefore = w.soilAt(w.plants()[0].pos.x, w.plants()[0].pos.y);
-  w.update(c, 12 * 3600, r);
+  const Vec2i srcPos = w.plants()[0].pos;
+  w.update(c, 3600, r);
+  // The source must still be where it was (no index shift under the check).
+  CHECK(w.plants()[0].pos == srcPos);
+  CHECK(w.plants()[0].infection > 0.3f); // still infectious after 1h
   CHECK(w.plants()[1].infection > 0.0f); // caught it from its neighbor
   // Lethal blight decomposes the body into the soil and removes it.
   w.plants()[0].infection = 1.5f;
@@ -353,4 +362,93 @@ TEST(plant_serialize_roundtrip_covers_biology) {
     CHECK_EQ(a.plants()[i].ageTicks, b.plants()[i].ageTicks);
   }
   CHECK_EQ(a.soilAt(5, 5), b.soilAt(5, 5));
+}
+
+// ---------------------------------------------------------------------------
+// E4c: coupled ecosystem — seasonal/predation pressure, harvest shock, and
+// independence from the organism.
+// ---------------------------------------------------------------------------
+
+namespace {
+double meanPlantAmount(const World& w) {
+  double sum = 0.0;
+  for (const Plant& pl : w.plants()) sum += pl.amount;
+  return w.plants().empty() ? 0.0 : sum / w.plants().size();
+}
+
+int countAlive(const World& w, Species s) {
+  int n = 0;
+  for (const WildlifeAgent& a : w.wildlife().agents()) {
+    if (a.alive && a.species == s) ++n;
+  }
+  return n;
+}
+
+void stepDays(World& w, Rng& r, SimClock& c, int days) {
+  for (int d = 0; d < days; ++d) {
+    w.update(c, 86400, r);
+    c.advance(86400);
+  }
+}
+} // namespace
+
+TEST(ecology_winter_suppresses_vegetation) {
+  // Twin worlds, same seed, stubbed to identical vegetation: 3 days of spring
+  // regrowth vs 3 days of deep winter (clock jumped). Winter must regrow less.
+  // (Comparing recovery isolates growth from seeding/legacy-stock effects.)
+  World a, b;
+  Rng ra(51), rb(51);
+  a.generate(64, 64, ra);
+  b.generate(64, 64, rb);
+  SimClock ca, cb;
+  cb.advance(290 * 86400); // deep winter
+  for (auto& pl : a.plants()) pl.amount = 2.0;
+  for (auto& pl : b.plants()) pl.amount = 2.0;
+  stepDays(a, ra, ca, 3);
+  stepDays(b, rb, cb, 3);
+  CHECK(meanPlantAmount(b) < meanPlantAmount(a));
+  // Populations stay bounded through both spells.
+  CHECK(countAlive(a, Species::Rabbit) <= 64);
+  CHECK(countAlive(a, Species::Wolf) <= 12);
+  CHECK(countAlive(b, Species::Rabbit) <= 64);
+  CHECK(countAlive(b, Species::Wolf) <= 12);
+}
+
+TEST(ecology_harvest_shock_recovers) {
+  // Clear-cut every plant to a stub, then 10 days: everything regrows and the
+  // population holds (seeding + regrowth outpace blight/age over this span).
+  World w;
+  Rng r(52);
+  w.generate(48, 48, r);
+  SimClock c;
+  const size_t before = w.plants().size();
+  for (auto& pl : w.plants()) pl.amount = 0.5;
+  stepDays(w, r, c, 10);
+  CHECK(w.plants().size() >= before); // nothing died off; seeding may add
+  for (const Plant& pl : w.plants()) CHECK(pl.amount > 0.5);
+  CHECK(meanPlantAmount(w) > 2.0); // meaningful recovery, not a trickle
+}
+
+TEST(ecology_runs_without_organism) {
+  // The ecosystem does not depend on the organism being alive: kill it, run
+  // 3 days, and vegetation cycles + wildlife moves on regardless.
+  World w;
+  Rng r(53);
+  w.generate(48, 48, r);
+  SimClock c;
+  std::vector<Vec2i> posBefore;
+  for (const WildlifeAgent& a : w.wildlife().agents()) posBefore.push_back(a.pos);
+  const double amountBefore = meanPlantAmount(w);
+  w.killOrganism();
+  stepDays(w, r, c, 3);
+  CHECK(meanPlantAmount(w) != amountBefore); // vegetation cycled
+  bool moved = false;
+  const auto& agents = w.wildlife().agents();
+  for (size_t i = 0; i < agents.size() && i < posBefore.size(); ++i) {
+    if (agents[i].pos.x != posBefore[i].x || agents[i].pos.y != posBefore[i].y) {
+      moved = true;
+    }
+  }
+  CHECK(moved); // wildlife acts without the organism
+  CHECK(countAlive(w, Species::Rabbit) + countAlive(w, Species::Wolf) > 0);
 }

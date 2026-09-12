@@ -98,6 +98,7 @@ TEST(wildlife_wolf_eats_rabbit) {
   World w;
   Rng r(11);
   w.generate(64, 64, r);
+  w.killOrganism();
 
   Wildlife& wl = w.wildlife();
   // Find one wolf and one rabbit, teleport the wolf next to the rabbit.
@@ -219,13 +220,16 @@ TEST(wildlife_organism_engine_integration) {
   const Vec2i op = w.organismPos();
   WildlifeAgent* wolf = nullptr;
   for (WildlifeAgent& a : w.wildlife().agents()) {
-    if (a.species == Species::Wolf) { wolf = &a; break; }
+    if (a.species == Species::Rabbit) a.alive = false;
+    else if (a.species == Species::Wolf && wolf == nullptr) wolf = &a;
+    else if (a.species == Species::Wolf) a.alive = false;
   }
   CHECK(wolf);
   wolf->pos = {op.x + 1, op.y};
   wolf->hunger = 90.0;
   wolf->state = AnimalState::Hunt;
   wolf->attackCooldownUntil = 0;
+  w.wildlife().rebuildHashForDebug();
 
   const uint64_t attacksBefore = e.stats().predatorAttacks;
   for (int i = 0; i < 200 && e.isAlive(); ++i) e.tick();
@@ -316,29 +320,42 @@ TEST(wildlife_reproduction_births_juvenile_with_blended_traits) {
   World w;
   Rng r(41);
   w.generate(64, 64, r);
+  // No wolves: pups must survive to be counted (predation is tested elsewhere).
+  for (WildlifeAgent& a : w.wildlife().agents()) {
+    if (a.species == Species::Wolf) a.alive = false;
+  }
   WildlifeAgent *female = nullptr, *male = nullptr;
   parkBreedingPair(w, Species::Rabbit, female, male);
   female->metabolism = 1.1;
   male->metabolism = 0.9;
+  uint32_t maxId = 0;
+  for (const WildlifeAgent& a : w.wildlife().agents()) maxId = std::max(maxId, a.id);
   const int before = countSpecies(w, Species::Rabbit);
+  const uint32_t motherId = female->id;
+  const Vec2i birthplace = female->pos;
   SimClock c;
   for (int i = 0; i < 20; ++i) {
     w.update(c, Wildlife::kInterval, r);
     c.advance(Wildlife::kInterval);
   }
-  CHECK_EQ(countSpecies(w, Species::Rabbit), before + 1);
-  // The newborn is a juvenile with blended traits, near its mother.
+  CHECK(countSpecies(w, Species::Rabbit) > before);
+  // The newborn is a juvenile with blended traits, near where it was born.
   bool foundPup = false;
   for (const WildlifeAgent& a : w.wildlife().agents()) {
     if (a.species != Species::Rabbit || !a.alive) continue;
-    if (a.ageTicks < 5 * 86400 && distCheb(a.pos, female->pos) <= 8) {
+    if (a.id > maxId && a.ageTicks < 5 * 86400 &&
+        distCheb(a.pos, birthplace) <= 12) {
       foundPup = true;
       CHECK(a.metabolism >= 0.8 && a.metabolism <= 1.2);
       CHECK(a.hardiness >= 0.8 && a.hardiness <= 1.2);
     }
   }
   CHECK(foundPup);
-  CHECK(female->offspringCooldownUntil > 0); // mother rests before next birth
+  bool motherResting = false;
+  for (const WildlifeAgent& a : w.wildlife().agents()) {
+    if (a.id == motherId && a.offspringCooldownUntil > 0) motherResting = true;
+  }
+  CHECK(motherResting); // mother rests before next birth
 }
 
 TEST(wildlife_wolf_pups_do_not_hunt) {

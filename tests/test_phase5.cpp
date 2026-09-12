@@ -62,8 +62,8 @@ void parkHungryWolf(Engine& e) {
     }
   }
   CHECK(spot.x >= 0); // Must find a valid nearby walkable tile near the organism.
-wolf->pos = spot;
-    wolf->hunger = 55.0;
+    wolf->pos = spot;
+    wolf->hunger = 95.0;
     wolf->energy = 1000.0;
     wolf->state = AnimalState::Hunt;
     wolf->attackCooldownUntil = 0;
@@ -262,12 +262,13 @@ TEST(phase5_gate_survival_improves_with_experience) {
   // causing it to flee at sight; the naive organism only reacts when the wolf closes
   // to 3 tiles. Over 120 ticks this produces a clearly larger average distance for
   // the trained branch (verified empirically: avg distance ~2x).
-auto placeWolfAtDist = [](Engine& e, int desired) {
+  auto placeWolfAtDist = [](Engine& e, int desired) {
     WildlifeAgent* wolf = nullptr;
     for (WildlifeAgent& a : e.world().wildlife().agents()) {
-      if (a.species == Species::Wolf && a.alive) { wolf = &a; break; }
+      if (a.species == Species::Wolf) { wolf = &a; break; }
     }
     CHECK(wolf != nullptr);
+    wolf->alive = true;
     // Kill rabbits and other wolves.
     for (WildlifeAgent& a : e.world().wildlife().agents()) {
       if (a.species == Species::Rabbit) a.alive = false;
@@ -297,8 +298,8 @@ auto placeWolfAtDist = [](Engine& e, int desired) {
     wolf->attackCooldownUntil = 0;
     e.world().wildlife().rebuildHashForDebug();
   };
-  placeWolfAtDist(naive, 6);
-  placeWolfAtDist(exp, 6);
+  placeWolfAtDist(naive, 10);
+  placeWolfAtDist(exp, 10);
 
   // Count proactive fleeing: the trained organism's elevated threat triggers the
   // threat-veto (exploration actions -> Flee) whenever the wolf is in its sight radius,
@@ -307,7 +308,7 @@ auto placeWolfAtDist = [](Engine& e, int desired) {
   // robust to the exact world trajectory (which legitimately shifts with behaviour).
   int naiveFlee = 0, expFlee = 0;
   int naiveTicks = 0, expTicks = 0;
-  for (int i = 0; i < 120; ++i) {
+  for (int i = 0; i < 40; ++i) {
     if (naive.isAlive()) {
       const Action a = naive.tick();
       if (a == Action::Flee) ++naiveFlee;

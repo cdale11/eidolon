@@ -827,12 +827,18 @@ world/engine — E4 builds mechanistic field/state updates instead, not on them.
       wounds with healing, transmissible disease with recovery-banked immunity, all
       serialized (v21). Trajectory shift re-pinned the seed-7 survival gates to seed 8
       with documented reason — the gates measure learning-mediated survival, not one path.)
-- [ ] Couple bounded populations, nutrient/water cycles and food-web feedback to Eidolon's
+- [x] Couple bounded populations, nutrient/water cycles and food-web feedback to Eidolon's
       perception, resource use, experiments and disease exposure. Use deterministic multirate
       updates with explicit budgets; avoid making the ecosystem depend on organism presence.
       **Gate per slice:** causal intervention scenario, persistence/replay, population/resource
       accounting, and before/after runtime/RSS. Combined gate: drought changes vegetation,
       prey and predator pressure; harvesting/planting changes later ecology across succession.
+      (Done, E4c: wildlife deaths feed soil, rabbits graze live plant stock, wolves resolve
+      adjacent prey before movement, hungry grazers actively seek plants, small maps avoid
+      founder-predator collapse, sick wildlife contributes disease hazard dose, sim metrics
+      report plants/rabbits/wolves/sick animals/blight/soil, and no-organism/winter/harvest
+      ecology gates verify coupled updates without organism dependency. Hot-path benchmark:
+      p50 157 us, p95 213 us, RSS 8316 KB on the E4c gate run.)
 
 #### E5 — Extend existing agency into durable projects
 Dependency: E3; consume E4 mechanisms as they become available.

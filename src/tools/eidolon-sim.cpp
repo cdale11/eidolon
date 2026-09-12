@@ -455,6 +455,27 @@ int main(int argc, char** argv) {
                  engine.body().bodyTemp(), engine.body().health());
     std::fprintf(m, "worldHash=%llu\n",
                  static_cast<unsigned long long>(engine.world().grid().hash()));
+    // E4c: population/resource accounting for the ecology gates.
+    int rabbits = 0, wolves = 0, sickAnimals = 0;
+    for (const WildlifeAgent& a : engine.world().wildlife().agents()) {
+      if (!a.alive) continue;
+      if (a.species == Species::Rabbit) ++rabbits;
+      else ++wolves;
+      if (a.disease > 0.3) ++sickAnimals;
+    }
+    int blightedPlants = 0;
+    for (const Plant& pl : engine.world().plants()) {
+      if (pl.stage != GrowthStage::Dead && pl.infection > 0.25) ++blightedPlants;
+    }
+    double soilSum = 0.0;
+    const int gw = engine.world().grid().width();
+    const int gh = engine.world().grid().height();
+    for (int y = 0; y < gh; ++y) {
+      for (int x = 0; x < gw; ++x) soilSum += engine.world().soilAt(x, y);
+    }
+    std::fprintf(m, "plants=%d\nrabbits=%d\nwolves=%d\nsickAnimals=%d\nblightedPlants=%d\nsoilMean=%.3f\n",
+                 static_cast<int>(engine.world().plants().size()), rabbits, wolves,
+                 sickAnimals, blightedPlants, soilSum / (gw * gh));
     std::fprintf(m, "stopped=%s\n", whyStopped.c_str());
     std::fclose(m);
   }

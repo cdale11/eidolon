@@ -107,6 +107,20 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   wildlife trajectories, so the pinned seed-7 survival gates moved to seed 8
   with documented reason — same learning-mediated-survival bar.
 
+### Coupled ecology and food-web feedback (E4c)
+- Plant, prey and predator loops are now coupled: rabbits graze live plant stock,
+  wildlife deaths return nutrients to soil, hungry grazers actively seek plants,
+  wolves eat adjacent prey before movement order can erase the encounter, and
+  tiny worlds avoid founder-predator collapse while normal-sized worlds still
+  seed predators.
+- Sick nearby wildlife now contributes to organism hazard exposure, and
+  `eidolon-sim` writes ecology census metrics (`plants`, `rabbits`, `wolves`,
+  `sickAnimals`, `blightedPlants`, `soilMean`) for smoke/replay inspection.
+- New ecology gates cover winter vegetation suppression, harvest-shock recovery,
+  and organism-independent ecosystem updates; the E4c gate also verified unit
+  tests, Python integrations, deterministic replay, a one-day smoke run, and a
+  hot-path benchmark (`p50=157us`, `p95=213us`, RSS 8316 KB on this machine).
+
 ### Voice consistency and reply-quality harness (Q4)
 - Personality now reaches the language model as trait words ("cautious,
   curious") derived from latent thresholds instead of raw floats, and drives
