@@ -817,6 +817,30 @@ bool LLMBridge::post(const std::string& body, std::string& response) {
   return true;
 }
 
+bool LLMBridge::detectModel() {
+  if (endpoint_.empty() || model_ != kDefaultModel) return false;
+  // Same base-URL split as post(): the endpoint may carry a /v1 suffix.
+  std::string baseUrl = endpoint_;
+  if (baseUrl.size() >= 3 && baseUrl.substr(baseUrl.size() - 3) == "/v1") {
+    baseUrl = baseUrl.substr(0, baseUrl.size() - 3);
+  }
+  httplib::Client cli(baseUrl.c_str());
+  cli.set_connection_timeout(timeoutMs_ / 1000, timeoutMs_ % 1000);
+  cli.set_read_timeout(timeoutMs_ / 1000, timeoutMs_ % 1000);
+  auto res = cli.Get("/v1/models");
+  if (!res || res->status != 200) return false;
+  JsonValue parsed;
+  if (!jsonParse(res->body, parsed)) return false;
+  const JsonValue* data = parsed.find("data");
+  if (!data || data->type() != JsonValue::Type::Array || data->asArray().empty()) {
+    return false;
+  }
+  const std::string id = data->asArray()[0].str("id");
+  if (id.empty()) return false;
+  model_ = id;
+  return true;
+}
+
 bool LLMBridge::chatComplete(const JsonValue& messages, int maxTokens, JsonValue& out,
                              CallStats* stats, double temperature) {
   ++calls_;

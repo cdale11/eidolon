@@ -168,6 +168,9 @@ std::string fallbackReply(const CognitiveSnapshot& s, const std::string& userTex
 
 class LLMBridge {
 public:
+  // Name used when no explicit model was configured. detectModel() replaces
+  // exactly this value with the endpoint's reported serving name.
+  static constexpr const char* kDefaultModel = "eidolon-llm";
   // `endpoint` like "http://127.0.0.1:8080/v1". Empty endpoint disables calls (offline).
   explicit LLMBridge(std::string endpoint, int timeoutMs = 10000)
       : endpoint_(std::move(endpoint)), timeoutMs_(timeoutMs) {}
@@ -178,6 +181,12 @@ public:
   // sets it from --llm-model; the default is intentionally neutral.
   void setModel(const std::string& m) { model_ = m; }
   const std::string& model() const { return model_; }
+  // Ask the endpoint which model it actually serves (GET /v1/models) and adopt
+  // its name for requests + UI labels — but only while no explicit model was
+  // configured (explicit --llm-model always wins, for routing). Returns true
+  // when the serving name was adopted; failure keeps the configured name, so
+  // it is safe to retry (e.g. the endpoint came up after the server).
+  bool detectModel();
 
   // Whether calls will actually hit the network.
   bool enabled() const { return !endpoint_.empty(); }
@@ -216,7 +225,7 @@ public:
 
   std::string endpoint_;
   int timeoutMs_;
-  std::string model_ = "eidolon-llm";
+  std::string model_ = kDefaultModel;
   int64_t calls_ = 0;
   int64_t failures_ = 0;
   double lastRespondMs_ = -1.0;

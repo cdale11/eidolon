@@ -190,6 +190,66 @@ def test_send_reports_fallback_provenance(work):
         proc.wait()
 
 
+def test_send_reports_serving_model_name(work):
+    """The reply label shows the actual serving model (from /v1/models), not
+    the unmatched default — without any explicit --llm-model flag."""
+    class ModelHandler(http_server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path == "/v1/models":
+                raw = json.dumps({"object": "list",
+                                  "data": [{"id": "qwen3-4b-test",
+                                            "object": "model"}]}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", 0))
+            req = json.loads(self.rfile.read(length) or b"{}")
+            if not is_respond_call(req):
+                body = {"choices": [{"message": {"content":
+                    "{\"intent\":\"greet\",\"topic\":\"\",\"tone\":\"warm\","
+                    "\"references_memory\":false}"}}]}
+            else:
+                body = {"choices": [{"message": {"content": "Hello there."}}],
+                        "usage": {"prompt_tokens": 100, "completion_tokens": 20,
+                                  "total_tokens": 120}}
+            raw = json.dumps(body).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+        def log_message(self, *a):
+            pass
+
+    class Srv(socketserver.ThreadingMixIn, http_server.HTTPServer):
+        daemon_threads = True
+
+    srv = Srv(("127.0.0.1", 0), ModelHandler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        base = f"http://127.0.0.1:{srv.server_address[1]}/v1"
+        port = PORT_BASE + 17
+        proc = start_server(work, port, extra=["--llm", base, "--llm-timeout", "5000"])
+        try:
+            r = http(port, "/api/send", {"message": "hi"})
+            assert r["reply"].strip()
+            assert r["source"] == "llm", r
+            assert r["model"] == "qwen3-4b-test", r
+        finally:
+            proc.kill()
+            proc.wait()
+    finally:
+        srv.shutdown()
+
+
 def test_send_reports_llm_provenance(work):
     """With a working LLM, /api/send reports model, latency and throughput."""
     class RHandler(http_server.BaseHTTPRequestHandler):

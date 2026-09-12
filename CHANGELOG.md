@@ -34,6 +34,9 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   tokens/sec below the bubble. The `/api/send` response carries machine-readable
   `source`, `reason`, `model`, `latency_ms`, `completion_tokens` and
   `toks_per_sec` fields.
+- The model label shows the actual serving model: the server adopts the
+  endpoint's reported `/v1/models` name unless `--llm-model` was set
+  explicitly (which still wins, for routing).
 
 ### Topical offline replies (Q3)
 - The offline voice now answers the question asked: greetings, health, location,

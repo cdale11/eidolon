@@ -837,6 +837,13 @@ Server::Server(Options opts) : opts_(std::move(opts)) {
   }
   llm_ = std::make_unique<LLMBridge>(opts_.llmEndpoint, opts_.llmTimeoutMs);
   llm_->setModel(opts_.llmModel);
+  if (llm_->enabled()) {
+    // Show the actual serving model in reply labels, not the matched default:
+    // adopt the endpoint's reported name unless --llm-model was explicit.
+    if (llm_->detectModel()) {
+      std::fprintf(stderr, "LLM serving model: %s\n", llm_->model().c_str());
+    }
+  }
   // Internet access (Future Directions): configurable, user-gated browsing
   if (opts_.internetEnabled) {
     BrowserConfig bcfg;
@@ -1262,6 +1269,9 @@ std::string Server::sendMessage(const std::string& conversationIdStr,
   double latencyMs = -1.0;
   int64_t completionTokens = -1;
   if (llm_ && llm_->enabled()) {
+    // Late endpoint startup: adopt the serving name on first contact if the
+    // model is still the unmatched default (no-op once adopted or explicit).
+    llm_->detectModel();
     ParsedMessage parsed;
     std::string raw;
     if (llm_->parse(trimmed, snap, parsed, raw)) {
