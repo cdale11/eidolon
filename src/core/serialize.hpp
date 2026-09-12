@@ -41,7 +41,9 @@ constexpr uint32_t kSnapshotMagic = 0x4549444C; // "EIDL"
 //      accept/refuse verdict plus the user-facing reason for chat grounding).
 // v19: attributed predecessor stats — Engine::predecessor_ (parent id,
 //      generation, lifespan, cause of death) so successors cite accurately.
-constexpr uint32_t kSnapshotVersion = 19;
+// v20: revisable inherited lore — BeliefIsingModel place anchors
+//      (kind/x/y per spin) for contradiction by lived experience.
+constexpr uint32_t kSnapshotVersion = 20;
 
 struct BinaryWriter {
 public:

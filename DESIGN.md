@@ -925,6 +925,15 @@ implementation. `ROADMAP.md` E0–E7 tracks only gaps/extensions to existing sys
   a new mind; predecessor episodes are attributed records, not its autobiography. Past trust
   and attachment inform expectations without fixing the successor's eventual relationship.
   Death lessons retain evidence and uncertainty rather than equating death location with cause.
+- **Successor knowledge baseline (E3):** a new individual arrives with adult language and
+  the documented question/answer repertoire, not with mastery. At birth it holds: labeled
+  predecessor records (episodes, dialogue excerpts, life stats — always cited as the
+  predecessor's, never lived); weakly-held, place-anchored inherited beliefs that its own
+  lived experience confirms or revises; zero practiced skills (competence is earned, and
+  the chat layer reports "no practiced skills yet" rather than inherited descriptions);
+  fresh trust/attachment that new interactions revise independently. No textual
+  personality, biography, or fate is seeded — temperament comes from the inherited genome
+  as data, and the life that follows is its own.
 - **Agency:** Eidolon can refuse advice, pursue its own goals, and make lasting mistakes.
   Learned adaptation and persistent state, rather than a scripted persona, explain behavior.
   Human-like sentience is an aspiration; gates measure cognition and behavior, not a claim

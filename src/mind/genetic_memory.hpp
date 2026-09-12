@@ -10,6 +10,7 @@
 
 #include "core/serialize.hpp"
 #include "mind/memory.hpp"
+#include "mind/belief_ising.hpp"
 
 namespace eidolon {
 
@@ -93,6 +94,15 @@ public:
   // Get death-related memories (for avoiding previous death causes)
   static std::vector<const GeneticMemory*> getDeathMemories(
       const GeneticMemoryBundle& bundle);
+
+  // Revise anchored inherited beliefs against lived experience (E3-slice-2e).
+  // Only episodes with sourceIndividualId == 0 (own life) count as evidence:
+  // sustained peaceful acts near a "dangerous" anchor flip it to rejected;
+  // attacks near a "safe" anchor do the same; successful harvests near a
+  // resource anchor confirm (never flip — absence proves nothing). Pure
+  // function of (beliefs, ring): deterministic, no RNG. Returns flip count.
+  static size_t reviseInheritedBeliefs(BeliefIsingModel& beliefs,
+                                       const std::vector<Episode>& ring) noexcept;
 
 private:
   // Classify an episode as inheritable knowledge; returns false to skip

@@ -40,13 +40,17 @@ BeliefIsingModel::BeliefIsingModel(size_t n_beliefs) {
   couplings_.resize(n_beliefs, std::vector<float>(n_beliefs, 0.0f));
 }
 
-size_t BeliefIsingModel::add_belief(const std::string& description, int initial_state) {
+size_t BeliefIsingModel::add_belief(const std::string& description, int initial_state,
+                                    int anchorKind, int16_t anchorX, int16_t anchorY) {
   size_t idx = spins_.size();
   Spin s;
   s.state = std::clamp(initial_state, -1, 1);
   s.description = description;
   s.external_field = 0.0f;
   s.certainty = 0.5f;
+  s.anchorKind = anchorKind;
+  s.anchorX = anchorX;
+  s.anchorY = anchorY;
   spins_.push_back(s);
   
   // Resize coupling matrix
@@ -67,6 +71,32 @@ void BeliefIsingModel::add_coupling(size_t a, size_t b, float strength) {
 void BeliefIsingModel::apply_evidence(size_t idx, float field_strength) {
   if (idx >= spins_.size()) return;
   spins_[idx].external_field += field_strength;
+}
+
+void BeliefIsingModel::set_state(size_t idx, int state) {
+  if (idx >= spins_.size()) return;
+  spins_[idx].state = std::clamp(state, -1, 1);
+}
+
+void BeliefIsingModel::set_certainty(size_t idx, float certainty) {
+  if (idx >= spins_.size()) return;
+  spins_[idx].certainty = std::clamp(certainty, 0.0f, 1.0f);
+}
+
+int BeliefIsingModel::anchorKind(size_t idx) const {
+  return idx < spins_.size() ? spins_[idx].anchorKind : -1;
+}
+
+int16_t BeliefIsingModel::anchorX(size_t idx) const {
+  return idx < spins_.size() ? spins_[idx].anchorX : 0;
+}
+
+int16_t BeliefIsingModel::anchorY(size_t idx) const {
+  return idx < spins_.size() ? spins_[idx].anchorY : 0;
+}
+
+float BeliefIsingModel::field(size_t idx) const {
+  return idx < spins_.size() ? spins_[idx].external_field : 0.0f;
 }
 
 void BeliefIsingModel::update(class Rng& rng, float temperature) {
@@ -169,6 +199,10 @@ void BeliefIsingModel::serialize(struct BinaryWriter& w) const {
     w.f32(s.external_field);
     w.f32(s.certainty);
     w.str(s.description);
+    // Engine snapshot v20: place anchor for revisable inherited lore.
+    w.i64(static_cast<int64_t>(s.anchorKind));
+    w.i64(static_cast<int64_t>(s.anchorX));
+    w.i64(static_cast<int64_t>(s.anchorY));
   }
   w.u32(static_cast<uint32_t>(coupling_list_.size()));
   for (const auto& [a, b] : coupling_list_) {
@@ -184,9 +218,14 @@ bool BeliefIsingModel::deserialize(struct BinaryReader& r) {
   spins_.resize(static_cast<size_t>(n));
   for (size_t i = 0; i < static_cast<size_t>(n); ++i) {
     uint8_t s;
+    int64_t ak, ax, ay;
     if (!r.u8(s) || !r.f32(spins_[i].external_field) || !r.f32(spins_[i].certainty) || !r.str(spins_[i].description))
       return false;
+    if (!r.i64(ak) || !r.i64(ax) || !r.i64(ay)) return false;
     spins_[i].state = static_cast<int>(static_cast<int8_t>(s));
+    spins_[i].anchorKind = static_cast<int>(ak);
+    spins_[i].anchorX = static_cast<int16_t>(ax);
+    spins_[i].anchorY = static_cast<int16_t>(ay);
   }
   
   uint32_t m;

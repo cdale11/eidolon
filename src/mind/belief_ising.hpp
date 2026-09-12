@@ -39,14 +39,27 @@ public:
   BeliefIsingModel() = default;
   explicit BeliefIsingModel(size_t n_beliefs);
   
-  // Add a new belief
-  size_t add_belief(const std::string& description, int initial_state = 0);
+  // Add a new belief. anchorKind/anchorX/anchorY optionally tie the claim to a
+  // place (E3-slice-2e: inherited place lore is revisable by lived evidence;
+  // -1 = unanchored). Serialized (engine snapshot v20).
+  size_t add_belief(const std::string& description, int initial_state = 0,
+                    int anchorKind = -1, int16_t anchorX = 0, int16_t anchorY = 0);
   
   // Add coupling between two beliefs
   void add_coupling(size_t a, size_t b, float strength);
   
   // Apply external evidence (field) to a belief
   void apply_evidence(size_t idx, float field_strength);
+
+  // Deterministic setters for the revision loop (bounds-checked no-ops).
+  void set_state(size_t idx, int state);
+  void set_certainty(size_t idx, float certainty);
+
+  // Anchor + field readers for the revision loop.
+  int anchorKind(size_t idx) const;
+  int16_t anchorX(size_t idx) const;
+  int16_t anchorY(size_t idx) const;
+  float field(size_t idx) const;
   
   // Update belief states using Glauber dynamics (deterministic with seeded noise)
   void update(class Rng& rng, float temperature = 1.0f);
@@ -77,12 +90,17 @@ public:
   void serialize(struct BinaryWriter& w) const;
   bool deserialize(struct BinaryReader& r);
   
-private:
+ private:
   struct Spin {
     int state = 0;
     float external_field = 0.0f;
     float certainty = 0.0f;
     std::string description;
+    // E3-slice-2e: optional place anchor (GeneticMemoryType as int, -1 = none)
+    // so lived experience near the anchor can confirm or revise the claim.
+    int anchorKind = -1;
+    int16_t anchorX = 0;
+    int16_t anchorY = 0;
   };
   
   std::vector<Spin> spins_;

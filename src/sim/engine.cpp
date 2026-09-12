@@ -1813,6 +1813,9 @@ void Engine::stepSlowMind(const float* featsBefore, const float* featsAfter, Pol
   //    perturb core cognition/exploration draws.
   attachment_.update(now);
   beliefs_.update(rngCrafting_, 1.0f);
+  // E3-slice-2e: revise anchored inherited lore against lived experience on the
+  // same slow cadence — deterministic (no RNG), bounded (spins x ring scan).
+  GeneticMemorySystem::reviseInheritedBeliefs(beliefs_, memorySys_.ring().episodes());
 }
 
 void Engine::evaluateGoals() noexcept {

@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdio>
 
+#include "mind/belief_ising.hpp"
 #include "sim/engine.hpp"
 
 namespace eidolon {
@@ -64,6 +65,8 @@ namespace {
 // Retention threshold: inherited memories below importance*weight are dropped.
 constexpr float kRetainThreshold = 0.35f;
 constexpr size_t kMaxInjected = 32;
+// Inherited belief spins stay bounded no matter the bundle size.
+constexpr size_t kMaxBeliefs = 24;
 
 EventKind kindForType(GeneticMemoryType t) {
   switch (t) {
@@ -306,13 +309,40 @@ size_t GeneticMemorySystem::applyToOrganism(
     e.sourceIndividualId = parentId;
     engine.memorySys().ring().add(e);
     ++n;
+    // E3-slice-2e: plant place-anchored inherited lore as weakly-held belief
+    // spins. Only evidence-shaped place claims qualify: Threat/Resource/Safe
+    // locations. DeathCause lessons stay episodes-only (cause-specific prose
+    // cannot anchor a place claim — slice-1 evidence rule), and Skill memories
+    // never become competence (descriptions are not practiced skills).
+    if (engine.beliefs().size() < kMaxBeliefs &&
+        (m.type == GeneticMemoryType::ThreatLocation ||
+         m.type == GeneticMemoryType::ResourceLocation ||
+         m.type == GeneticMemoryType::SafeLocation)) {
+      char desc[160];
+      if (m.type == GeneticMemoryType::ThreatLocation) {
+        std::snprintf(desc, sizeof(desc),
+                      "Predecessor met predators near (%d,%d) — that area may be dangerous",
+                      static_cast<int>(m.x), static_cast<int>(m.y));
+      } else if (m.type == GeneticMemoryType::ResourceLocation) {
+        std::snprintf(desc, sizeof(desc),
+                      "Predecessor found food or water near (%d,%d)",
+                      static_cast<int>(m.x), static_cast<int>(m.y));
+      } else {
+        std::snprintf(desc, sizeof(desc), "Predecessor rested safely near (%d,%d)",
+                      static_cast<int>(m.x), static_cast<int>(m.y));
+      }
+      const size_t bi = engine.beliefs().add_belief(
+          desc, +1, static_cast<int>(m.type), m.x, m.y);
+      engine.beliefs().apply_evidence(bi, 0.8f); // inherited: held, weakly
+      engine.beliefs().set_certainty(bi, 0.4f);
+    }
   }
   return n;
 }
 
 std::vector<const GeneticMemory*> GeneticMemorySystem::getDeathMemories(
     const GeneticMemoryBundle& bundle) {
-  
+
   std::vector<const GeneticMemory*> results;
   for (const auto& mem : bundle.memories) {
     if (mem.type == GeneticMemoryType::DeathCause) {
@@ -320,6 +350,77 @@ std::vector<const GeneticMemory*> GeneticMemorySystem::getDeathMemories(
     }
   }
   return results;
+}
+
+namespace {
+// Deliberate lived acts (not weather drift-bys): presence-with-purpose near an
+// anchor counts as evidence about that place.
+bool isPeacefulAct(EventKind k) noexcept {
+  switch (k) {
+    case EventKind::Forage:
+    case EventKind::Drink:
+    case EventKind::Sleep:
+    case EventKind::Wake:
+    case EventKind::Recovery:
+    case EventKind::Tamed:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool isHarm(EventKind k) noexcept {
+  return k == EventKind::Attack || k == EventKind::NearDeath;
+}
+
+int chebDist(int16_t x1, int16_t y1, int16_t x2, int16_t y2) noexcept {
+  const int dx = x1 >= x2 ? x1 - x2 : x2 - x1;
+  const int dy = y1 >= y2 ? y1 - y2 : y2 - y1;
+  return dx >= dy ? dx : dy;
+}
+} // namespace
+
+size_t GeneticMemorySystem::reviseInheritedBeliefs(
+    BeliefIsingModel& beliefs, const std::vector<Episode>& ring) noexcept {
+  size_t revised = 0;
+  for (size_t i = 0; i < beliefs.size(); ++i) {
+    const int anchor = beliefs.anchorKind(i);
+    if (anchor < 0 || beliefs.get_state(i) != 1) continue;
+    const int16_t ax = beliefs.anchorX(i);
+    const int16_t ay = beliefs.anchorY(i);
+    float delta = 0.0f;
+    for (const Episode& e : ring) {
+      if (e.sourceIndividualId != 0) continue; // only my own life revises
+      const int d = chebDist(e.x, e.y, ax, ay);
+      if (anchor == static_cast<int>(GeneticMemoryType::ThreatLocation)) {
+        if (d <= 3 && isPeacefulAct(e.kind)) {
+          delta -= 0.25f; // lived safely where danger was claimed
+        } else if (d <= 5 && isHarm(e.kind)) {
+          delta += 0.3f; // the warning checks out
+        }
+      } else if (anchor == static_cast<int>(GeneticMemoryType::SafeLocation)) {
+        if (d <= 3 && isHarm(e.kind)) {
+          delta -= 0.5f; // hurt where safety was claimed
+        }
+      } else if (anchor == static_cast<int>(GeneticMemoryType::ResourceLocation)) {
+        if (d <= 3 && (e.kind == EventKind::Forage || e.kind == EventKind::Drink) &&
+            e.detail > 0) {
+          delta += 0.2f; // harvests confirm, never flip (absence proves nothing)
+        }
+      }
+    }
+    if (delta != 0.0f) beliefs.apply_evidence(i, delta);
+    // Deterministic resolve: sustained counter-evidence flips the claim;
+    // sustained confirmation deepens certainty. No RNG — explainable.
+    if (delta < 0.0f && beliefs.field(i) <= -0.5f) {
+      beliefs.set_state(i, -1);
+      beliefs.set_certainty(i, 0.6f);
+      ++revised;
+    } else if (delta > 0.0f && beliefs.field(i) >= 1.5f) {
+      beliefs.set_certainty(i, beliefs.get_certainty(i) + 0.1f);
+    }
+  }
+  return revised;
 }
 
 } // namespace eidolon

@@ -768,7 +768,7 @@ Dependency: E2 identities; extend `heredity`, `genetic_memory`, `memory_system`,
       `extractGenome` metadata — real generation/parent id and `lifespan=death-birth`
       via new `Engine::birthTick_`; snapshot v17 persists attribution. New
       `tests/test_heredity.cpp`, 5 tests.)
-- [ ] Expose predecessor stats and relationship/conversation histories through attributed
+- [x] Expose predecessor stats and relationship/conversation histories through attributed
       retrieval; let new interactions revise inherited expectations independently of the
       predecessor's trust/attachment. Provide a documented adult-language/knowledge baseline
       without claiming practical mastery or seeding a textual personality.
@@ -788,19 +788,23 @@ Dependency: E2 identities; extend `heredity`, `genetic_memory`, `memory_system`,
       from the loaded genome as attributed history (snapshot v19, cleared on
       fresh-individual init so resets never leak lineage); both reply paths
       cite it (`predecessor` prompt field + `QuestionPredecessor` offline
-      template that admits first-of-lineage); status API exposes it. Belief
-      revision and the knowledge baseline remain open.)
+      template that admits first-of-lineage); status API exposes it. Slice 2e
+      done: inherited place-lore plants weakly-held anchored belief spins
+      (snapshot v20) that lived counter-evidence revises deterministically on
+      the slow cadence; skill descriptions never become competence. Knowledge
+      baseline documented in DESIGN.md ("Successor knowledge baseline").)
 - [x] Replace simplistic death-location lessons with evidence-based causal hypotheses;
       support belief contradiction/revision and distinguish descriptions from practiced skills.
       (Done, slice 1: `makeDeathMemory` is cause-specific — location counts as evidence
       only for predator attacks; starvation/dehydration/etc. explicitly rule the place
-      out. Belief revision and the knowledge baseline remain open.)
+      out. Done, slice 2e: anchored inherited beliefs revised by lived evidence.)
       **Gate:** successor cites its predecessor accurately, revises inherited bad advice,
       retains useful knowledge across restart, and does not learn "all rivers are lethal"
       merely from a death near water. Working retrieval/model state stays bounded.
-      (Gate status: attribution + retention + no-location-blame verified by unit tests and
-      deterministic multi-generation CLI runs with heredity; chat citations and SQLite
-      timeline exposure are the open slice 2.)
+      (Gate status: all verified — attribution + retention + no-location-blame by unit
+      tests and deterministic multi-generation CLI runs with heredity; chat citations
+      by stub-LLM payload tests; timeline exposure by archive tests; belief revision
+      by plant/confirm/flip unit tests with bounded spin counts.)
 
 #### E4 — Deepen biological mechanisms, incrementally
 Dependency: E0 baseline; E2 needed for across-generation ecosystem gates.

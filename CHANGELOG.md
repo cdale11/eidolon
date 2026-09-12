@@ -80,6 +80,16 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   first-of-lineage honestly, and `/api/status` exposes it. Fresh individuals
   start with no predecessor; resets never leak old lineage data.
 
+### Revisable inherited beliefs + knowledge baseline (E3 slice 2e, E3 complete)
+- Inherited place-lore now plants weakly-held, anchored belief spins that the
+  successor's own lived experience confirms or revises deterministically
+  (snapshot v20, slow-cadence review, bounded spin count). Bad inherited
+  advice gets overturned by sustained counter-evidence; skill descriptions
+  never masquerade as practiced competence.
+- The successor knowledge baseline is documented in DESIGN.md: adult language,
+  labeled records, revisable beliefs, zero practiced skills, fresh
+  relationships — a life of its own, not a textual persona.
+
 ### Voice consistency and reply-quality harness (Q4)
 - Personality now reaches the language model as trait words ("cautious,
   curious") derived from latent thresholds instead of raw floats, and drives

@@ -206,3 +206,113 @@ TEST(successor_retains_attributed_predecessor_stats) {
   CHECK_EQ(restored.predecessor().causeOfDeath, std::string("predator_attack"));
   std::remove(path);
 }
+
+namespace {
+// One inheritable place-lore memory for revision tests.
+GeneticMemory threatLore(int16_t x, int16_t y) {
+  GeneticMemory m;
+  m.type = GeneticMemoryType::ThreatLocation;
+  m.importance = 1.0f;
+  m.x = x;
+  m.y = y;
+  m.lesson = "predators near here";
+  return m;
+}
+
+void addLived(Engine& e, EventKind kind, int16_t x, int16_t y, uint8_t detail = 0) {
+  Episode ep;
+  ep.t = 1000;
+  ep.x = x;
+  ep.y = y;
+  ep.kind = kind;
+  ep.detail = detail;
+  ep.sourceIndividualId = 0; // lived, not inherited
+  e.memorySys().ring().add(ep);
+}
+} // namespace
+
+TEST(inherited_threat_lore_plants_anchored_belief) {
+  // E3-slice-2e: ThreatLocation inheritance plants a weakly-held, anchored
+  // belief spin — descriptions, never competence.
+  Engine e;
+  e.init(42, true, 64, 64);
+  CHECK_EQ(e.beliefs().size(), 0u);
+  const std::vector<GeneticMemory> mems = {threatLore(10, 10)};
+  CHECK_EQ(GeneticMemorySystem::applyToOrganism(e, mems, 4242, 1.0f), 1u);
+  CHECK_EQ(e.beliefs().size(), 1u);
+  CHECK_EQ(e.beliefs().get_state(0), 1);
+  CHECK_EQ(e.beliefs().anchorKind(0), static_cast<int>(GeneticMemoryType::ThreatLocation));
+  CHECK_EQ(e.beliefs().anchorX(0), 10);
+  CHECK_EQ(e.beliefs().anchorY(0), 10);
+  CHECK(e.beliefs().get_description(0).find("(10,10)") != std::string::npos);
+  // Anchors survive the snapshot (v20).
+  std::string err;
+  Engine restored;
+  CHECK(restored.restore(e.snapshot(), err));
+  CHECK_EQ(restored.beliefs().size(), 1u);
+  CHECK_EQ(restored.beliefs().anchorKind(0),
+           static_cast<int>(GeneticMemoryType::ThreatLocation));
+}
+
+TEST(lived_safety_revises_inherited_threat_belief) {
+  // E3-slice-2e: sustained peaceful acts where danger was claimed flip the
+  // belief to rejected; the flip count is reported.
+  Engine e;
+  e.init(42, true, 64, 64);
+  const std::vector<GeneticMemory> mems = {threatLore(10, 10)};
+  CHECK_EQ(GeneticMemorySystem::applyToOrganism(e, mems, 4242, 1.0f), 1u);
+  for (int i = 0; i < 8; ++i) addLived(e, EventKind::Forage, 11, 12);
+  const size_t revised = GeneticMemorySystem::reviseInheritedBeliefs(
+      e.beliefs(), e.memorySys().ring().episodes());
+  CHECK_EQ(revised, 1u);
+  CHECK_EQ(e.beliefs().get_state(0), -1);
+}
+
+TEST(lived_harm_confirms_inherited_threat_belief) {
+  // Counter-case: attacks near the anchor confirm the warning — no flip.
+  Engine e;
+  e.init(42, true, 64, 64);
+  const std::vector<GeneticMemory> mems = {threatLore(10, 10)};
+  CHECK_EQ(GeneticMemorySystem::applyToOrganism(e, mems, 4242, 1.0f), 1u);
+  for (int i = 0; i < 3; ++i) addLived(e, EventKind::Attack, 10, 11);
+  const size_t revised = GeneticMemorySystem::reviseInheritedBeliefs(
+      e.beliefs(), e.memorySys().ring().episodes());
+  CHECK_EQ(revised, 0u);
+  CHECK_EQ(e.beliefs().get_state(0), 1);
+}
+
+TEST(inherited_records_never_revise_beliefs) {
+  // Only lived experience (sourceIndividualId == 0) counts as evidence.
+  Engine e;
+  e.init(42, true, 64, 64);
+  const std::vector<GeneticMemory> mems = {threatLore(10, 10)};
+  CHECK_EQ(GeneticMemorySystem::applyToOrganism(e, mems, 4242, 1.0f), 1u);
+  for (int i = 0; i < 8; ++i) {
+    Episode ep;
+    ep.t = 1000;
+    ep.x = 11;
+    ep.y = 12;
+    ep.kind = EventKind::Forage;
+    ep.sourceIndividualId = 4242; // predecessor's record, not my life
+    e.memorySys().ring().add(ep);
+  }
+  CHECK_EQ(GeneticMemorySystem::reviseInheritedBeliefs(
+               e.beliefs(), e.memorySys().ring().episodes()),
+           0u);
+  CHECK_EQ(e.beliefs().get_state(0), 1);
+}
+
+TEST(inherited_skill_memories_never_become_competence) {
+  // Descriptions are not practiced skills: the skill store stays untouched.
+  Engine e;
+  e.init(42, true, 64, 64);
+  GeneticMemory m;
+  m.type = GeneticMemoryType::Skill;
+  m.importance = 1.0f;
+  m.lesson = "forage near water";
+  const std::vector<GeneticMemory> mems = {m};
+  CHECK_EQ(GeneticMemorySystem::applyToOrganism(e, mems, 4242, 1.0f), 1u);
+  const SkillCompetence& c = e.skills().skill(SkillType::Foraging);
+  CHECK_EQ(c.alpha + c.beta - 2, 0u); // zero trials: never attempted
+  CHECK(e.beliefs().size() == 0u);    // skill lore plants no belief either
+}
