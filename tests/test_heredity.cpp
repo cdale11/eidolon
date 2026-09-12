@@ -172,3 +172,37 @@ TEST(heredity_attribution_survives_snapshot) {
   }
   CHECK(attributed);
 }
+
+TEST(successor_retains_attributed_predecessor_stats) {
+  // E3-slice-2d: death → genome file → true succession. The successor carries
+  // the previous life's stats as attributed history (never autobiography),
+  // and they survive a snapshot roundtrip (v19).
+  char path[128];
+  std::snprintf(path, sizeof(path), "/tmp/eidolon_pred_%d.hrd",
+                static_cast<int>(::getpid()));
+  std::remove(path);
+
+  Engine e;
+  e.init(42, true, 64, 64);
+  e.setHeredityPath(path);
+  const uint64_t parentId = e.individualId();
+  killForHeredityTest(e);
+  CHECK(e.predecessor().hasPredecessor == false); // corpse has no successor data
+  CHECK(e.respawnSuccessor());
+  CHECK(e.isAlive());
+  CHECK(e.predecessor().hasPredecessor);
+  CHECK_EQ(e.predecessor().parentId, parentId);
+  CHECK_EQ(e.predecessor().causeOfDeath, std::string("predator_attack"));
+  CHECK(e.predecessor().lifespanTicks > 0u);
+  // The successor's own stats/identity are fresh, not copied.
+  CHECK(e.individualId() != parentId);
+  CHECK_EQ(e.generation(), 1u);
+
+  std::string err;
+  Engine restored;
+  CHECK(restored.restore(e.snapshot(), err));
+  CHECK(restored.predecessor().hasPredecessor);
+  CHECK_EQ(restored.predecessor().parentId, parentId);
+  CHECK_EQ(restored.predecessor().causeOfDeath, std::string("predator_attack"));
+  std::remove(path);
+}

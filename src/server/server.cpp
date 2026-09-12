@@ -1068,7 +1068,9 @@ std::string Server::statusJson() {
                 "\"sleepP\":%.1f,\"health\":%.1f,\"bodyTemp\":%.1f,\"weather\":\"%s\","
                  "\"tempC\":%.1f,\"simTime\":%lld,"
                  "\"preyNear\":%d,\"predatorsNear\":%d,\"predatorDist\":%d,"
-                 "\"rebirths\":%u,\"individual_id\":%lld,\"world_id\":%lld}",
+                 "\"rebirths\":%u,\"individual_id\":%lld,\"world_id\":%lld,"
+                 "\"predecessor_gen\":%d,\"predecessor_lifespan_days\":%.2f,"
+                 "\"predecessor_cause\":\"%s\"}",
                 static_cast<long long>(engine_.clock().day()),
                 hour,
                 b.isSleeping() ? "false" : "true",
@@ -1089,7 +1091,15 @@ std::string Server::statusJson() {
                  }(),
                  engine_.rebirthCount(),
                  static_cast<long long>(engine_.individualId()),
-                 static_cast<long long>(engine_.worldId()));
+                 static_cast<long long>(engine_.worldId()),
+                 engine_.predecessor().hasPredecessor ? engine_.predecessor().generation : -1,
+                 engine_.predecessor().hasPredecessor
+                     ? static_cast<double>(engine_.predecessor().lifespanTicks) / 86400.0
+                     : -1.0,
+                 jsonEscape(engine_.predecessor().hasPredecessor
+                                ? engine_.predecessor().causeOfDeath
+                                : "")
+                     .c_str());
   return buf;
 }
 

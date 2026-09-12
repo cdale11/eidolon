@@ -552,3 +552,41 @@ TEST(predecessor_history_labels_owner_and_stays_bounded) {
   CHECK(capped.size() <= 800 + 96);
   CHECK(capped.find("turn39") != std::string::npos); // newest kept
 }
+
+TEST(predecessor_summary_sentence_and_empty_lineage) {
+  // E3-slice-2d: attributed stats format as one citable sentence; gen 0 stays silent.
+  Engine::PredecessorSummary none;
+  CHECK_EQ(formatPredecessorSummary(none), std::string(""));
+  Engine::PredecessorSummary pred;
+  pred.hasPredecessor = true;
+  pred.generation = 2;
+  pred.lifespanTicks = 3 * 86400 + 43200; // 3.5 days
+  pred.causeOfDeath = "predator_attack";
+  const std::string s = formatPredecessorSummary(pred);
+  CHECK(s.find("generation 2") != std::string::npos);
+  CHECK(s.find("3.5 days") != std::string::npos);
+  CHECK(s.find("predator_attack") != std::string::npos);
+  CHECK(s.find("my life is my own") != std::string::npos);
+}
+
+TEST(fallback_answers_predecessor_questions_from_summary) {
+  // E3-slice-2d: "tell me about my predecessor" cites the attributed summary;
+  // a first-of-lineage organism says so instead of inventing a past life.
+  Engine engine;
+  engine.init(12345, true, 64, 64);
+  CognitiveSnapshot s = makeSnapshot(engine);
+  CHECK(!s.hasPredecessor);
+  CHECK_EQ(fallbackReply(s, "tell me about my predecessor"),
+           std::string("I have no predecessor — I am the first of my lineage."));
+
+  Engine::PredecessorSummary pred;
+  pred.hasPredecessor = true;
+  pred.generation = 1;
+  pred.lifespanTicks = 86400;
+  pred.causeOfDeath = "starvation";
+  s.predecessorSummary = formatPredecessorSummary(pred);
+  s.hasPredecessor = true;
+  const std::string r = fallbackReply(s, "how did my predecessor die?");
+  CHECK(r.find("starvation") != std::string::npos);
+  CHECK(r.find("predecessor") != std::string::npos);
+}

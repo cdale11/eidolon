@@ -40,6 +40,9 @@ const std::vector<std::pair<UserIntentType, std::vector<std::string>>> IntentPar
                                            "relationship", "like me", "do you like"}},
   {UserIntentType::QuestionHelp, {"help", "what can you do", "commands", "what should i ask",
                                   "how do i talk to you"}},
+  {UserIntentType::QuestionPredecessor, {"predecessor", "previous life", "past life",
+                                         "before me", "previous me", "how did you die",
+                                         "what happened to my predecessor"}},
 };
 
 ParsedInstruction IntentParser::parse(const std::string& text) const {

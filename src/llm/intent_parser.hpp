@@ -46,6 +46,7 @@ enum class UserIntentType : uint8_t {
   QuestionSkills = 20,        // "skills", "what are you good at"
   QuestionRelationships = 21, // "do you trust me", "how do you feel about me"
   QuestionHelp = 22,          // "help", "what can you do", "commands"
+  QuestionPredecessor = 23,   // "predecessor", "previous life", "how did you die"
 };
 
 // Parsed user instruction with validation metadata

@@ -783,8 +783,13 @@ Dependency: E2 identities; extend `heredity`, `genetic_memory`, `memory_system`,
       predecessor, not my own life"); the respond prompt carries a bounded,
       owner-labeled, world-scoped predecessor-dialogue excerpt for citation
       with a never-claim-as-self prompt rule; status/conversations APIs expose
-      `individual_id`/`world_id`. Predecessor-stat exposure, belief revision
-      and the knowledge baseline remain open.)
+      `individual_id`/`world_id`. Slice 2d done: the successor retains the
+      predecessor's stats (parent id, generation, lifespan, cause of death)
+      from the loaded genome as attributed history (snapshot v19, cleared on
+      fresh-individual init so resets never leak lineage); both reply paths
+      cite it (`predecessor` prompt field + `QuestionPredecessor` offline
+      template that admits first-of-lineage); status API exposes it. Belief
+      revision and the knowledge baseline remain open.)
 - [x] Replace simplistic death-location lessons with evidence-based causal hypotheses;
       support belief contradiction/revision and distinguish descriptions from practiced skills.
       (Done, slice 1: `makeDeathMemory` is cause-specific — location counts as evidence

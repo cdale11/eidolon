@@ -131,6 +131,10 @@ void Engine::initIndividual() {
   lastSlowMindAt_ = 0;
   selfModel_.autobiography.birth_tick = 0;
   birthTick_ = clock_.now(); // E3: birth time of this individual (lifespan accounting)
+  // E3-slice-2d: a new individual starts with no predecessor; loadHeredity
+  // below repopulates when a genome file exists (stale lineage data must never
+  // survive a world reset on a reused Engine).
+  predecessor_ = PredecessorSummary{};
 
   body_.reset();
   body_.setWaterCapacity(Physiology::kInnateWaterskinCapacity);
@@ -388,6 +392,12 @@ bool Engine::loadHeredity() {
   
   HeredityManager::applyHeredity(*this, genome, heredityInheritanceWeight_);
   heredityLoaded_ = true;
+  // E3-slice-2d: retain attributable predecessor stats (never autobiography).
+  predecessor_.hasPredecessor = true;
+  predecessor_.parentId = genome.parentSeed;
+  predecessor_.generation = genome.generation;
+  predecessor_.lifespanTicks = genome.lifespanTicks;
+  predecessor_.causeOfDeath = genome.causeOfDeath;
   return true;
 }
 
@@ -1389,6 +1399,12 @@ void Engine::serializeState(BinaryWriter& w) const {
   w.u8(lastInstruction_.injected ? 1 : 0);
   w.str(lastInstruction_.verdict);
   w.str(lastInstruction_.reason);
+  // v19: attributed predecessor stats (small summary, not the genome file).
+  w.u8(predecessor_.hasPredecessor ? 1 : 0);
+  w.u64(predecessor_.parentId);
+  w.i64(static_cast<int64_t>(predecessor_.generation));
+  w.u64(predecessor_.lifespanTicks);
+  w.str(predecessor_.causeOfDeath);
 }
 
 bool Engine::deserializeState(BinaryReader& r, std::string& err) {
@@ -1505,7 +1521,7 @@ bool Engine::deserializeState(BinaryReader& r, std::string& err) {
   }
   // v18: last user-instruction outcome.
   uint8_t instrIntent, instrActionable, instrInjected;
-  if (!r.u64(lastInstruction_.tick) || !r.u8(instrIntent) || instrIntent > 22 ||
+  if (!r.u64(lastInstruction_.tick) || !r.u8(instrIntent) || instrIntent > 23 ||
       !r.str(lastInstruction_.target) || !r.u8(instrActionable) ||
       instrActionable > 1 || !r.u8(instrInjected) || instrInjected > 1 ||
       !r.str(lastInstruction_.verdict) || !r.str(lastInstruction_.reason)) {
@@ -1515,6 +1531,17 @@ bool Engine::deserializeState(BinaryReader& r, std::string& err) {
   lastInstruction_.intent = static_cast<UserIntentType>(instrIntent);
   lastInstruction_.actionable = instrActionable != 0;
   lastInstruction_.injected = instrInjected != 0;
+  // v19: attributed predecessor stats.
+  uint8_t hasPred;
+  int64_t predGen;
+  if (!r.u8(hasPred) || hasPred > 1 || !r.u64(predecessor_.parentId) ||
+      !r.i64(predGen) || !r.u64(predecessor_.lifespanTicks) ||
+      !r.str(predecessor_.causeOfDeath)) {
+    err = "snapshot predecessor corrupt";
+    return false;
+  }
+  predecessor_.hasPredecessor = hasPred != 0;
+  predecessor_.generation = static_cast<int>(predGen);
   return r.done();
 }
 

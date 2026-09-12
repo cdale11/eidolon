@@ -68,6 +68,16 @@ struct InstructionOutcome {
   std::string verdict;     // "accepted"|"refused"|"no_action"
   std::string reason;      // user-facing sentence (empty when nothing to say)
 };
+// Attributed predecessor stats (E3-slice-2d): retained from the loaded heredity
+// genome so the successor can cite the previous life accurately. Never lived
+// experience — hasPredecessor=false means first of lineage (or no heredity).
+struct PredecessorSummary {
+  uint64_t parentId = 0;
+  int generation = -1;
+  uint64_t lifespanTicks = 0;
+  std::string causeOfDeath;
+  bool hasPredecessor = false;
+};
 struct Stats {
     uint64_t ticksFine = 0;
     uint64_t ticksCoarse = 0;
@@ -280,6 +290,8 @@ bool loadPolicyPrior(const std::string& path);
   // The most recent instruction outcome (v18-persisted). Empty reason = the last
   // message was not a command.
   const InstructionOutcome& lastInstruction() const { return lastInstruction_; }
+  // Attributed predecessor stats (v19-persisted). Empty unless heredity loaded.
+  const PredecessorSummary& predecessor() const { return predecessor_; }
 
   // Wildlife domestication: feed/tame the nearest live prey within `radius` tiles. Feeding
   // reduces its hunger and fear; once fear drops below the taming threshold the prey
@@ -416,6 +428,8 @@ private:
   int64_t birthTick_ = 0;
   // Last routed user message (command autonomy outcome; snapshot v18).
   InstructionOutcome lastInstruction_;
+  // Attributed predecessor stats from the loaded genome (snapshot v19).
+  PredecessorSummary predecessor_;
 
   // Crafting system for tools, structures, food processing
   CraftingSystem crafting_;

@@ -39,7 +39,9 @@ constexpr uint32_t kSnapshotMagic = 0x4549444C; // "EIDL"
 //      plus Engine::birthTick_ for honest lifespan accounting in heredity.
 // v18: command autonomy — Engine::lastInstruction_ (last routed user message:
 //      accept/refuse verdict plus the user-facing reason for chat grounding).
-constexpr uint32_t kSnapshotVersion = 18;
+// v19: attributed predecessor stats — Engine::predecessor_ (parent id,
+//      generation, lifespan, cause of death) so successors cite accurately.
+constexpr uint32_t kSnapshotVersion = 19;
 
 struct BinaryWriter {
 public:

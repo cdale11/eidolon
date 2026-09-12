@@ -313,6 +313,7 @@ def test_offline_questionnaire_gets_topical_answers(work):
             ("what are your skills?", "practiced skills"),
             ("do you trust me?", "trust"),
             ("help", "You can ask me"),
+            ("tell me about my predecessor", "first of my lineage"),
         ]
         for msg, marker in cases:
             r = http(port, "/api/send", {"message": msg})
@@ -421,6 +422,12 @@ def test_conversations_attributed_to_individuals(work):
         assert all(m["individual_id"] == owner1 for m in org_rows), msgs
         c1 = [c for c in http(port, "/api/conversations") if c["id"] == cid1][0]
         assert c1["individual_id"] == owner1, c1
+        st = http(port, "/api/status")
+        assert st["individual_id"] == owner1, st
+        assert st["world_id"] == c1["world_id"], st
+        # no heredity configured here: no predecessor, honest defaults
+        assert st["predecessor_gen"] == -1, st
+        assert st["predecessor_cause"] == "", st
 
         http(port, "/api/world/reset", {})
         r2 = http(port, "/api/send", {"message": "hello again"})

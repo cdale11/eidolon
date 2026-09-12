@@ -290,6 +290,18 @@ std::string formatPredecessorHistory(int64_t ownerIndividualId,
   return std::string(head) + out;
 }
 
+std::string formatPredecessorSummary(const Engine::PredecessorSummary& pred) {
+  if (!pred.hasPredecessor) return "";
+  char buf[192];
+  std::snprintf(buf, sizeof(buf),
+                "My predecessor (generation %d) lived %.1f days and died of %s. "
+                "I carry some of their records, but my life is my own.",
+                pred.generation,
+                static_cast<double>(pred.lifespanTicks) / 86400.0,
+                pred.causeOfDeath.empty() ? "unknown causes" : pred.causeOfDeath.c_str());
+  return buf;
+}
+
 std::string formatDialogueHistory(const std::vector<DialogueTurn>& history) {
   // Token budget: ~1500 chars total (~400 tokens), 400 chars per turn. Newest
   // turns win: iterate newest-first, then restore chronological order, so the
@@ -494,6 +506,9 @@ CognitiveSnapshot makeSnapshot(const Engine& engine) {
   // consistently with the organism's own accept/refuse decision.
   s.lastInstructionIntent = static_cast<int>(engine.lastInstruction().intent);
   s.lastInstructionSummary = engine.lastInstruction().reason;
+  // Attributed predecessor stats for citation ("" + false when gen 0).
+  s.predecessorSummary = formatPredecessorSummary(engine.predecessor());
+  s.hasPredecessor = engine.predecessor().hasPredecessor;
 
   // Skills/competence (Q0: real Beta-mean competence from the SkillStore for
   // practiced skills only — the old hardcoded "forage=0.8 drink=0.6 craft=0.1"
@@ -757,6 +772,13 @@ std::string fallbackReply(const CognitiveSnapshot& s, const std::string& userTex
              "('where are you'), my goals, my skills, what I remember ('what did you "
              "do today'), or how I feel about you. You can also tell me to forage, "
              "drink, rest, explore, build or craft.";
+    case UserIntentType::QuestionPredecessor:
+      // E3-slice-2d: cite the previous life from the attributed summary, or say
+      // plainly there is none — never invent a past life.
+      if (!s.predecessorSummary.empty()) {
+        return s.predecessorSummary;
+      }
+      return "I have no predecessor — I am the first of my lineage.";
     case UserIntentType::Forage: {
       const char* word = s.hunger < 10.0 ? "I am not hungry" : "I am getting hungry";
       std::string plants = s.plantDist >= 0
@@ -1001,6 +1023,9 @@ bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
       "PREDECESSOR DIALOGUE: predecessor_history (when non-empty) is one of my "
       "predecessors' chats, included for citation. Refer to it as my "
       "predecessor's experience — never claim it as my own lived memory.\n"
+      "PREDECESSOR STATS: the predecessor field (when not \"none\") summarizes "
+      "the previous individual's life. Cite it as your predecessor's life — "
+      "never as your own age, death, or experience.\n"
       "COMMAND OBEDIENCE: lastInstruction is the organism's own accept/refuse "
       "decision for the user's latest command (or \"none\"). Stay consistent "
       "with it — never claim to obey a refused order, and never ignore an "
@@ -1051,6 +1076,7 @@ bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
     "recentMemories=[%s] "
     "lifeStats=\"%s\" "
     "lastInstruction=\"%s\" "
+    "predecessor=\"%s\" "
     "circadian=[phase=%s phrase=\"%s\" season=%s] "
     "physiological=[state=%s primaryNeed=%s tone=%s]",
     static_cast<long long>(s.simTime), s.day, s.hour, s.awake ? "yes" : "no",
@@ -1070,6 +1096,7 @@ bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
     s.recentMemorySummary.c_str(),
     s.lifeStatsSummary.c_str(),
     s.lastInstructionSummary.empty() ? "none" : s.lastInstructionSummary.c_str(),
+    s.predecessorSummary.empty() ? "none" : s.predecessorSummary.c_str(),
     s.phaseOfDay.c_str(), s.timeOfDayPhrase.c_str(), s.seasonName.c_str(),
     s.physiologicalState.c_str(), s.primaryNeed.c_str(), s.circadianTone.c_str()
   );

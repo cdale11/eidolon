@@ -102,6 +102,12 @@ struct CognitiveSnapshot {
   int lastInstructionIntent = -1;
   std::string lastInstructionSummary;
 
+  // Attributed predecessor stats (E3-slice-2d): a full sentence when the
+  // successor loaded heredity, "" + false when first of lineage. Lets both
+  // reply paths cite the previous life without claiming it.
+  std::string predecessorSummary;
+  bool hasPredecessor = false;
+
   // Skills/competence
   std::string skillSummary;  // e.g. "forage=0.8, drink=0.6, craft=0.1"
 
@@ -144,6 +150,10 @@ std::string formatDialogueHistory(const std::vector<DialogueTurn>& history);
 // Bounded (~800 chars, newest-wins) like the live history above.
 std::string formatPredecessorHistory(int64_t ownerIndividualId,
                                      const std::vector<DialogueTurn>& turns);
+
+// E3-slice-2d: one attributed sentence about the previous life from its stats,
+// or "" when there is none. Pure function — same stats, same sentence.
+std::string formatPredecessorSummary(const Engine::PredecessorSummary& pred);
 
 // Q0: joins every significant goal for the respond prompt ("find food, rest").
 // Was: only activeGoals[0] reached the LLM, hiding competing drives.

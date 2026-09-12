@@ -73,6 +73,13 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   world-scoped predecessor-dialogue excerpt for citation, with a standing rule
   never to claim it as the speaker's own memory.
 
+### Predecessor life stats (E3 slice 2d)
+- Successors retain the previous life's stats — parent id, generation,
+  lifespan, cause of death — from the loaded genome as attributed history
+  (snapshot v19). Both reply paths cite it, offline questions admit
+  first-of-lineage honestly, and `/api/status` exposes it. Fresh individuals
+  start with no predecessor; resets never leak old lineage data.
+
 ### Voice consistency and reply-quality harness (Q4)
 - Personality now reaches the language model as trait words ("cautious,
   curious") derived from latent thresholds instead of raw floats, and drives
