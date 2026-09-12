@@ -9,7 +9,7 @@
 namespace eidolon {
 
 namespace {
-constexpr int kSchemaVersion = 3;
+constexpr int kSchemaVersion = 5;
 
 EventKind kindFromType(const std::string& type) {
   if (type == "forage") return EventKind::Forage;
@@ -99,15 +99,30 @@ void SQLiteArchive::migrate() {
   if (version == 0) {
     // Fresh database: create the full schema.
     ensureSchema();
-  } else if (version == 2) {
-    // v2 -> v3 (E3-slice-2a): attribute conversations/messages to individuals.
-    // ALTER TABLE preserves every existing row; legacy rows read back as 0
-    // (unattributed), which the server treats as history, never live state.
-    exec("ALTER TABLE conversations ADD COLUMN individual_id INTEGER NOT NULL DEFAULT 0");
-    exec("ALTER TABLE messages ADD COLUMN individual_id INTEGER NOT NULL DEFAULT 0");
-    exec("CREATE INDEX IF NOT EXISTS idx_conversations_individual ON conversations(individual_id)");
-  } else if (version < kSchemaVersion) {
-    ensureSchema();
+  } else {
+    if (version == 2) {
+      // v2 -> v3 (E3-slice-2a): attribute conversations/messages to individuals.
+      // ALTER TABLE preserves every existing row; legacy rows read back as 0
+      // (unattributed), which the server treats as history, never live state.
+      exec("ALTER TABLE conversations ADD COLUMN individual_id INTEGER NOT NULL DEFAULT 0");
+      exec("ALTER TABLE messages ADD COLUMN individual_id INTEGER NOT NULL DEFAULT 0");
+      exec("CREATE INDEX IF NOT EXISTS idx_conversations_individual ON conversations(individual_id)");
+      version = 3;
+    }
+    if (version == 3) {
+      // v3 -> v4 (E3-slice-2b): attribute archived episodes to their source
+      // individual so inherited records stay distinguishable on the timeline.
+      exec("ALTER TABLE episodes ADD COLUMN source INTEGER NOT NULL DEFAULT 0");
+      version = 4;
+    }
+    if (version == 4) {
+      // v4 -> v5 (E3-slice-2c): scope conversations to their world so a fresh
+      // lineage after world reset never cites another world's chats as
+      // "my predecessor's".
+      exec("ALTER TABLE conversations ADD COLUMN world_id INTEGER NOT NULL DEFAULT 0");
+      version = 5;
+    }
+    if (version != kSchemaVersion) ensureSchema(); // unknown version: best-effort align
   }
   if (version != kSchemaVersion) {
     char stamp[64];
@@ -118,11 +133,13 @@ void SQLiteArchive::migrate() {
 
 void SQLiteArchive::ensureSchema() {
   exec("CREATE TABLE IF NOT EXISTS episodes ("
-       "t INTEGER, x INTEGER, y INTEGER, kind INTEGER, importance REAL, detail INTEGER)");
+       "t INTEGER, x INTEGER, y INTEGER, kind INTEGER, importance REAL, detail INTEGER, "
+       "source INTEGER NOT NULL DEFAULT 0)");
   exec("CREATE TABLE IF NOT EXISTS events (t INTEGER, type TEXT, text TEXT)");
   exec("CREATE TABLE IF NOT EXISTS conversations ("
        "id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, created_at INTEGER, "
-       "individual_id INTEGER NOT NULL DEFAULT 0)");
+       "individual_id INTEGER NOT NULL DEFAULT 0, "
+       "world_id INTEGER NOT NULL DEFAULT 0)");
   exec("CREATE TABLE IF NOT EXISTS messages ("
        "id INTEGER PRIMARY KEY AUTOINCREMENT, conversation_id INTEGER, role TEXT, "
        "text TEXT, t INTEGER, individual_id INTEGER NOT NULL DEFAULT 0)");
@@ -140,13 +157,19 @@ void SQLiteArchive::episode(const Episode& e) {
   std::lock_guard<std::mutex> lock(mu_);
   if (!db_) return;
   sqlite3_stmt* stmt = nullptr;
-  if (!prepare("INSERT INTO episodes VALUES (?,?,?,?,?,?)", &stmt) || !stmt) return;
+  if (!prepare("INSERT INTO episodes (t, x, y, kind, importance, detail, source) "
+               "VALUES (?,?,?,?,?,?,?)",
+               &stmt) ||
+      !stmt) {
+    return;
+  }
   sqlite3_bind_int64(stmt, 1, e.t);
   sqlite3_bind_int(stmt, 2, e.x);
   sqlite3_bind_int(stmt, 3, e.y);
   sqlite3_bind_int(stmt, 4, static_cast<int>(e.kind));
   sqlite3_bind_double(stmt, 5, e.importance);
   sqlite3_bind_int(stmt, 6, e.detail);
+  sqlite3_bind_int64(stmt, 7, static_cast<int64_t>(e.sourceIndividualId));
   runStatement(stmt);
 }
 
@@ -169,8 +192,8 @@ std::vector<ArchivedEvent> SQLiteArchive::timeline(int64_t startTick, int64_t en
   const int sqlLimit = static_cast<int>(std::min<size_t>(limit, 512));
 
   sqlite3_stmt* stmt = nullptr;
-  if (prepare("SELECT t, x, y, kind, importance, detail FROM episodes "
-              "WHERE t>=? AND t<=? ORDER BY t ASC LIMIT ?", &stmt) && stmt) {
+  if (prepare("SELECT t, x, y, kind, importance, detail, source FROM episodes "
+               "WHERE t>=? AND t<=? ORDER BY t ASC LIMIT ?", &stmt) && stmt) {
     sqlite3_bind_int64(stmt, 1, startTick);
     sqlite3_bind_int64(stmt, 2, endTick);
     sqlite3_bind_int(stmt, 3, sqlLimit);
@@ -182,6 +205,7 @@ std::vector<ArchivedEvent> SQLiteArchive::timeline(int64_t startTick, int64_t en
       e.kind = static_cast<EventKind>(sqlite3_column_int(stmt, 3));
       e.importance = sqlite3_column_double(stmt, 4);
       e.detail = static_cast<uint8_t>(sqlite3_column_int(stmt, 5));
+      e.sourceIndividualId = sqlite3_column_int64(stmt, 6);
       e.type = typeFromKind(e.kind);
       e.text = e.type;
       e.fromEpisode = true;
@@ -220,12 +244,13 @@ std::vector<ArchivedEvent> SQLiteArchive::timeline(int64_t startTick, int64_t en
 }
 
 int64_t SQLiteArchive::createConversation(const std::string& title, int64_t t,
-                                           int64_t individualId) {
+                                           int64_t individualId,
+                                           int64_t worldId) {
   std::lock_guard<std::mutex> lock(mu_);
   if (!db_) return -1;
   sqlite3_stmt* stmt = nullptr;
-  if (!prepare("INSERT INTO conversations (title, created_at, individual_id) "
-               "VALUES (?,?,?)",
+  if (!prepare("INSERT INTO conversations (title, created_at, individual_id, world_id) "
+               "VALUES (?,?,?,?)",
                &stmt) ||
       !stmt) {
     return -1;
@@ -233,6 +258,7 @@ int64_t SQLiteArchive::createConversation(const std::string& title, int64_t t,
   sqlite3_bind_text(stmt, 1, title.c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_int64(stmt, 2, t);
   sqlite3_bind_int64(stmt, 3, individualId);
+  sqlite3_bind_int64(stmt, 4, worldId);
   runStatement(stmt);
   return sqlite3_last_insert_rowid(db_);
 }
@@ -351,8 +377,8 @@ std::vector<ConversationInfo> SQLiteArchive::listConversations() const {
   std::vector<ConversationInfo> out;
   if (!db_) return out;
   sqlite3_stmt* stmt = nullptr;
-  if (!prepare("SELECT id, title, created_at, individual_id FROM conversations "
-               "ORDER BY id DESC",
+  if (!prepare("SELECT id, title, created_at, individual_id, world_id "
+               "FROM conversations ORDER BY id DESC",
                &stmt) ||
       !stmt) {
     return out;
@@ -364,6 +390,7 @@ std::vector<ConversationInfo> SQLiteArchive::listConversations() const {
     c.title = title ? reinterpret_cast<const char*>(title) : "";
     c.createdAt = sqlite3_column_int64(stmt, 2);
     c.individualId = sqlite3_column_int64(stmt, 3);
+    c.worldId = sqlite3_column_int64(stmt, 4);
     out.push_back(c);
   }
   sqlite3_finalize(stmt);
@@ -376,8 +403,8 @@ std::vector<ConversationInfo> SQLiteArchive::listConversationsByIndividual(
   std::vector<ConversationInfo> out;
   if (!db_ || limit <= 0) return out;
   sqlite3_stmt* stmt = nullptr;
-  if (!prepare("SELECT id, title, created_at, individual_id FROM conversations "
-               "WHERE individual_id=? ORDER BY id ASC LIMIT ?",
+  if (!prepare("SELECT id, title, created_at, individual_id, world_id "
+               "FROM conversations WHERE individual_id=? ORDER BY id ASC LIMIT ?",
                &stmt) ||
       !stmt) {
     return out;
@@ -391,6 +418,37 @@ std::vector<ConversationInfo> SQLiteArchive::listConversationsByIndividual(
     c.title = title ? reinterpret_cast<const char*>(title) : "";
     c.createdAt = sqlite3_column_int64(stmt, 2);
     c.individualId = sqlite3_column_int64(stmt, 3);
+    c.worldId = sqlite3_column_int64(stmt, 4);
+    out.push_back(c);
+  }
+  sqlite3_finalize(stmt);
+  return out;
+}
+
+std::vector<ConversationInfo> SQLiteArchive::listPredecessorConversations(
+    int64_t worldId, int64_t excludeIndividualId, int limit) const {
+  std::lock_guard<std::mutex> lock(mu_);
+  std::vector<ConversationInfo> out;
+  if (!db_ || limit <= 0) return out;
+  sqlite3_stmt* stmt = nullptr;
+  if (!prepare("SELECT id, title, created_at, individual_id, world_id "
+               "FROM conversations WHERE world_id=? AND individual_id!=? "
+               "AND individual_id!=0 ORDER BY id DESC LIMIT ?",
+               &stmt) ||
+      !stmt) {
+    return out;
+  }
+  sqlite3_bind_int64(stmt, 1, worldId);
+  sqlite3_bind_int64(stmt, 2, excludeIndividualId);
+  sqlite3_bind_int(stmt, 3, std::min(limit, 20));
+  while (sqlite3_step(stmt) == SQLITE_ROW) {
+    ConversationInfo c;
+    c.id = sqlite3_column_int64(stmt, 0);
+    const unsigned char* title = sqlite3_column_text(stmt, 1);
+    c.title = title ? reinterpret_cast<const char*>(title) : "";
+    c.createdAt = sqlite3_column_int64(stmt, 2);
+    c.individualId = sqlite3_column_int64(stmt, 3);
+    c.worldId = sqlite3_column_int64(stmt, 4);
     out.push_back(c);
   }
   sqlite3_finalize(stmt);

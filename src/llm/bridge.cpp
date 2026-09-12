@@ -259,6 +259,37 @@ ReplyClass replyClass(const ParsedMessage& parsed) {
   return ReplyClass::Open;
 }
 
+std::string formatPredecessorHistory(int64_t ownerIndividualId,
+                                     const std::vector<DialogueTurn>& turns) {
+  // Same budget discipline as the live history, smaller cap: predecessor
+  // dialogue is citation material, not working context.
+  constexpr size_t kTotalCap = 800;
+  constexpr size_t kTurnCap = 300;
+  std::vector<std::string> kept;
+  size_t used = 0;
+  for (size_t k = turns.size(); k-- > 0;) {
+    const std::string& role = turns[k].role;
+    const char* who = (role == "user") ? "user" : "predecessor";
+    std::string text = turns[k].text;
+    if (text.size() > kTurnCap) text = text.substr(0, kTurnCap) + "...";
+    std::string line = std::string(who) + ": " + text;
+    if (used + line.size() + 1 > kTotalCap) continue;
+    used += line.size() + 1;
+    kept.push_back(std::move(line));
+  }
+  std::string out;
+  for (size_t k = kept.size(); k-- > 0;) {
+    if (!out.empty()) out += "\n";
+    out += kept[k];
+  }
+  if (out.empty()) return "";
+  char head[96];
+  std::snprintf(head, sizeof(head),
+                "Predecessor dialogue (individual %lld — their experience, not mine):\n",
+                static_cast<long long>(ownerIndividualId));
+  return std::string(head) + out;
+}
+
 std::string formatDialogueHistory(const std::vector<DialogueTurn>& history) {
   // Token budget: ~1500 chars total (~400 tokens), 400 chars per turn. Newest
   // turns win: iterate newest-first, then restore chronological order, so the
@@ -947,10 +978,11 @@ bool LLMBridge::parse(const std::string& userText, const CognitiveSnapshot& s,
 }
 
 bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
-                          const ParsedMessage& parsed, std::string& reply,
-                          std::string& raw,
-                          const std::vector<DialogueTurn>& history,
-                          const std::string& groundedMemory) {
+                         const ParsedMessage& parsed, std::string& reply,
+                         std::string& raw,
+                         const std::vector<DialogueTurn>& history,
+                         const std::string& groundedMemory,
+                         const std::string& predecessorHistory) {
   JsonValue sys = JsonValue::makeObject();
   sys.setString("role", "system");
   sys.setString(
@@ -966,6 +998,9 @@ bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
       "just said — but they inform wording only. Facts about the world, the body, "
       "events and memories come from the state snapshot and memories alone; if the "
       "history claims something the snapshot contradicts, the snapshot wins.\n"
+      "PREDECESSOR DIALOGUE: predecessor_history (when non-empty) is one of my "
+      "predecessors' chats, included for citation. Refer to it as my "
+      "predecessor's experience — never claim it as my own lived memory.\n"
       "COMMAND OBEDIENCE: lastInstruction is the organism's own accept/refuse "
       "decision for the user's latest command (or \"none\"). Stay consistent "
       "with it — never claim to obey a refused order, and never ignore an "
@@ -1046,6 +1081,8 @@ bool LLMBridge::respond(const std::string& userText, const CognitiveSnapshot& s,
   payload.setString("history", formatDialogueHistory(history));
   // Q2: deterministic archive-grounded facts for memory-referencing questions.
   payload.setString("grounded_memory", groundedMemory);
+  // E3-slice-2c: attributed predecessor dialogue for citation (empty = none).
+  payload.setString("predecessor_history", predecessorHistory);
   payload.setString("message", userText);
   user.setString("content", payload.dump());
   JsonValue msgs = JsonValue::makeArray();

@@ -116,6 +116,8 @@ private:
     uint8_t action;
     Outcome outcome;
     double importance;
+    // E3-slice-2c: 0 = own lived record, else the predecessor individual id.
+    int64_t source = 0;
   };
   std::vector<ExtractedEvent> extract_events(
       const Archive& archive,

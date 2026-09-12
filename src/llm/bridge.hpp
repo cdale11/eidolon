@@ -139,6 +139,12 @@ struct DialogueTurn {
 // stays bounded no matter how long the conversation grows.
 std::string formatDialogueHistory(const std::vector<DialogueTurn>& history);
 
+// E3-slice-2c: formats a predecessor's dialogue tail for citation. Roles are
+// "user" and "predecessor"; the owner id labels whose experience it was.
+// Bounded (~800 chars, newest-wins) like the live history above.
+std::string formatPredecessorHistory(int64_t ownerIndividualId,
+                                     const std::vector<DialogueTurn>& turns);
+
 // Q0: joins every significant goal for the respond prompt ("find food, rest").
 // Was: only activeGoals[0] reached the LLM, hiding competing drives.
 std::string joinGoalNames(const std::vector<std::string>& goals);
@@ -199,10 +205,13 @@ public:
   // failure (caller falls back). `history` is the bounded prior dialogue tail
   // (Q1). `groundedMemory` is a deterministic archive-derived answer for
   // memory-referencing questions (Q2); empty means no archive facts were found.
+  // `predecessorHistory` is a bounded, attributed predecessor-dialogue excerpt
+  // for citation (E3-slice-2c); empty means no prior-individual dialogue.
   bool respond(const std::string& userText, const CognitiveSnapshot& s,
-                const ParsedMessage& parsed, std::string& reply, std::string& raw,
-                const std::vector<DialogueTurn>& history = {},
-                const std::string& groundedMemory = "");
+               const ParsedMessage& parsed, std::string& reply, std::string& raw,
+               const std::vector<DialogueTurn>& history = {},
+               const std::string& groundedMemory = "",
+               const std::string& predecessorHistory = "");
 
   // Health: last call outcome (for observability).
   int64_t calls() const { return calls_; }

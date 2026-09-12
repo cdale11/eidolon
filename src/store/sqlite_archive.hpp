@@ -23,6 +23,9 @@ struct ConversationInfo {
   // succession the server starts a fresh conversation under the new id, while
   // old ones stay readable as attributed predecessor history.
   int64_t individualId = 0;
+  // E3-slice-2c: world scope. A world reset starts a new lineage; chats from
+  // other worlds are never cited as "my predecessor's".
+  int64_t worldId = 0;
 };
 
 struct Message {
@@ -63,7 +66,7 @@ public:
   // (equality-preserving); 0 = legacy/unattributed. User message rows should
   // pass 0 — the human persists across generations.
   int64_t createConversation(const std::string& title, int64_t t,
-                             int64_t individualId = 0);
+                             int64_t individualId = 0, int64_t worldId = 0);
   void appendMessage(int64_t conversationId, const std::string& role,
                      const std::string& text, int64_t t, int64_t individualId = 0);
   void setConversationTitle(int64_t conversationId, const std::string& title);
@@ -74,6 +77,11 @@ public:
   // predecessor's dialogue history.
   std::vector<ConversationInfo> listConversationsByIndividual(int64_t individualId,
                                                               int limit = 50) const;
+  // E3-slice-2c: predecessor retrieval — same world, owned by someone else,
+  // newest-first, so the successor can cite (never relive) prior dialogue.
+  std::vector<ConversationInfo> listPredecessorConversations(int64_t worldId,
+                                                             int64_t excludeIndividualId,
+                                                             int limit = 5) const;
   std::vector<Message> listMessages(int64_t conversationId, int limit = 200) const;
   // Q1: most recent messages, returned oldest-first (chronological) for prompt
   // history. listMessages returns oldest-first with LIMIT, i.e. the FIRST rows —

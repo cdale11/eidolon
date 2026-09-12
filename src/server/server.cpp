@@ -1032,14 +1032,17 @@ void Server::autosave() {
   log_.flush();
 }
 
-int64_t Server::currentConversationFor(uint64_t individualId, int64_t simTime) {
+int64_t Server::currentConversationFor(uint64_t individualId, uint64_t worldId,
+                                      int64_t simTime) {
   if (conversationId_ < 0 || conversationOwnerId_ != individualId) {
     // New speaker (first chat, succession, or world reset): fresh conversation
-    // attributed to the living individual. The predecessor's chats stay in the
-    // archive as attributed history, never as this individual's own dialogue.
+    // attributed to the living individual in the living world. The
+    // predecessor's chats stay in the archive as attributed history, never as
+    // this individual's own dialogue.
     conversationId_ =
-        archive_ ? archive_->createConversation(
-                       "chat", simTime, static_cast<int64_t>(individualId))
+        archive_ ? archive_->createConversation("chat", simTime,
+                                                static_cast<int64_t>(individualId),
+                                                static_cast<int64_t>(worldId))
                  : -1;
     conversationOwnerId_ = individualId;
   }
@@ -1063,9 +1066,9 @@ std::string Server::statusJson() {
                 "\"sleepStage\":\"%s\",\"phaseOfDay\":\"%s\",\"daylight\":%.2f,"
                 "\"energy\":%.1f,\"hunger\":%.1f,\"thirst\":%.1f,\"fatigue\":%.1f,"
                 "\"sleepP\":%.1f,\"health\":%.1f,\"bodyTemp\":%.1f,\"weather\":\"%s\","
-                "\"tempC\":%.1f,\"simTime\":%lld,"
-                "\"preyNear\":%d,\"predatorsNear\":%d,\"predatorDist\":%d,"
-                "\"rebirths\":%u}",
+                 "\"tempC\":%.1f,\"simTime\":%lld,"
+                 "\"preyNear\":%d,\"predatorsNear\":%d,\"predatorDist\":%d,"
+                 "\"rebirths\":%u,\"individual_id\":%lld,\"world_id\":%lld}",
                 static_cast<long long>(engine_.clock().day()),
                 hour,
                 b.isSleeping() ? "false" : "true",
@@ -1077,14 +1080,16 @@ std::string Server::statusJson() {
                 b.fatigue(), b.sleepPressure(), b.health(), b.bodyTemp(),
                 w.describe(), w.ambientTempC(engine_.clock()),
                 static_cast<long long>(engine_.clock().now()),
-                engine_.world().preyCount(p, Perception::kSightRadius),
-                engine_.world().predatorCount(p, Perception::kSightRadius),
-                [&] {
-                  const WildlifeAgent* pr = engine_.world().nearestPredator(
-                      p, Perception::kSightRadius);
-                  return pr ? distCheb(pr->pos, p) : -1;
-                }(),
-                engine_.rebirthCount());
+                 engine_.world().preyCount(p, Perception::kSightRadius),
+                 engine_.world().predatorCount(p, Perception::kSightRadius),
+                 [&] {
+                   const WildlifeAgent* pr = engine_.world().nearestPredator(
+                       p, Perception::kSightRadius);
+                   return pr ? distCheb(pr->pos, p) : -1;
+                 }(),
+                 engine_.rebirthCount(),
+                 static_cast<long long>(engine_.individualId()),
+                 static_cast<long long>(engine_.worldId()));
   return buf;
 }
 
@@ -1211,6 +1216,7 @@ std::string Server::sendMessage(const std::string& conversationIdStr,
   // Snapshot the current state for the reply (grounded in real state).
   CognitiveSnapshot snap;
   uint64_t speakerId = 0;
+  uint64_t worldId = 0;
   {
     std::lock_guard<std::mutex> lock(engineMu_);
     // A user message marks the user present: it resets separation and drives a reunion
@@ -1225,12 +1231,13 @@ std::string Server::sendMessage(const std::string& conversationIdStr,
     // This happens BEFORE the snapshot so both reply paths see the decision.
     engine_.processUserInstruction(trimmed, static_cast<uint64_t>(t));
     speakerId = engine_.individualId();
+    worldId = engine_.worldId();
     snap = makeSnapshot(engine_);
   }
   // E3-slice-2a: implicit chats belong to the living individual. An explicit
   // conversation_id (user reopening an old chat) is honored as-is — attribution
   // on the rows still records who actually spoke.
-  if (convId <= 0) convId = currentConversationFor(speakerId, snap.simTime);
+  if (convId <= 0) convId = currentConversationFor(speakerId, worldId, snap.simTime);
 
   if (archive_) {
     // Title the conversation from its first user message (ChatGPT-style).
@@ -1279,7 +1286,25 @@ std::string Server::sendMessage(const std::string& conversationIdStr,
       // archive path first. The LLM only phrases these facts; it must not recall
       // past events from model weights or dialogue history.
       const std::string groundedMemory = parsed.referencesMemory ? groundedReply(trimmed) : "";
-      if (llm_->respond(trimmed, snap, parsed, reply, raw, history, groundedMemory)) {
+      // E3-slice-2c: predecessor dialogue for citation — bounded, owner-labeled,
+      // same-world only. The model may cite it as the predecessor's experience,
+      // never as the speaker's own.
+      std::string predecessorHistory;
+      if (archive_ && (parsed.referencesMemory || parsed.intent == "question")) {
+        const auto predConvs = archive_->listPredecessorConversations(
+            static_cast<int64_t>(worldId), static_cast<int64_t>(speakerId), 1);
+        if (!predConvs.empty()) {
+          std::vector<DialogueTurn> turns;
+          for (const Message& m : archive_->listRecentMessages(predConvs[0].id, 7)) {
+            if (m.role != "user" && m.role != "organism") continue;
+            turns.push_back({m.role, m.text});
+          }
+          predecessorHistory =
+              formatPredecessorHistory(predConvs[0].individualId, turns);
+        }
+      }
+      if (llm_->respond(trimmed, snap, parsed, reply, raw, history, groundedMemory,
+                        predecessorHistory)) {
         source = "llm";
         reason.clear();
         reasonText.clear();
@@ -1364,7 +1389,8 @@ std::string Server::conversationsJson() {
     first = false;
     out += "{\"id\":" + std::to_string(c.id) + ",\"title\":\"" + jsonEscape(c.title) +
            "\",\"created_at\":" + std::to_string(c.createdAt) + ",\"individual_id\":" +
-           std::to_string(c.individualId) + "}";
+           std::to_string(c.individualId) + ",\"world_id\":" +
+           std::to_string(c.worldId) + "}";
   }
   return out + "]";
 }
@@ -1372,14 +1398,17 @@ std::string Server::conversationsJson() {
 std::string Server::newConversationJson() {
   if (!archive_) return "{\"error\":\"no archive\"}";
   uint64_t speakerId = 0;
+  uint64_t worldId = 0;
   int64_t now = 0;
   {
     std::lock_guard<std::mutex> lock(engineMu_);
     speakerId = engine_.individualId();
+    worldId = engine_.worldId();
     now = engine_.clock().now();
   }
-  const int64_t id = archive_->createConversation(
-      "New chat", now, static_cast<int64_t>(speakerId));
+  const int64_t id = archive_->createConversation("New chat", now,
+                                                  static_cast<int64_t>(speakerId),
+                                                  static_cast<int64_t>(worldId));
   if (id < 0) return "{\"error\":\"create failed\"}";
   return "{\"conversation_id\":" + std::to_string(id) + "}";
 }

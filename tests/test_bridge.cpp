@@ -531,3 +531,24 @@ TEST(reply_class_splits_factual_from_open) {
   o.intent = "other";
   CHECK(replyClass(o) == ReplyClass::Open);
 }
+
+TEST(predecessor_history_labels_owner_and_stays_bounded) {
+  // E3-slice-2c: citation material names whose experience it was, keeps
+  // chronological order, and stays capped no matter the input size.
+  CHECK_EQ(formatPredecessorHistory(7, {}), std::string(""));
+  const std::string h = formatPredecessorHistory(
+      123, {{"user", "did you build shelter?"}, {"organism", "yes, near water"}});
+  CHECK(h.find("Predecessor dialogue (individual 123") != std::string::npos);
+  CHECK(h.find("not mine") != std::string::npos);
+  CHECK(h.find("user: did you build shelter?") != std::string::npos);
+  // Organism rows are relabeled predecessor, never left as self-voice.
+  CHECK(h.find("predecessor: yes, near water") != std::string::npos);
+  CHECK(h.find("organism:") == std::string::npos);
+  std::vector<DialogueTurn> many;
+  for (int i = 0; i < 40; ++i) {
+    many.push_back({"user", "turn" + std::to_string(i) + ":" + std::string(100, 'z')});
+  }
+  const std::string capped = formatPredecessorHistory(9, many);
+  CHECK(capped.size() <= 800 + 96);
+  CHECK(capped.find("turn39") != std::string::npos); // newest kept
+}

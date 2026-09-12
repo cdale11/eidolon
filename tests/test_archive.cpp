@@ -227,4 +227,150 @@ TEST(sqlite_archive_v2_to_v3_migration) {
   CHECK_EQ(a.listConversationsByIndividual(42).size(), 1u);
   CHECK_EQ(a.listMessages(cid)[0].individualId, 42);
 }
+
+TEST(sqlite_archive_episode_source_attribution) {
+  // E3-slice-2b: archived episodes keep their source individual; the timeline
+  // exposes it so inherited records stay distinguishable from lived ones.
+  const std::string path = tmpDbPath();
+  std::string err;
+  SQLiteArchive a(path, err);
+  CHECK(err.empty());
+
+  Episode own;
+  own.t = 100;
+  own.kind = EventKind::Forage;
+  own.importance = 0.7;
+  a.episode(own);
+  Episode inherited;
+  inherited.t = 50;
+  inherited.kind = EventKind::Drink;
+  inherited.importance = 0.9;
+  inherited.sourceIndividualId = 777;
+  a.episode(inherited);
+
+  const auto timeline = a.timeline(0, 200);
+  CHECK_EQ(timeline.size(), 2u);
+  CHECK_EQ(timeline[0].sourceIndividualId, 777);
+  CHECK_EQ(timeline[1].sourceIndividualId, 0);
+  CHECK_EQ(timeline[0].kind, EventKind::Drink);
+}
+
+TEST(sqlite_archive_v3_to_v4_migration) {
+  // Pre-source (v3) episode rows survive the migration and read back as 0
+  // (own experience); new attributed writes work alongside.
+  const std::string path = tmpDbPath();
+  {
+    sqlite3* db = nullptr;
+    CHECK_EQ(sqlite3_open(path.c_str(), &db), SQLITE_OK);
+    const char* schema =
+        "CREATE TABLE episodes (t INTEGER, x INTEGER, y INTEGER, kind INTEGER, "
+        "importance REAL, detail INTEGER);"
+        "CREATE TABLE events (t INTEGER, type TEXT, text TEXT);"
+        "CREATE TABLE conversations (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "title TEXT, created_at INTEGER, individual_id INTEGER NOT NULL DEFAULT 0);"
+        "CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "conversation_id INTEGER, role TEXT, text TEXT, t INTEGER, "
+        "individual_id INTEGER NOT NULL DEFAULT 0);"
+        "INSERT INTO episodes (t, x, y, kind, importance, detail) VALUES "
+        "(10, 1, 2, 1, 0.5, 0);"
+        "PRAGMA user_version=3;";
+    char* msg = nullptr;
+    CHECK_EQ(sqlite3_exec(db, schema, nullptr, nullptr, &msg), SQLITE_OK);
+    sqlite3_close(db);
+  }
+  std::string err;
+  SQLiteArchive a(path, err);
+  CHECK(err.empty());
+  const auto timeline = a.timeline(0, 100);
+  CHECK_EQ(timeline.size(), 1u);
+  CHECK_EQ(timeline[0].sourceIndividualId, 0);
+  CHECK_EQ(a.episodeCount(), 1);
+}
+
+TEST(sqlite_archive_v4_to_v5_migration) {
+  // Pre-world (v4) conversation rows survive and read back with world_id 0.
+  const std::string path = tmpDbPath();
+  {
+    sqlite3* db = nullptr;
+    CHECK_EQ(sqlite3_open(path.c_str(), &db), SQLITE_OK);
+    const char* schema =
+        "CREATE TABLE episodes (t INTEGER, x INTEGER, y INTEGER, kind INTEGER, "
+        "importance REAL, detail INTEGER, source INTEGER NOT NULL DEFAULT 0);"
+        "CREATE TABLE events (t INTEGER, type TEXT, text TEXT);"
+        "CREATE TABLE conversations (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "title TEXT, created_at INTEGER, individual_id INTEGER NOT NULL DEFAULT 0);"
+        "CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "conversation_id INTEGER, role TEXT, text TEXT, t INTEGER, "
+        "individual_id INTEGER NOT NULL DEFAULT 0);"
+        "INSERT INTO conversations (title, created_at, individual_id) VALUES "
+        "('old chat', 5, 11);"
+        "PRAGMA user_version=4;";
+    char* msg = nullptr;
+    CHECK_EQ(sqlite3_exec(db, schema, nullptr, nullptr, &msg), SQLITE_OK);
+    sqlite3_close(db);
+  }
+  std::string err;
+  SQLiteArchive a(path, err);
+  CHECK(err.empty());
+  const auto convs = a.listConversations();
+  CHECK_EQ(convs.size(), 1u);
+  CHECK_EQ(convs[0].individualId, 11);
+  CHECK_EQ(convs[0].worldId, 0);
+}
+
+TEST(sqlite_archive_predecessor_conversations_world_scoped) {
+  // E3-slice-2c: same world + other owner = predecessor; other worlds and the
+  // speaker itself are excluded, newest-first.
+  const std::string path = tmpDbPath();
+  std::string err;
+  SQLiteArchive a(path, err);
+  CHECK(err.empty());
+
+  const int64_t me = 100, pred = 99, other = 101;
+  const int64_t world = 7, otherWorld = 8;
+  a.createConversation("mine", 1, me, world);
+  const int64_t oldPred = a.createConversation("pred old", 2, pred, world);
+  const int64_t newPred = a.createConversation("pred new", 3, pred, world);
+  a.createConversation("other world", 4, other, otherWorld);
+
+  const auto preds = a.listPredecessorConversations(world, me);
+  CHECK_EQ(preds.size(), 2u);
+  CHECK_EQ(preds[0].id, newPred); // newest first
+  CHECK_EQ(preds[1].id, oldPred);
+  CHECK(a.listPredecessorConversations(world, pred).empty() == false); // mine shows for them
+  CHECK(a.listPredecessorConversations(otherWorld, other).empty());    // alone there
+  CHECK(a.listPredecessorConversations(world, 424242).size() == 3u);   // stranger: all owned
+}
+
+TEST(grounded_past_tense_qualifies_inherited_records) {
+  // E3-slice-2c: timeline answers built from inherited episodes must say so —
+  // never read as autobiography.
+  const std::string path = tmpDbPath();
+  std::string err;
+  SQLiteArchive a(path, err);
+  Episode inherited;
+  inherited.t = 10;
+  inherited.kind = EventKind::Drink;
+  inherited.importance = 0.9;
+  inherited.sourceIndividualId = 555;
+  a.episode(inherited);
+
+  MemoryRing memory;
+  GroundedLanguage grounded(7);
+  auto reply = grounded.answer_about_past(a, memory, "did you drink water?", 1000);
+  CHECK(reply.has_value());
+  CHECK(reply->text.find("predecessor") != std::string::npos);
+
+  // Own-only records carry no such qualifier.
+  const std::string path2 = tmpDbPath();
+  SQLiteArchive b(path2, err);
+  Episode own;
+  own.t = 10;
+  own.kind = EventKind::Drink;
+  own.importance = 0.9;
+  b.episode(own);
+  auto reply2 = grounded.answer_about_past(b, memory, "did you drink water?", 1000);
+  CHECK(reply2.has_value());
+  CHECK(reply2->text.find("predecessor") == std::string::npos);
+}
 #endif

@@ -156,7 +156,8 @@ def test_grounding_voice_sampling(work):
         try:
             db = sqlite3.connect(os.path.join(work, "memory.db"))
             try:
-                db.execute("INSERT INTO episodes VALUES (?,?,?,?,?,?)", (0, 3, 4, 1, 0.8, 0))
+                db.execute("INSERT INTO episodes (t, x, y, kind, importance, detail)"
+                           " VALUES (?,?,?,?,?,?)", (0, 3, 4, 1, 0.8, 0))
                 db.commit()
             finally:
                 db.close()
@@ -183,6 +184,7 @@ def test_grounding_voice_sampling(work):
                   mem_payload.get("grounded_memory", "")[:80])
             check("prompt carries bounded history", "history" in mem_payload)
             check("prompt carries lastInstruction", "lastInstruction" in mem_payload["state"])
+            check("prompt carries predecessor_history", "predecessor_history" in mem_payload)
 
             pers = [re.search(r"personality=\[(.*?)\]", payload_of(q)["state"])
                     for q in Stub.respond_reqs]

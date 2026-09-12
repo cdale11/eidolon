@@ -124,7 +124,8 @@ public:
   // (succession or world reset) so a successor never inherits the
   // predecessor's dialogue as lived experience. simTime avoids a clock read
   // outside the engine lock.
-  int64_t currentConversationFor(uint64_t individualId, int64_t simTime);
+  int64_t currentConversationFor(uint64_t individualId, uint64_t worldId,
+                                   int64_t simTime);
   // Grounded-language reply from the event timeline (empty if the message isn't a
   // past/personal-history question or has no archive). Deterministic, no LLM.
   std::string groundedReply(const std::string& text);

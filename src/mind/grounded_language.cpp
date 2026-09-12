@@ -99,6 +99,7 @@ std::vector<GroundedLanguage::ExtractedEvent> GroundedLanguage::extract_events(
     e.action = 255;
     e.outcome = Outcome::Unknown;
     e.importance = ae.importance;
+    e.source = ae.sourceIndividualId;
     events.push_back(std::move(e));
   }
   return events;
@@ -343,7 +344,20 @@ std::optional<GroundedUtterance> GroundedLanguage::answer_about_past(
     }
   }
   oss << ".";
-  
+
+  // E3-slice-2c: inherited records must never read as autobiography. When any
+  // contributing event came from a predecessor, say so explicitly.
+  bool inherited = false;
+  for (const auto& e : relevantEvents) {
+    if (e.source != 0) {
+      inherited = true;
+      break;
+    }
+  }
+  if (inherited) {
+    oss << " Some of these records come from my predecessor, not my own life.";
+  }
+
   u.text = oss.str();
   
   for (const auto& e : relevantEvents) {

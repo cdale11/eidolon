@@ -776,8 +776,15 @@ Dependency: E2 identities; extend `heredity`, `genetic_memory`, `memory_system`,
       SQLite v3 with v2 migration; the server starts a fresh attributed chat on
       succession/reset so a successor never inherits dialogue as autobiography;
       user rows stay 0 across generations; `listConversationsByIndividual`
-      retrieval + API `individual_id` fields. Predecessor-stat exposure, chat
-      citations and the knowledge baseline remain open.)
+      retrieval + API `individual_id` fields. Slice 2b done: archived episodes
+      carry their source individual (SQLite v4 with v3 migration) and the
+      timeline exposes it. Slice 2c done: timeline answers qualify inherited
+      records as the predecessor's ("Some of these records come from my
+      predecessor, not my own life"); the respond prompt carries a bounded,
+      owner-labeled, world-scoped predecessor-dialogue excerpt for citation
+      with a never-claim-as-self prompt rule; status/conversations APIs expose
+      `individual_id`/`world_id`. Predecessor-stat exposure, belief revision
+      and the knowledge baseline remain open.)
 - [x] Replace simplistic death-location lessons with evidence-based causal hypotheses;
       support belief contradiction/revision and distinguish descriptions from practiced skills.
       (Done, slice 1: `makeDeathMemory` is cause-specific — location counts as evidence

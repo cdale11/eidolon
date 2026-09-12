@@ -65,6 +65,14 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
   predecessor's conversations as history, never as its own lived dialogue.
   The API exposes `individual_id` on conversations and messages.
 
+### Attributed timeline + predecessor citations (E3 slices 2b/2c)
+- Archived episodes keep their source individual (SQLite v4) and the timeline
+  exposes it, so inherited records stay distinguishable from lived ones.
+- Grounded past-tense answers say so explicitly when they draw on inherited
+  records; the language prompt additionally carries a bounded, owner-labeled,
+  world-scoped predecessor-dialogue excerpt for citation, with a standing rule
+  never to claim it as the speaker's own memory.
+
 ### Voice consistency and reply-quality harness (Q4)
 - Personality now reaches the language model as trait words ("cautious,
   curious") derived from latent thresholds instead of raw floats, and drives

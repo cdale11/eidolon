@@ -437,6 +437,78 @@ def test_conversations_attributed_to_individuals(work):
         proc.wait()
 
 
+def test_predecessor_dialogue_cited_in_llm_payload(work):
+    """E3-slice-2c: a same-world predecessor chat reaches the respond payload
+    as labeled citation material — never as the speaker's own history."""
+    respond_payloads = []
+
+    class RHandler(http_server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", 0))
+            req = json.loads(self.rfile.read(length) or b"{}")
+            if not is_respond_call(req):
+                msg = {"content": "{\"intent\":\"question\",\"topic\":\"shelter\","
+                                  "\"tone\":\"neutral\",\"references_memory\":false}"}
+            else:
+                respond_payloads.append(req)
+                msg = {"content": "My predecessor built a shelter, not me."}
+            body = json.dumps({"choices": [{"message": msg}]}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    class Srv(socketserver.ThreadingMixIn, http_server.HTTPServer):
+        daemon_threads = True
+
+    srv = Srv(("127.0.0.1", 0), RHandler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        base = f"http://127.0.0.1:{srv.server_address[1]}/v1"
+        port = PORT_BASE + 19
+        proc = start_server(work, port, extra=["--llm", base, "--llm-timeout", "5000"])
+        try:
+            st = http(port, "/api/status")
+            me, world = st["individual_id"], st["world_id"]
+            fake = 777777 if me != 777777 else 777778
+            db = sqlite3.connect(os.path.join(work, "memory.db"))
+            try:
+                cur = db.execute(
+                    "INSERT INTO conversations (title, created_at, individual_id, world_id)"
+                    " VALUES (?,?,?,?)", ("pred shelter chat", 5, fake, world))
+                pcid = cur.lastrowid
+                db.execute(
+                    "INSERT INTO messages (conversation_id, role, text, t, individual_id)"
+                    " VALUES (?,?,?,?,?)",
+                    (pcid, "user", "did you build shelter?", 6, 0))
+                db.execute(
+                    "INSERT INTO messages (conversation_id, role, text, t, individual_id)"
+                    " VALUES (?,?,?,?,?)",
+                    (pcid, "organism", "yes, near the river", 7, fake))
+                db.commit()
+            finally:
+                db.close()
+            r = http(port, "/api/send", {"message": "what did my predecessor build?"})
+            assert r["reply"].strip()
+            assert len(respond_payloads) == 1, respond_payloads
+            payload = json.loads(respond_payloads[0]["messages"][-1]["content"])
+            cited = payload["predecessor_history"]
+            assert "Predecessor dialogue" in cited, cited
+            assert str(fake) in cited, cited
+            assert "predecessor: yes, near the river" in cited, cited
+            # the speaker's own history must not leak predecessor turns
+            assert "near the river" not in payload["history"], payload["history"]
+        finally:
+            proc.kill()
+            proc.wait()
+    finally:
+        srv.shutdown()
+
+
 def test_world_reset(work):
     port = PORT_BASE + 8
     proc = start_server(work, port)
@@ -606,7 +678,8 @@ def test_memory_question_passes_grounded_archive_to_llm(work):
             # committed episode visible to the server archive connection.
             db = sqlite3.connect(os.path.join(work, "memory.db"))
             try:
-                db.execute("INSERT INTO episodes VALUES (?,?,?,?,?,?)", (0, 3, 4, 1, 0.8, 0))
+                db.execute("INSERT INTO episodes (t, x, y, kind, importance, detail)"
+                           " VALUES (?,?,?,?,?,?)", (0, 3, 4, 1, 0.8, 0))
                 db.commit()
             finally:
                 db.close()
