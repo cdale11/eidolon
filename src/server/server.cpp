@@ -13,6 +13,7 @@
 
 #include "httplib.h"
 #include "mind/compute_scheduler.hpp"
+#include "llm/intent_parser.hpp"
 
 namespace eidolon {
 
@@ -1289,9 +1290,31 @@ std::string Server::sendMessage(const std::string& conversationIdStr,
     // Late endpoint startup: adopt the serving name on first contact if the
     // model is still the unmatched default (no-op once adopted or explicit).
     llm_->detectModel();
+    // Routine routing is deterministic and local. Avoid spending a second LLM
+    // request merely to classify a message before asking the model to phrase it.
+    // The LLM remains responsible for open-ended language, never for world facts.
     ParsedMessage parsed;
-    std::string raw;
-    if (llm_->parse(trimmed, snap, parsed, raw)) {
+    const ParsedInstruction local = IntentParser().parse(trimmed);
+    switch (local.intent) {
+      case UserIntentType::Greet: parsed.intent = "greet"; break;
+      case UserIntentType::QuestionGoals:
+      case UserIntentType::QuestionSkills:
+      case UserIntentType::QuestionRelationships:
+      case UserIntentType::QuestionHelp:
+      case UserIntentType::QuestionPredecessor:
+      case UserIntentType::Status:
+      case UserIntentType::Observe:
+        parsed.intent = "question"; break;
+      case UserIntentType::None: parsed.intent = "other"; break;
+      default: parsed.intent = "request"; break;
+    }
+    parsed.topic = local.target;
+    parsed.tone = "neutral";
+    parsed.referencesMemory = trimmed.find("what did you") != std::string::npos ||
+                              trimmed.find("what happened") != std::string::npos ||
+                              trimmed.find("remember") != std::string::npos ||
+                              local.intent == UserIntentType::QuestionPredecessor;
+    {
       // Q2: for memory questions, resolve the facts through the deterministic
       // archive path first. The LLM only phrases these facts; it must not recall
       // past events from model weights or dialogue history.
@@ -1313,6 +1336,7 @@ std::string Server::sendMessage(const std::string& conversationIdStr,
               formatPredecessorHistory(predConvs[0].individualId, turns);
         }
       }
+      std::string raw;
       if (llm_->respond(trimmed, snap, parsed, reply, raw, history, groundedMemory,
                         predecessorHistory)) {
         source = "llm";
@@ -1326,10 +1350,6 @@ std::string Server::sendMessage(const std::string& conversationIdStr,
         reasonText = "LLM reply request failed (timeout or bad response) — offline reply";
         reply = fallbackReply(snap, trimmed, userHour);
       }
-    } else {
-      reason = "parse_failed";
-      reasonText = "LLM could not parse the message — offline reply";
-      reply = fallbackReply(snap, trimmed, userHour);
     }
   } else {
     // Offline: prefer grounded language for past-tense questions ("what did you do

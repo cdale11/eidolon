@@ -133,6 +133,11 @@ food-web feedback are implemented, serialized, tested, and documented.
   compilation, artifact freshness checks, and causal structure-benefit tests are
   tracked in the roadmap.
 
+### Local LLM cost reduction
+- Online chat now uses the deterministic local intent parser for routine message
+  classification instead of spending a separate model request before every reply.
+  The shared model remains responsible for grounded phrasing and open-ended language.
+
 ### Voice consistency and reply-quality harness (Q4)
 - Personality now reaches the language model as trait words ("cautious,
   curious") derived from latent thresholds instead of raw floats, and drives
