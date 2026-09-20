@@ -1080,7 +1080,7 @@ std::string Server::statusJson() {
   const auto& b = engine_.body();
   const auto& w = engine_.world().weather();
   const Vec2i p = engine_.world().organismPos();
-  char buf[640];
+  char buf[1024];
   static const char* kSleepStageName[] = {"awake", "drowsy", "light_sleep", "deep_sleep", "rem"};
   const double hour = engine_.clock().hourOfDay();
   const char* phase = (hour >= 22.0 || hour < 5.0) ? "deep_night"
@@ -1096,7 +1096,10 @@ std::string Server::statusJson() {
                  "\"preyNear\":%d,\"predatorsNear\":%d,\"predatorDist\":%d,"
                  "\"rebirths\":%u,\"individual_id\":%lld,\"world_id\":%lld,"
                  "\"predecessor_gen\":%d,\"predecessor_lifespan_days\":%.2f,"
-                 "\"predecessor_cause\":\"%s\"}",
+                 "\"predecessor_cause\":\"%s\",\"project_status\":%u,"
+                 "\"project_kind\":%u,\"project_structure_id\":%u,"
+                 "\"project_progress\":%u,\"project_max_progress\":%u,"
+                 "\"project_blocked_reason\":\"%s\"}",
                 static_cast<long long>(engine_.clock().day()),
                 hour,
                 b.isSleeping() ? "false" : "true",
@@ -1122,10 +1125,16 @@ std::string Server::statusJson() {
                  engine_.predecessor().hasPredecessor
                      ? static_cast<double>(engine_.predecessor().lifespanTicks) / 86400.0
                      : -1.0,
-                 jsonEscape(engine_.predecessor().hasPredecessor
-                                ? engine_.predecessor().causeOfDeath
-                                : "")
-                     .c_str());
+                  jsonEscape(engine_.predecessor().hasPredecessor
+                                 ? engine_.predecessor().causeOfDeath
+                                 : "")
+                      .c_str(),
+                  static_cast<unsigned>(engine_.project().status),
+                  static_cast<unsigned>(engine_.project().kind),
+                  engine_.project().structureId,
+                  engine_.project().progress,
+                  engine_.project().maxProgress,
+                  jsonEscape(engine_.project().blockedReason).c_str());
   return buf;
 }
 

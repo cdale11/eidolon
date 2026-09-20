@@ -150,6 +150,11 @@ food-web feedback are implemented, serialized, tested, and documented.
   falls back deterministically instead of allowing future autonomous dialogue to
   consume unbounded local compute.
 
+### Project observability (E5a)
+- `/api/status` now exposes the active shelter project's status, linked structure,
+  progress, maximum progress, and blocked reason so the UI can distinguish working,
+  paused, completed, and prerequisite-blocked construction.
+
 ### Voice consistency and reply-quality harness (Q4)
 - Personality now reaches the language model as trait words ("cautious,
   curious") derived from latent thresholds instead of raw floats, and drives

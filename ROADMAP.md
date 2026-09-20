@@ -864,6 +864,8 @@ Entry points: goal emergence, instruction learning, planner, skills, crafting/co
       progress, interruption reason, outcome evidence, and owner individual id.
       (Initial slice: shelter site, wood blocker, linked structure, progress/status,
       completion timestamp, and snapshot v22 persistence.)
+- [x] Expose project state and blockers through the authoritative status API so the
+      client can present grounded progress instead of inferring it from action counts.
 - [ ] Resume projects after sleep, danger, save/load, and successor transitions only
       when the project is world-owned; personal projects retain attribution and do not
       become successor autobiography.
