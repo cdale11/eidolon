@@ -247,6 +247,9 @@ Action Engine::tick() noexcept {
   const double dt = static_cast<double>(step);
 
   const WorldUpdate wu = world_.update(clock_, static_cast<int64_t>(step), rngWeather_);
+  // Structures are persistent world entities, not just action targets: decay and
+  // damage must advance even while the organism is sleeping or pursuing wildlife.
+  structures_.update(static_cast<uint64_t>(clock_.now()));
   if (wu.weatherChanged) {
     events_.push({clock_.now(), 1 /* kind: weather */, 0});
     recordEpisode(EventKind::Weather, 0, 0.05, 255, Participant::None, Outcome::Unknown, 0.0f, 0.0f, 0.0f, 0.0f, Relevance::None);
@@ -1084,13 +1087,13 @@ void Engine::execute(Action a) noexcept {
           materials_.remove(MaterialType::Stone, 2);
           const uint32_t placed = structures_.placeStructure(
               StructureType::FarmPlot, p, 0, clock_.now(), 0);
-          const bool ok = structures_.workOnStructure(placed, 0, 20.0f, &skills_, rngCrafting_);
+          const bool ok = structures_.workOnStructure(placed, 0, 20.0f, &skills_, rngCrafting_, clock_.now());
           skills_.practice(SkillType::Farming, ok);
         } else {
           exploreStep();
         }
       } else {
-        const bool ok = structures_.workOnStructure(target, 0, 15.0f, &skills_, rngCrafting_);
+          const bool ok = structures_.workOnStructure(target, 0, 15.0f, &skills_, rngCrafting_, clock_.now());
         skills_.practice(SkillType::Farming, ok);
         if (ok) ++stats_.cropsHarvested;
       }
@@ -1160,7 +1163,7 @@ void Engine::execute(Action a) noexcept {
         }
       }
       if (sid != 0) {
-        const bool ok = structures_.workOnStructure(sid, 0, 20.0f, &skills_, rngCrafting_);
+        const bool ok = structures_.workOnStructure(sid, 0, 20.0f, &skills_, rngCrafting_, clock_.now());
         skills_.practice(SkillType::ShelterBuilding, ok);
         if (ok) ++stats_.structuresBuilt;
       } else {

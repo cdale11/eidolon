@@ -207,7 +207,8 @@ uint32_t StructureManager::placeStructure(StructureType type, Vec2i position, ui
 }
 
 bool StructureManager::workOnStructure(uint32_t structureId, uint32_t workerId, float workAmount,
-                                       const SkillStore* skills, class Rng& /*rng*/) {
+                                       const SkillStore* skills, class Rng& /*rng*/,
+                                       uint64_t currentTick) {
   auto it = structures_.find(structureId);
   if (it == structures_.end()) return false;
 
@@ -233,6 +234,7 @@ bool StructureManager::workOnStructure(uint32_t structureId, uint32_t workerId, 
   if (s.progress >= s.maxProgress) {
     s.state = StructureState::Complete;
     s.health = s.maxHealth;
+    s.completedAt = currentTick;
   } else {
     s.state = StructureState::Building;
   }
@@ -241,13 +243,23 @@ bool StructureManager::workOnStructure(uint32_t structureId, uint32_t workerId, 
 }
 
 bool StructureManager::repairStructure(uint32_t structureId, uint32_t /*workerId*/,
-                                       const MaterialInventory& /*materials*/, class Rng& /*rng*/) {
+                                       MaterialInventory& materials, class Rng& /*rng*/) {
   auto it = structures_.find(structureId);
   if (it == structures_.end()) return false;
 
   Structure& s = it->second;
   if (s.state == StructureState::Ruined) return false;
   if (s.health >= s.maxHealth) return true;
+
+  const auto bpIt = blueprints_.find(s.type);
+  if (bpIt != blueprints_.end()) {
+    for (const auto& ingredient : bpIt->second.materials) {
+      if (ingredient.consumed && !materials.has(ingredient.material, 1)) return false;
+    }
+    for (const auto& ingredient : bpIt->second.materials) {
+      if (ingredient.consumed) materials.remove(ingredient.material, 1);
+    }
+  }
 
   uint32_t repairAmount = std::min(s.maxHealth - s.health, 20u);
   s.health += repairAmount;

@@ -124,6 +124,15 @@ All notable user-visible changes to Eidolon, grouped by phase. Format inspired b
 E4 is now complete: plant biology, wildlife development/disease, and coupled
 food-web feedback are implemented, serialized, tested, and documented.
 
+### E4 runtime audit repairs
+- Wildlife litters now snapshot the offspring species before vector growth and
+  are clipped to the remaining species cap; structure decay is advanced from the
+  engine tick and completed structures record their completion time.
+- The audit found additional follow-up work rather than silently treating
+  scaffolding as complete: dead-agent storage reclamation, grounded LLM-plan
+  compilation, artifact freshness checks, and causal structure-benefit tests are
+  tracked in the roadmap.
+
 ### Voice consistency and reply-quality harness (Q4)
 - Personality now reaches the language model as trait words ("cautious,
   curious") derived from latent thresholds instead of raw floats, and drives

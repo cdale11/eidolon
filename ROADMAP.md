@@ -813,6 +813,10 @@ Entry points: `src/world/world.*`, `wildlife.*`, existing ecology/procedural mod
 world/engine — E4 builds mechanistic field/state updates instead, not on them.)
 **Status:** Complete through E4c; plant biology, wildlife development/disease, and
 food-web coupling are implemented, serialized, tested, benchmarked, and documented.
+Post-completion audit repairs: birth references are stable across litter growth,
+species caps apply to each litter, structure decay is ticked by the engine, and
+structure completion timestamps are recorded. Remaining E4 audit work is bounded
+population storage reclamation and multi-seed/multi-generation ecological evidence.
 - [x] Extend existing plant regrowth/environmental fields with functional water/nutrient/light
       budgets, root uptake, life stages, seasonal reproduction/pollination, seed dispersal,
       inherited traits, injury/disease and decomposition/soil nutrient feedback. Audit existing
@@ -853,6 +857,52 @@ Entry points: goal emergence, instruction learning, planner, skills, crafting/co
       **Gate:** chat teaching → grounded plan → resource gathering → construction/experiment
       → measured outcome → remembered skill; survives interruption/restart and can produce
       a validated process not restricted to a fixed recipe lookup.
+
+#### E5a — Durable project execution
+- [ ] Replace one-shot Build/Craft action effects with a persisted project record:
+      kind, target/site, prerequisites, blocked reason, linked structure/recipe,
+      progress, interruption reason, outcome evidence, and owner individual id.
+- [ ] Resume projects after sleep, danger, save/load, and successor transitions only
+      when the project is world-owned; personal projects retain attribution and do not
+      become successor autobiography.
+- [ ] Complete one grounded shelter project end-to-end: material check, acquisition,
+      construction progress, shelter benefit, skill evidence, completion episode, and
+      honest refusal when prerequisites are missing.
+
+#### E5b — Shared-world multi-organism foundation
+- [ ] Replace the one-humanoid runtime invariant with two independently simulated
+      humanoid organisms sharing one authoritative world, ecology, clock, and structure
+      graph. Preserve separate body, memory, skills, beliefs, relationships, and death.
+- [ ] Define adult arrival/initial placement, individual ids, deterministic scheduling,
+      snapshot migration from one-organism saves, and user addressing of either/both.
+- [ ] Prove that one organism's death does not reset the other organism or shared world;
+      inherited records remain attributed and cannot become the other organism's memory.
+
+#### E5c — Social emergence and observed dialogue
+- [ ] Add a bounded, visible conversation channel between organisms with speaker ids,
+      claims, requests, refusals, agreements, and outcome evidence. Dialogue may propose
+      actions; validated simulation state remains authoritative.
+- [ ] Enable autonomous conversation only while a user is watching by default, with a
+      strict global request/token budget, one shared local model process, user-message
+      priority, cooldowns, and deterministic offline fallback.
+- [ ] Measure whether dialogue changes trust, cooperation, planning, and later behavior;
+      generated prose alone is not an emergence gate.
+
+#### E5d — Cost and observability budgets
+- [ ] Remove avoidable duplicate LLM calls by using the local intent parser for routine
+      routing and reserve inference for phrasing/open-ended dialogue.
+- [ ] Add per-minute request/token/latency/RSS/GPU-memory counters and expose queue,
+      cooldown, fallback, and model provenance in the UI and metrics log.
+- [ ] Gate local inference under the shared-memory target: bounded context, short
+      autonomous turns, one in-flight request, and no retry storms.
+
+#### Runtime audit backlog
+- [ ] Reclaim dead wildlife storage without changing stable ids or deterministic replay.
+- [ ] Wire LLM planner validation/compilation to the grounded planner, or mark it
+      explicitly as unavailable rather than accepting empty compiled plans.
+- [ ] Verify native/WASM artifact freshness and snapshot-schema parity in the launcher.
+- [ ] Add causal evidence for structure benefits, material consumption, project outcome,
+      and each subsystem claimed complete in the roadmap.
 
 #### E6 — Turn archived research into tested knowledge
 Dependency: E3 provenance and E5 execution. This implements the existing pending internet

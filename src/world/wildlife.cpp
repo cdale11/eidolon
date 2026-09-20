@@ -745,15 +745,17 @@ void Wildlife::step(World& w, int64_t now, bool organismAlive,
           // invalidating the `a`/`mate` references.
           const double mMet = (a.metabolism + mate->metabolism) * 0.5;
           const double mHar = (a.hardiness + mate->hardiness) * 0.5;
+          const Species offspringSpecies = a.species;
           a.hunger = std::min(100.0, a.hunger + kBreedCost);
           a.offspringCooldownUntil =
               now + (isWolf ? kWolfBreedCooldown : kRabbitBreedCooldown);
           int litter = 1;
           if (!isWolf) litter = 2 + (a.rng.unit() < 0.5 ? 1 : 0);
+          litter = std::min(litter, cap - kin);
           for (int pup_i = 0; pup_i < litter; ++pup_i) {
             WildlifeAgent pup;
             pup.id = nextAgentId_++;
-            pup.species = a.species;
+            pup.species = offspringSpecies;
             pup.pos = birth;
             pup.rng = agentStream(wildlifeSeed_, pup.id);
             pup.energy = 60.0;

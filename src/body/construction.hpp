@@ -76,11 +76,11 @@ public:
 
   // Work on a structure (add progress)
   bool workOnStructure(uint32_t structureId, uint32_t workerId, float workAmount,
-                       const SkillStore* skills, class Rng& rng);
+                       const SkillStore* skills, class Rng& rng, uint64_t currentTick = 0);
 
   // Repair a damaged structure
   bool repairStructure(uint32_t structureId, uint32_t workerId,
-                       const MaterialInventory& materials, class Rng& rng);
+                       MaterialInventory& materials, class Rng& rng);
 
   // Damage a structure
   void damageStructure(uint32_t structureId, uint32_t damage);
