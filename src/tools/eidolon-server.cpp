@@ -29,7 +29,9 @@ void printUsage(FILE* out, const char* prog) {
                "  --llm URL            OpenAI-compatible endpoint, e.g.\n"
                "                       http://127.0.0.1:8080/v1 (default: offline)\n"
                "  --llm-timeout MS     LLM call timeout in ms (default 10000)\n"
-                 "  --llm-model NAME     model name sent in chat requests (default eidolon-llm;\n"
+               "  --llm-model NAME     model name sent in chat requests (default eidolon-llm;\n"
+               "  --llm-requests N     max local LLM requests per wall minute (default 30)\n"
+               "  --llm-tokens N       max completion tokens per wall minute (default 4096)\n"
                  "                       llama.cpp ignores it and serves the loaded model)\n"
                "  --fidelity 0|1|2|3   adaptive fidelity: 0=auto (default), 1=low, 2=medium, 3=high\n"
                "  --internet-enabled   enable internet browsing for the organism (default: off)\n"
@@ -80,6 +82,8 @@ int main(int argc, char** argv) {
     else if (a == "--llm") opts.llmEndpoint = need("URL");
     else if (a == "--llm-timeout") opts.llmTimeoutMs = std::atoi(need("MS"));
     else if (a == "--llm-model") opts.llmModel = need("NAME");
+    else if (a == "--llm-requests") opts.llmRequestsPerMinute = static_cast<uint32_t>(std::stoul(need("N")));
+    else if (a == "--llm-tokens") opts.llmCompletionTokensPerMinute = static_cast<uint32_t>(std::stoul(need("N")));
     else if (a == "--fidelity") {
       opts.fidelityLevel = std::atoi(need("0|1|2|3 (auto|low|medium|high)"));
     } else if (a == "--internet-enabled") {

@@ -38,6 +38,10 @@ public:
     std::string llmEndpoint; // empty = offline
     int llmTimeoutMs = 10000;
     std::string llmModel = "eidolon-llm"; // model name sent in chat requests
+    // Shared local-model budget. A watched dialogue session must not turn into an
+    // unbounded self-chat loop or starve user replies.
+    uint32_t llmRequestsPerMinute = 30;
+    uint32_t llmCompletionTokensPerMinute = 4096;
     // Adaptive fidelity (Phase 11): 0 = auto (from compute profile), else explicit level
     // 1..3 for Low/Medium/High. Only affects pacing/model budget/world detail, never the
     // deterministic tick semantics.
@@ -159,6 +163,12 @@ public:
   // last wall ms a client snapshot arrived (0 = never); simLoop resumes the sim
   // itself once a claiming client has been silent for >15s (continuity invariant).
   std::atomic<int64_t> lastClientContactMs_{0};
+  int64_t llmBudgetWindowMs_ = 0;
+  uint32_t llmRequestsInWindow_ = 0;
+  uint32_t llmTokensInWindow_ = 0;
+
+  bool reserveLLMRequest(int64_t wallMs);
+  void recordLLMTokens(int64_t wallMs, int64_t tokens);
 };
 
 } // namespace eidolon

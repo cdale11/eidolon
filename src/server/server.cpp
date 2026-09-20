@@ -868,6 +868,31 @@ Server::~Server() {
   if (simThread_.joinable()) simThread_.join();
 }
 
+bool Server::reserveLLMRequest(int64_t wallMs) {
+  if (llmBudgetWindowMs_ == 0 || wallMs - llmBudgetWindowMs_ >= 60000) {
+    llmBudgetWindowMs_ = wallMs;
+    llmRequestsInWindow_ = 0;
+    llmTokensInWindow_ = 0;
+  }
+  if (llmRequestsInWindow_ >= opts_.llmRequestsPerMinute) return false;
+  if (llmTokensInWindow_ >= opts_.llmCompletionTokensPerMinute) return false;
+  ++llmRequestsInWindow_;
+  return true;
+}
+
+void Server::recordLLMTokens(int64_t wallMs, int64_t tokens) {
+  if (llmBudgetWindowMs_ == 0 || wallMs - llmBudgetWindowMs_ >= 60000) {
+    llmBudgetWindowMs_ = wallMs;
+    llmRequestsInWindow_ = 0;
+    llmTokensInWindow_ = 0;
+  }
+  if (tokens > 0) {
+    llmTokensInWindow_ = std::min<uint32_t>(
+        opts_.llmCompletionTokensPerMinute,
+        llmTokensInWindow_ + static_cast<uint32_t>(tokens));
+  }
+}
+
 void Server::simLoop() {
   const std::string savePath = opts_.dataDir + "/save.snap";
   const std::string logPath = opts_.dataDir + "/events.log";
@@ -1314,7 +1339,14 @@ std::string Server::sendMessage(const std::string& conversationIdStr,
                               trimmed.find("what happened") != std::string::npos ||
                               trimmed.find("remember") != std::string::npos ||
                               local.intent == UserIntentType::QuestionPredecessor;
-    {
+    const int64_t wallMs = static_cast<int64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
+    if (!reserveLLMRequest(wallMs)) {
+      reason = "llm_budget";
+      reasonText = "local LLM budget exhausted — deterministic offline reply";
+      reply = fallbackReply(snap, trimmed, userHour);
+    } else {
       // Q2: for memory questions, resolve the facts through the deterministic
       // archive path first. The LLM only phrases these facts; it must not recall
       // past events from model weights or dialogue history.
@@ -1345,6 +1377,7 @@ std::string Server::sendMessage(const std::string& conversationIdStr,
         model = llm_->model();
         latencyMs = llm_->lastRespondMs();
         completionTokens = llm_->lastRespondCompletionTokens();
+        recordLLMTokens(wallMs, completionTokens);
       } else {
         reason = "respond_failed";
         reasonText = "LLM reply request failed (timeout or bad response) — offline reply";

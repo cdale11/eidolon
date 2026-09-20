@@ -144,6 +144,12 @@ food-web feedback are implemented, serialized, tested, and documented.
   Structure decay is advanced continuously and completion timestamps survive
   snapshot round-trips (snapshot v22).
 
+### Bounded local inference budget
+- The server now enforces configurable wall-time budgets for local-model requests
+  and completion tokens (`--llm-requests`, `--llm-tokens`). When exhausted, chat
+  falls back deterministically instead of allowing future autonomous dialogue to
+  consume unbounded local compute.
+
 ### Voice consistency and reply-quality harness (Q4)
 - Personality now reaches the language model as trait words ("cautious,
   curious") derived from latent thresholds instead of raw floats, and drives
