@@ -916,6 +916,14 @@ implementation. `ROADMAP.md` E0–E7 tracks only gaps/extensions to existing sys
   ecology, structures, resources, and history. At most one living humanoid exists at once.
   Text conversation with the current Eidolon is the player's interaction with the world;
   developer diagnostics are not an alternative gameplay control surface.
+- **Shared-world pair direction (approved expansion):** the next social expansion will
+  support two independently simulated humanoids in one authoritative world. They share
+  time, ecology, structures, resources, and physical consequences, but never body state,
+  episodic memory, practiced skills, beliefs, trust, or autobiography. User messages can
+  address either or both. Autonomous Eidolon-to-Eidolon dialogue is watched-only by default,
+  bounded by one shared local-model request/token budget, and falls back offline; generated
+  prose never mutates world state without validated simulation actions. This supersedes the
+  one-humanoid invariant only after the E5b migration and death-isolation gates pass.
 - **Starting competence:** adult-like language and foundational knowledge, with conceptual
   knowledge distinct from practiced embodied skill. A new individual's arrival mechanism
   and physical starting conditions remain to be decided before lifecycle implementation;
