@@ -1160,12 +1160,35 @@ void Engine::execute(Action a) noexcept {
         if (materials_.has(MaterialType::Wood, 2)) {
           sid = structures_.placeStructure(StructureType::Shelter, p, 0, clock_.now(), 0);
           materials_.remove(MaterialType::Wood, 2);
+          project_.status = ProjectStatus::Active;
+          project_.kind = StructureType::Shelter;
+          project_.site = p;
+          project_.structureId = sid;
+          project_.progress = 0;
+          project_.maxProgress = structures_.getStructure(sid)->maxProgress;
+          project_.blockedReason.clear();
+          project_.startedAt = clock_.now();
+        }
+        else {
+          project_.status = ProjectStatus::Paused;
+          project_.kind = StructureType::Shelter;
+          project_.site = p;
+          project_.structureId = 0;
+          project_.blockedReason = "need 2 wood to start shelter";
+          project_.updatedAt = clock_.now();
         }
       }
       if (sid != 0) {
         const bool ok = structures_.workOnStructure(sid, 0, 20.0f, &skills_, rngCrafting_, clock_.now());
         skills_.practice(SkillType::ShelterBuilding, ok);
         if (ok) ++stats_.structuresBuilt;
+        if (const Structure* s = structures_.getStructure(sid)) {
+          project_.status = s->state == StructureState::Complete ? ProjectStatus::Completed
+                                                                  : ProjectStatus::Active;
+          project_.progress = s->progress;
+          project_.maxProgress = s->maxProgress;
+          project_.updatedAt = clock_.now();
+        }
       } else {
         skills_.practice(SkillType::ShelterBuilding, false);
         exploreStep();
@@ -1416,6 +1439,17 @@ void Engine::serializeState(BinaryWriter& w) const {
   w.i64(static_cast<int64_t>(predecessor_.generation));
   w.u64(predecessor_.lifespanTicks);
   w.str(predecessor_.causeOfDeath);
+  // v22: the current world's durable construction project.
+  w.u8(static_cast<uint8_t>(project_.status));
+  w.u8(static_cast<uint8_t>(project_.kind));
+  w.u32(static_cast<uint32_t>(project_.site.x));
+  w.u32(static_cast<uint32_t>(project_.site.y));
+  w.u32(project_.structureId);
+  w.u32(project_.progress);
+  w.u32(project_.maxProgress);
+  w.str(project_.blockedReason);
+  w.u64(project_.startedAt);
+  w.u64(project_.updatedAt);
 }
 
 bool Engine::deserializeState(BinaryReader& r, std::string& err) {
@@ -1553,6 +1587,20 @@ bool Engine::deserializeState(BinaryReader& r, std::string& err) {
   }
   predecessor_.hasPredecessor = hasPred != 0;
   predecessor_.generation = static_cast<int>(predGen);
+  uint8_t projectStatus, projectKind;
+  uint32_t sx, sy;
+  if (!r.u8(projectStatus) || projectStatus > static_cast<uint8_t>(ProjectStatus::Completed) ||
+      !r.u8(projectKind) || projectKind >= static_cast<uint8_t>(StructureType::Count) ||
+      !r.u32(sx) || !r.u32(sy) || !r.u32(project_.structureId) ||
+      !r.u32(project_.progress) || !r.u32(project_.maxProgress) ||
+      !r.str(project_.blockedReason) || !r.u64(project_.startedAt) ||
+      !r.u64(project_.updatedAt)) {
+    err = "snapshot project corrupt";
+    return false;
+  }
+  project_.status = static_cast<ProjectStatus>(projectStatus);
+  project_.kind = static_cast<StructureType>(projectKind);
+  project_.site = {static_cast<int>(sx), static_cast<int>(sy)};
   return r.done();
 }
 

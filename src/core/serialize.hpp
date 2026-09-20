@@ -46,7 +46,8 @@ constexpr uint32_t kSnapshotMagic = 0x4549444C; // "EIDL"
 // v21: E4a-c world ecology — Plant biology state (stage/water/infection/
 //      vigor/age), soil nutrient grid, WildlifeAgent life state (age/sex/
 //      injury/disease/immunity/traits/cooldowns) plus the next-agent-id counter.
-constexpr uint32_t kSnapshotVersion = 21;
+// v22: E5 durable shelter project (site, linked structure, status, blocker).
+constexpr uint32_t kSnapshotVersion = 22;
 
 struct BinaryWriter {
 public:

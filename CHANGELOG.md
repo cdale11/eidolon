@@ -138,6 +138,12 @@ food-web feedback are implemented, serialized, tested, and documented.
   classification instead of spending a separate model request before every reply.
   The shared model remains responsible for grounded phrasing and open-ended language.
 
+### Durable shelter projects (E5a)
+- Shelter construction now retains a persisted project record with site, linked
+  structure, progress, status, timestamps, and an honest missing-wood blocker.
+  Structure decay is advanced continuously and completion timestamps survive
+  snapshot round-trips (snapshot v22).
+
 ### Voice consistency and reply-quality harness (Q4)
 - Personality now reaches the language model as trait words ("cautious,
   curious") derived from latent thresholds instead of raw floats, and drives

@@ -859,9 +859,11 @@ Entry points: goal emergence, instruction learning, planner, skills, crafting/co
       a validated process not restricted to a fixed recipe lookup.
 
 #### E5a — Durable project execution
-- [ ] Replace one-shot Build/Craft action effects with a persisted project record:
+- [x] Replace one-shot Build action effects with a persisted shelter project record:
       kind, target/site, prerequisites, blocked reason, linked structure/recipe,
       progress, interruption reason, outcome evidence, and owner individual id.
+      (Initial slice: shelter site, wood blocker, linked structure, progress/status,
+      completion timestamp, and snapshot v22 persistence.)
 - [ ] Resume projects after sleep, danger, save/load, and successor transitions only
       when the project is world-owned; personal projects retain attribution and do not
       become successor autobiography.

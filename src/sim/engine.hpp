@@ -35,6 +35,20 @@
 
 namespace eidolon {
 
+enum class ProjectStatus : uint8_t { None = 0, Active = 1, Paused = 2, Completed = 3 };
+
+struct DurableProject {
+  ProjectStatus status = ProjectStatus::None;
+  StructureType kind = StructureType::Shelter;
+  Vec2i site{-1, -1};
+  uint32_t structureId = 0;
+  uint32_t progress = 0;
+  uint32_t maxProgress = 100;
+  std::string blockedReason;
+  uint64_t startedAt = 0;
+  uint64_t updatedAt = 0;
+};
+
 enum class Action : uint8_t {
   Wander = 0,
   Rest = 1,
@@ -173,6 +187,7 @@ struct Stats {
   MemorySystem& memorySys() { return memorySys_; }
   const MemorySystem& memorySys() const { return memorySys_; }
   const Stats& stats() const { return stats_; }
+  const DurableProject& project() const { return project_; }
   uint64_t masterSeed() const { return masterSeed_; }
   bool deterministic() const { return deterministic_; }
 
@@ -437,6 +452,7 @@ private:
   MaterialInventory materials_;
   // Construction manager (persistent structures on the grid)
   StructureManager structures_;
+  DurableProject project_;
   // Skill/habit models (Beta competence + associative habit formation)
   SkillStore skills_;
   HabitStore habits_;
