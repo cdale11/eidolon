@@ -79,6 +79,135 @@ void Engine::initWorld(uint64_t masterSeed, bool deterministic, int worldW, int 
 
   world_.generate(worldW > 0 ? worldW : kDefaultWorldW,
                   worldH > 0 ? worldH : kDefaultWorldH, rngWorld_);
+  initPeer();
+}
+
+void Engine::initPeer() {
+  uint64_t s = masterSeed_ ^ 0x504545524549444FULL;
+  rngPeer_ = Rng(splitmix64(s));
+  peer_ = PeerOrganism{};
+  peer_.individualId = splitmix64(s);
+  const Vec2i primary = world_.organismPos();
+  const Grid& g = world_.grid();
+  peer_.pos = primary;
+  for (int radius = 2; radius <= 8 && peer_.pos == primary; ++radius) {
+    for (int dy = -radius; dy <= radius && peer_.pos == primary; ++dy) {
+      for (int dx = -radius; dx <= radius; ++dx) {
+        if (std::max(std::abs(dx), std::abs(dy)) != radius) continue;
+        const Vec2i q{primary.x + dx, primary.y + dy};
+        if (g.inBounds(q.x, q.y) && g.walkable(q.x, q.y)) {
+          peer_.pos = q;
+          break;
+        }
+      }
+    }
+  }
+  peer_.body.reset();
+  peer_.body.setWaterCapacity(Physiology::kInnateWaterskinCapacity);
+  peer_.body.refillWater();
+  peer_.present = true;
+  Episode birth;
+  birth.t = clock_.now();
+  birth.x = static_cast<int16_t>(peer_.pos.x);
+  birth.y = static_cast<int16_t>(peer_.pos.y);
+  birth.kind = EventKind::Birth;
+  birth.participants = Participant::Self;
+  birth.outcome = Outcome::Success;
+  birth.importance = 0.5;
+  peer_.memory.ring().add(birth);
+}
+
+void Engine::stepPeer(double dt) noexcept {
+  if (!peer_.present || !peer_.body.alive()) return;
+  const Grid& g = world_.grid();
+  const int searchRadius = std::max(g.width(), g.height());
+  auto moveTowardPeer = [&](Vec2i target) {
+    Vec2i best = peer_.pos;
+    int bestDist = distCheb(best, target);
+    static constexpr int off[8][2] = {
+        {-1, -1}, {0, -1}, {1, -1}, {-1, 0},
+        {1, 0}, {-1, 1}, {0, 1}, {1, 1}};
+    for (const auto& d : off) {
+      const Vec2i q{peer_.pos.x + d[0], peer_.pos.y + d[1]};
+      if (!g.inBounds(q.x, q.y) || !g.walkable(q.x, q.y) ||
+          g.cliffBetween(peer_.pos.x, peer_.pos.y, q.x, q.y)) continue;
+      const int distance = distCheb(q, target);
+      if (distance < bestDist) {
+        best = q;
+        bestDist = distance;
+      }
+    }
+    if (best == peer_.pos) {
+      const int start = rngPeer_.irange(0, 7);
+      for (int i = 0; i < 8; ++i) {
+        const auto& d = off[(start + i) % 8];
+        const Vec2i q{peer_.pos.x + d[0], peer_.pos.y + d[1]};
+        if (g.inBounds(q.x, q.y) && g.walkable(q.x, q.y) &&
+            !g.cliffBetween(peer_.pos.x, peer_.pos.y, q.x, q.y)) {
+          best = q;
+          break;
+        }
+      }
+    }
+    peer_.pos = best;
+  };
+
+  Activity activity = Activity::Move;
+  if (peer_.body.isSleeping() &&
+      (peer_.body.thirst() > 70.0 || peer_.body.hunger() > 70.0)) {
+    peer_.body.setSleeping(false);
+  }
+  if (peer_.body.thirst() > 20.0 && !peer_.body.isSleeping()) {
+    peer_.lastAction = Action::Drink;
+    const WaterSource* water = world_.nearestWaterSource(peer_.pos, searchRadius);
+    if (world_.adjacentToWater(peer_.pos) ||
+        (water != nullptr && distCheb(peer_.pos, water->pos) <= 1)) {
+      peer_.body.refillWater();
+      peer_.body.drinkFromSkin();
+      activity = Activity::Rest;
+    } else if (water != nullptr) {
+      moveTowardPeer(water->pos);
+    }
+  } else if (peer_.body.hunger() > 15.0 && !peer_.body.isSleeping()) {
+    peer_.lastAction = Action::Forage;
+    if (const Plant* plant = world_.nearestEdiblePlant(peer_.pos, searchRadius)) {
+      if (distCheb(peer_.pos, plant->pos) <= 1) {
+        const double eaten = world_.consumePlant(plant->pos, 2.0);
+        if (eaten > 0.0) {
+          peer_.body.eat(eaten);
+          Episode ep;
+          ep.t = clock_.now();
+          ep.x = static_cast<int16_t>(peer_.pos.x);
+          ep.y = static_cast<int16_t>(peer_.pos.y);
+          ep.kind = EventKind::Forage;
+          ep.participants = Participant::Self;
+          ep.outcome = Outcome::Success;
+          ep.importance = 0.35;
+          peer_.memory.ring().add(ep);
+        }
+      } else {
+        moveTowardPeer(plant->pos);
+      }
+    }
+  } else if (peer_.body.isSleeping()) {
+    peer_.lastAction = Action::Sleep;
+    activity = Activity::Sleep;
+  } else if (peer_.body.needsSleep()) {
+    peer_.body.setSleeping(true);
+    peer_.lastAction = Action::Sleep;
+    activity = Activity::Sleep;
+  } else {
+    peer_.lastAction = Action::Observe;
+    activity = Activity::Observe;
+    if (rngPeer_.chance(0.05)) {
+      const Vec2i q{peer_.pos.x + rngPeer_.irange(-1, 1),
+                    peer_.pos.y + rngPeer_.irange(-1, 1)};
+      if (g.inBounds(q.x, q.y) && g.walkable(q.x, q.y) &&
+          !g.cliffBetween(peer_.pos.x, peer_.pos.y, q.x, q.y)) peer_.pos = q;
+    }
+  }
+  peer_.body.update(dt, world_.weather().ambientTempC(clock_), activity);
+  peer_.memory.tickDecay();
 }
 
 void Engine::initIndividual() {
@@ -247,6 +376,7 @@ Action Engine::tick() noexcept {
   const double dt = static_cast<double>(step);
 
   const WorldUpdate wu = world_.update(clock_, static_cast<int64_t>(step), rngWeather_);
+  stepPeer(dt);
   // Structures are persistent world entities, not just action targets: decay and
   // damage must advance even while the organism is sleeping or pursuing wildlife.
   structures_.update(static_cast<uint64_t>(clock_.now()));
@@ -1450,6 +1580,15 @@ void Engine::serializeState(BinaryWriter& w) const {
   w.str(project_.blockedReason);
   w.u64(project_.startedAt);
   w.u64(project_.updatedAt);
+  // v23: second independent organism in the shared world.
+  w.u64(peer_.individualId);
+  w.u32(static_cast<uint32_t>(peer_.pos.x));
+  w.u32(static_cast<uint32_t>(peer_.pos.y));
+  w.u8(peer_.present ? 1 : 0);
+  w.u8(static_cast<uint8_t>(peer_.lastAction));
+  peer_.body.serialize(w);
+  peer_.memory.serialize(w);
+  serializeRng(w, rngPeer_);
 }
 
 bool Engine::deserializeState(BinaryReader& r, std::string& err) {
@@ -1601,6 +1740,19 @@ bool Engine::deserializeState(BinaryReader& r, std::string& err) {
   project_.status = static_cast<ProjectStatus>(projectStatus);
   project_.kind = static_cast<StructureType>(projectKind);
   project_.site = {static_cast<int>(sx), static_cast<int>(sy)};
+  uint32_t peerX, peerY;
+  uint8_t peerPresent, peerAction;
+  if (!r.u64(peer_.individualId) || !r.u32(peerX) || !r.u32(peerY) ||
+      !r.u8(peerPresent) || peerPresent > 1 || !r.u8(peerAction) ||
+      peerAction > static_cast<uint8_t>(Action::Preserve) ||
+      !peer_.body.deserialize(r) || !peer_.memory.deserialize(r) ||
+      !deserializeRng(r, rngPeer_)) {
+    err = "snapshot peer organism corrupt";
+    return false;
+  }
+  peer_.pos = {static_cast<int>(peerX), static_cast<int>(peerY)};
+  peer_.present = peerPresent != 0;
+  peer_.lastAction = static_cast<Action>(peerAction);
   return r.done();
 }
 

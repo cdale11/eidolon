@@ -47,7 +47,8 @@ constexpr uint32_t kSnapshotMagic = 0x4549444C; // "EIDL"
 //      vigor/age), soil nutrient grid, WildlifeAgent life state (age/sex/
 //      injury/disease/immunity/traits/cooldowns) plus the next-agent-id counter.
 // v22: E5 durable shelter project (site, linked structure, status, blocker).
-constexpr uint32_t kSnapshotVersion = 22;
+// v23: E5b secondary humanoid foundation (identity, body, position, memory, RNG).
+constexpr uint32_t kSnapshotVersion = 23;
 
 struct BinaryWriter {
 public:

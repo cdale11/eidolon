@@ -155,6 +155,16 @@ food-web feedback are implemented, serialized, tested, and documented.
   progress, maximum progress, and blocked reason so the UI can distinguish working,
   paused, completed, and prerequisite-blocked construction.
 
+### Shared-world pair foundation (E5b)
+- A second mortal organism now inhabits the same authoritative world and clock without
+  running ecology twice. It has a stable independent identity, position, physiology,
+  episodic memory ring and random stream, and performs bounded deterministic survival
+  behavior (forage, drink, sleep, observe/move).
+- The peer survives primary death/succession without being reset, round-trips in snapshot
+  v23, and appears in `/api/status`. Independent learning, relationships, addressed chat,
+  and cooperative projects remain explicit later E5b/E5c work rather than being simulated
+  by prose.
+
 ### Voice consistency and reply-quality harness (Q4)
 - Personality now reaches the language model as trait words ("cautious,
   curious") derived from latent thresholds instead of raw floats, and drives

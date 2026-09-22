@@ -924,6 +924,10 @@ implementation. `ROADMAP.md` E0–E7 tracks only gaps/extensions to existing sys
   bounded by one shared local-model request/token budget, and falls back offline; generated
   prose never mutates world state without validated simulation actions. This supersedes the
   one-humanoid invariant only after the E5b migration and death-isolation gates pass.
+  The v23 foundation now proves one world update with two persisted bodies/identities and
+  primary-succession isolation; the invariant is not considered fully replaced until the
+  second organism also has independent cognition, relationships, addressed dialogue, and
+  backward save migration.
 - **Starting competence:** adult-like language and foundational knowledge, with conceptual
   knowledge distinct from practiced embodied skill. A new individual's arrival mechanism
   and physical starting conditions remain to be decided before lifecycle implementation;

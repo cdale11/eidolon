@@ -1099,7 +1099,11 @@ std::string Server::statusJson() {
                  "\"predecessor_cause\":\"%s\",\"project_status\":%u,"
                  "\"project_kind\":%u,\"project_structure_id\":%u,"
                  "\"project_progress\":%u,\"project_max_progress\":%u,"
-                 "\"project_blocked_reason\":\"%s\"}",
+                 "\"project_blocked_reason\":\"%s\",\"peer_present\":%s,"
+                 "\"peer_alive\":%s,\"peer_individual_id\":%llu,"
+                 "\"peer_x\":%d,\"peer_y\":%d,\"peer_energy\":%.1f,"
+                 "\"peer_hunger\":%.1f,\"peer_thirst\":%.1f,"
+                 "\"peer_action\":%u}",
                 static_cast<long long>(engine_.clock().day()),
                 hour,
                 b.isSleeping() ? "false" : "true",
@@ -1134,7 +1138,14 @@ std::string Server::statusJson() {
                   engine_.project().structureId,
                   engine_.project().progress,
                   engine_.project().maxProgress,
-                  jsonEscape(engine_.project().blockedReason).c_str());
+                  jsonEscape(engine_.project().blockedReason).c_str(),
+                  engine_.peer().present ? "true" : "false",
+                  engine_.peer().body.alive() ? "true" : "false",
+                  static_cast<unsigned long long>(engine_.peer().individualId),
+                  engine_.peer().pos.x, engine_.peer().pos.y,
+                  engine_.peer().body.energy(), engine_.peer().body.hunger(),
+                  engine_.peer().body.thirst(),
+                  static_cast<unsigned>(engine_.peer().lastAction));
   return buf;
 }
 

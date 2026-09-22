@@ -877,6 +877,13 @@ Entry points: goal emergence, instruction learning, planner, skills, crafting/co
 - [ ] Replace the one-humanoid runtime invariant with two independently simulated
       humanoid organisms sharing one authoritative world, ecology, clock, and structure
       graph. Preserve separate body, memory, skills, beliefs, relationships, and death.
+      (Foundation complete: snapshot v23 adds a second stable identity with independent
+      physiology, position, episodic ring and RNG; it forages, drinks, sleeps and moves
+      while the world/ecology advances exactly once. Full cognition/skills/relationships
+      remain open.)
+- [x] Preserve the second organism through save/load and primary death/succession without
+      resetting its identity, body, position, or autobiography; expose its live state in
+      the authoritative status API.
 - [ ] Define adult arrival/initial placement, individual ids, deterministic scheduling,
       snapshot migration from one-organism saves, and user addressing of either/both.
 - [ ] Prove that one organism's death does not reset the other organism or shared world;

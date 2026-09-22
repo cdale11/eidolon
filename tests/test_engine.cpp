@@ -253,6 +253,49 @@ TEST(engine_advanced_stats_survive_snapshot_roundtrip) {
   CHECK_EQ(restored.stats().structuresBuilt, e.stats().structuresBuilt);
 }
 
+TEST(engine_shared_world_peer_is_distinct_and_persistent) {
+  Engine e;
+  e.init(31415, true, 64, 64);
+  CHECK(e.peer().present);
+  CHECK(e.peer().body.alive());
+  CHECK(e.peer().individualId != 0);
+  CHECK(e.peer().individualId != e.individualId());
+  CHECK(e.peer().pos != e.world().organismPos());
+  CHECK(e.peer().memory.ring().countKind(EventKind::Birth) == 1u);
+
+  for (int i = 0; i < 200; ++i) e.tick();
+  const uint64_t peerId = e.peer().individualId;
+  const Vec2i peerPos = e.peer().pos;
+  const double peerEnergy = e.peer().body.energy();
+
+  Engine restored;
+  std::string err;
+  CHECK(restored.restore(e.snapshot(), err));
+  CHECK_EQ(restored.peer().individualId, peerId);
+  CHECK(restored.peer().pos == peerPos);
+  CHECK_EQ(restored.peer().body.energy(), peerEnergy);
+  CHECK_EQ(restored.peer().memory.ring().episodes().size(),
+           e.peer().memory.ring().episodes().size());
+}
+
+TEST(engine_primary_succession_does_not_reset_peer) {
+  Engine e;
+  e.init(27182, true, 64, 64);
+  for (int i = 0; i < 100; ++i) e.tick();
+  const uint64_t peerId = e.peer().individualId;
+
+  e.body().takeDamage(100000.0);
+  e.tick();
+  CHECK(!e.isAlive());
+  const Vec2i peerPos = e.peer().pos;
+  const double peerHunger = e.peer().body.hunger();
+  CHECK(e.respawnSuccessor());
+  CHECK(e.isAlive());
+  CHECK_EQ(e.peer().individualId, peerId);
+  CHECK(e.peer().pos == peerPos);
+  CHECK_EQ(e.peer().body.hunger(), peerHunger);
+}
+
 namespace {
 // Kill the organism deterministically: lethal damage, then one tick runs the
 // engine death block (heredity save skipped — no path set — rebirth counted).

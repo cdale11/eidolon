@@ -66,6 +66,18 @@ enum class Action : uint8_t {
   Preserve = 12,  // Preserve food (drying, smoking, fermenting)
 };
 
+// E5b foundation: a second mortal individual sharing this engine's authoritative
+// world and clock. Cognition/social language expands in later slices; body,
+// autobiography, position and random stream are independent from the primary now.
+struct PeerOrganism {
+  uint64_t individualId = 0;
+  Vec2i pos{-1, -1};
+  Physiology body;
+  MemorySystem memory{128};
+  Action lastAction = Action::Observe;
+  bool present = false;
+};
+
 class Engine {
 public:
 // Outcome of routing one user chat message through instruction handling.
@@ -188,6 +200,7 @@ struct Stats {
   const MemorySystem& memorySys() const { return memorySys_; }
   const Stats& stats() const { return stats_; }
   const DurableProject& project() const { return project_; }
+  const PeerOrganism& peer() const { return peer_; }
   uint64_t masterSeed() const { return masterSeed_; }
   bool deterministic() const { return deterministic_; }
 
@@ -419,6 +432,7 @@ private:
   // so making those actions live does not perturb the core survival/exploration randomness
   // that the phase-5 survival and determinism gates are tuned against.
   Rng rngCrafting_;
+  Rng rngPeer_;
   // Phase 11 compute scheduler + profiling (diagnostics only; never gates tick output).
   ComputeScheduler scheduler_;
   InstructionLearningSystem instructionLearning_;
@@ -453,6 +467,7 @@ private:
   // Construction manager (persistent structures on the grid)
   StructureManager structures_;
   DurableProject project_;
+  PeerOrganism peer_;
   // Skill/habit models (Beta competence + associative habit formation)
   SkillStore skills_;
   HabitStore habits_;
@@ -483,6 +498,8 @@ private:
   bool collectWater() noexcept;
   bool preserveFood() noexcept;
   bool hasMaterialsForStructure(StructureType type) const noexcept;
+  void initPeer();
+  void stepPeer(double dt) noexcept;
 };
 
 } // namespace eidolon

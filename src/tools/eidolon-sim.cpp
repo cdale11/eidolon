@@ -476,6 +476,12 @@ int main(int argc, char** argv) {
     std::fprintf(m, "plants=%d\nrabbits=%d\nwolves=%d\nsickAnimals=%d\nblightedPlants=%d\nsoilMean=%.3f\n",
                  static_cast<int>(engine.world().plants().size()), rabbits, wolves,
                  sickAnimals, blightedPlants, soilSum / (gw * gh));
+    std::fprintf(m,
+                 "peerPresent=%d\npeerAlive=%d\npeerX=%d\npeerY=%d\npeerEnergy=%.1f\npeerHunger=%.1f\npeerThirst=%.1f\npeerHealth=%.1f\npeerBodyTemp=%.1f\n",
+                 engine.peer().present ? 1 : 0, engine.peer().body.alive() ? 1 : 0,
+                 engine.peer().pos.x, engine.peer().pos.y, engine.peer().body.energy(),
+                 engine.peer().body.hunger(), engine.peer().body.thirst(),
+                 engine.peer().body.health(), engine.peer().body.bodyTemp());
     std::fprintf(m, "stopped=%s\n", whyStopped.c_str());
     std::fclose(m);
   }
